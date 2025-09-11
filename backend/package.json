@@ -1,0 +1,35 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "sync": "node -e \"import('./src/models/index.js').then(m=>m.default.sequelize.sync({alter:true})).then(()=>console.log('synced')).catch(err=>{console.error(err); process.exit(1);})\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "luxon": "^3.7.1",
+    "morgan": "^1.10.1",
+    "mysql2": "^3.14.4",
+    "ngrok": "^5.0.0-beta.2",
+    "sequelize": "^6.37.7",
+    "telegraf": "^4.16.3",
+    "axios": "^1.9.0",
+    "googleapis": "^149.0.0",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^7.0.5",
+    "pdfmake": "^0.2.20"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

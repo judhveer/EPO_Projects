@@ -1,0 +1,33 @@
+node_modules/
+
+.env
+
+backend/credentials.json
+
+
+# Editor configs
+.vscode/
+.idea/
+*.swp
+
+# React/Vite build
+build/
+coverage/
+
+
+# Vite
+dist/
+.vite/
+
+
+# Sequelize migrations (compiled cache)
+*.sqlite
+*.sqlite3
+*.bak
+*.tmp
+
+# Logs
+logs/
+*.log
+debug.log
+
