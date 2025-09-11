@@ -1,9 +1,9 @@
-// process.on('uncaughtException', (err) => {
-//   console.error('Uncaught Exception:', err);
-// });
-// process.on('unhandledRejection', (reason, promise) => {
-//   console.error('Unhandled Rejection:', reason);
-// });
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection:', reason);
+});
 
 
 
@@ -15,6 +15,14 @@ import dotenv from 'dotenv';
 import models from './models/index.js';
 import axios from 'axios';
 dotenv.config();
+
+// Attendance imports
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+import bot from "./utils/attendance/bot.js";
+import { sendTelegramMessage } from "./utils/attendance/telegram.js";
+import {Op} from "sequelize";
+
+
 
 
 // salespipeline routes
@@ -31,6 +39,11 @@ import errorHandler from './middlewares/salesPipeline/error.js';
 
 
 
+// Attendance routes
+import attendanceRoutes from './routes/Attendance/attendance.js';
+
+
+
 
 const app = express();
 
@@ -43,14 +56,26 @@ app.use(morgan('dev'));
 
 
 // salespipeline route define
-app.use('/api/research', researchRoutes);
-app.use('/api/approval', approvalRoutes);
-app.use('/api/telecall', telecallRoutes);
-app.use('/api/meeting', meetingRoutes);
-app.use('/api/crm', crmRoutes);
-app.use('/api/leads', leadRoutes);
+app.use('/api/sales/research', researchRoutes);
+app.use('/api/sales/approval', approvalRoutes);
+app.use('/api/sales/telecall', telecallRoutes);
+app.use('/api/sales/meeting', meetingRoutes);
+app.use('/api/sales/crm', crmRoutes);
+app.use('/api/sales/leads', leadRoutes);
 
 
+// Attendance route define
+app.use('/api/attendance', attendanceRoutes);
+import { startWeeklyReportJob } from './jobs/attendance/scheduleWeeklyReport.js';
+startWeeklyReportJob();
+import { startMonthlyReportJob } from './jobs/attendance/scheduleMonthlyReport.js';
+startMonthlyReportJob();
+import { startAccountantMonthlyReportJob } from './jobs/attendance/scheduleAccountantMonthlyReport.js';
+startAccountantMonthlyReportJob();
+
+
+
+// error handling middlewares
 app.use(notFound);
 app.use(errorHandler);
 
@@ -59,9 +84,26 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 
 
 export async function init() {
-  await models.sequelize.authenticate();
-  await models.sequelize.sync({ alter: true }); // dev only
+  try{
+    await models.sequelize.authenticate();
+    await models.sequelize.sync({ alter: true }); // dev only
+  
+    await bot.telegram.deleteWebhook();
+    bot.launch();
+    // start bot
+    console.log("Bot is running");
+  }
+  catch(err){
+    console.error("Failed to initialize application:", err);
+    process.exit(1);
+  }
+
   return app;
 }
+
+
+
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
 export default app;

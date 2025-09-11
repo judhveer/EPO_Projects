@@ -1,13 +1,12 @@
-require('dotenv').config();
-import db from '../../models';
-const { getSheetData } = require('../utils/sheets');
-const { Op } = require('sequelize');
-const { DateTime } = require('luxon');
+import dotenv from 'dotenv';
+dotenv.config();
+import db from '../../models/index.js';
+import  {getSheetData}  from '../../utils/attendance/sheets.js';
+import { Op } from 'sequelize';
+import { DateTime } from 'luxon';
 
 
-
-
-const EMPLOYEE = require("../../config/Attendance/employees");
+import EMPLOYEE from '../../config/Attendance/employees.js'
 
 
 // Utility
@@ -40,7 +39,8 @@ function msToHMS(ms) {
 
 let isSyncing = false;
 
-exports.syncAttendance = async (req, res) => {
+
+async function syncAttendance(req, res) {
   // check execution time
   const start = Date.now();
 
@@ -260,7 +260,7 @@ exports.syncAttendance = async (req, res) => {
 
 
 // ------------- LIST ATTENDANCE (with filters/pagination) -------------
-exports.listAttendance = async (req, res) => {
+async function listAttendance(req, res) {
   try {
     let { date, name, showLate, page = 1, limit = 50, month } = req.query;
     page = parseInt(page);
@@ -315,7 +315,7 @@ exports.listAttendance = async (req, res) => {
 
 
 // ------------- SUMMARY (for StatsSummary) -------------
-exports.attendanceSummary = async (req, res) => {
+async function attendanceSummary(req, res) {
   try {
     const nowIST = DateTime.now().setZone('Asia/Kolkata');
     const date = req.query.date || getDateStringFromDate(nowIST);
@@ -346,7 +346,7 @@ exports.attendanceSummary = async (req, res) => {
 
 
 // ------------- ABSENT EMPLOYEES LIST -------------
-exports.absentList = async (req, res) => {
+async function absentList(req, res) {
   try {
 
     const nowIST = DateTime.now().setZone('Asia/Kolkata');
@@ -391,14 +391,14 @@ exports.absentList = async (req, res) => {
 
 
 // ------------- EMPLOYEE LIST (for search/dropdown) -------------
-exports.getEmployees = (req, res) => {
+async function getEmployees(req, res) {
   res.json(EMPLOYEE);
 };
 
 
 
 // bulkInsertAttendance
-exports.bulkInsertAttendance = async (req, res) => {
+async function bulkInsertAttendance(req, res) {
   try {
     const data = req.body.data || bulkData;
     if (!Array.isArray(data) || !data.length) {
@@ -415,4 +415,13 @@ exports.bulkInsertAttendance = async (req, res) => {
     console.error('Bulk insert error:', error);
     res.status(500).json({ error: 'Bulk insert failed' });
   }
+};
+
+export default {
+  syncAttendance,
+  listAttendance,
+  attendanceSummary,
+  absentList,
+  getEmployees,
+  bulkInsertAttendance
 };

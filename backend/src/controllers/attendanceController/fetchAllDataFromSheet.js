@@ -1,10 +1,11 @@
-require('dotenv').config();
-import db from '../../models';
-const { getSheetData } = require('../utils/sheets');
-const { Op } = require('sequelize');
-const { DateTime } = require('luxon');
+import dotenv from 'dotenv';
+dotenv.config();
+import db from '../../models/index.js';
+import  {getSheetData}  from '../../utils/attendance/sheets.js';
+import { Op } from 'sequelize';
+import { DateTime } from 'luxon';
 
-const EMPLOYEE = require("../../config/Attendance/employees");
+import EMPLOYEE from '../../config/Attendance/employees.js'
 
 
 
@@ -46,7 +47,7 @@ function msToHMS(ms) {
 
 let isSyncing = false;
 
-exports.syncAllAttendance = async (req, res) => {
+export async function syncAllAttendance(req, res) {
   const start = Date.now();
   if (isSyncing) {
     return res.status(429).json({ error: "Sync in progress" });
