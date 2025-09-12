@@ -1,6 +1,6 @@
 import db from '../../models/index.js';
 import { transitionStage } from '../../services/salesPipeline/leadService.js';
-import { stageMismatch } from '../../middlewares/salesPipeline/error.js';
+import { stageMismatch } from '../../middlewares/SalesPipeline/error.js';
 
 export async function createApproval(req, res, next) {
   const { ticketId, approveStatus, approverRemark, telecallerAssignedTo, approvedBy } = req.body;

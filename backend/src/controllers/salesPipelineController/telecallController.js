@@ -1,6 +1,6 @@
 import db from '../../models/index.js';
 import { transitionStage } from '../../services/salesPipeline/leadService.js';
-import { stageMismatch } from '../../middlewares/salesPipeline/error.js';
+import { stageMismatch } from '../../middlewares/SalesPipeline/error.js';
 
 export async function createTelecall(req, res, next) {
   const { ticketId, meetingType, meetingDateTime, meetingAssignee, createdBy } = req.body;

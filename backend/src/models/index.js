@@ -1,22 +1,22 @@
 import { sequelize } from '../config/db.js';
 
 // SalesPipeline
-import LeadModel from './SalesPipelineModels/Lead.js';
-import ResearchEntryModel from './SalesPipelineModels/ResearchEntry.js';
-import ApprovalEntryModel from './SalesPipelineModels/ApprovalEntry.js';
-import TelecallEntryModel from './SalesPipelineModels/TelecallEntry.js';
-import MeetingEntryModel from './SalesPipelineModels/MeetingEntry.js';
-import CrmEntryModel from './SalesPipelineModels/CrmEntry.js';
-import StageHistoryModel from './SalesPipelineModels/StageHistory.js';
-import UserModel from './SalesPipelineModels/User.js';
+import LeadModel from './SalesPipelineModels/Lead.model.js';
+import ResearchEntryModel from './SalesPipelineModels/ResearchEntry.model.js';
+import ApprovalEntryModel from './SalesPipelineModels/ApprovalEntry.model.js';
+import TelecallEntryModel from './SalesPipelineModels/TelecallEntry.model.js';
+import MeetingEntryModel from './SalesPipelineModels/MeetingEntry.model.js';
+import CrmEntryModel from './SalesPipelineModels/CrmEntry.model.js';
+import StageHistoryModel from './SalesPipelineModels/StageHistory.model.js';
+import UserModel from './SalesPipelineModels/User.model.js';
 
 // Attendance
 import AttendanceModel from './AttendanceModels/attendance.model.js'
 import TelegramUserModel from './AttendanceModels/telegramuser.model.js'
 
 // TaskBot
-import DoerModel from './TelegramTaskbotModels/Doer.js'
-import TaskModel from './TelegramTaskbotModels/Task.js'
+import DoerModel from './TelegramTaskbotModels/Doer.model.js'
+import TaskModel from './TelegramTaskbotModels/Task.model.js'
 
 
 // SalesPipeline Models

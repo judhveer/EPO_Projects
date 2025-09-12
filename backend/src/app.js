@@ -18,24 +18,29 @@ dotenv.config();
 
 // Attendance imports
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-import bot from "./utils/attendance/bot.js";
+import attendanceBot from "./utils/attendance/bot.js";
 import { sendTelegramMessage } from "./utils/attendance/telegram.js";
-import {Op} from "sequelize";
+import { Op } from "sequelize";
+
+
+// taskbot imports
+import taskRoutes from './routes/TaskBot/taskRoutes.js';
+import taskBot from './controllers/taskbotController/bot.js';
 
 
 
 
 // salespipeline routes
 
-import researchRoutes from './routes/salesPipeline/researchRoutes.js';
-import approvalRoutes from './routes/salesPipeline/approvalRoutes.js';
-import telecallRoutes from './routes/salesPipeline/telecallRoutes.js';
-import meetingRoutes from './routes/salesPipeline/meetingRoutes.js';
-import crmRoutes from './routes/salesPipeline/crmRoutes.js';
-import leadRoutes from './routes/salesPipeline/leadRoutes.js';
+import researchRoutes from './routes/SalesPipeline/researchRoutes.js';
+import approvalRoutes from './routes/SalesPipeline/approvalRoutes.js';
+import telecallRoutes from './routes/SalesPipeline/telecallRoutes.js';
+import meetingRoutes from './routes/SalesPipeline/meetingRoutes.js';
+import crmRoutes from './routes/SalesPipeline/crmRoutes.js';
+import leadRoutes from './routes/SalesPipeline/leadRoutes.js';
 
-import notFound from './middlewares/salesPipeline/notFound.js';
-import errorHandler from './middlewares/salesPipeline/error.js';
+import notFound from './middlewares/SalesPipeline/notFound.js';
+import errorHandler from './middlewares/SalesPipeline/error.js';
 
 
 
@@ -75,6 +80,12 @@ startAccountantMonthlyReportJob();
 
 
 
+// taskbot route define
+// Mount the route
+app.use('/api/tasks', taskRoutes);
+
+
+
 // error handling middlewares
 app.use(notFound);
 app.use(errorHandler);
@@ -83,17 +94,31 @@ app.use(errorHandler);
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 
+function assertEnv() {
+  const a = process.env.TELEGRAM_TOKEN;
+  const t = process.env.BOT_TOKEN;
+  if (!a || !t) throw new Error("Missing ATTENDANCE_BOT_TOKEN or TASK_BOT_TOKEN");
+  if (a === t) throw new Error("Both bots share the same token — use separate tokens or merge handlers into one bot.");
+}
+
+
 export async function init() {
-  try{
+  try {
+    assertEnv();
     await models.sequelize.authenticate();
     await models.sequelize.sync({ alter: true }); // dev only
-  
-    await bot.telegram.deleteWebhook();
-    bot.launch();
-    // start bot
-    console.log("Bot is running");
+
+    await attendanceBot.telegram.deleteWebhook();
+    await taskBot.telegram.deleteWebhook();
+
+    await attendanceBot.launch({ dropPendingUpdates: true });
+    console.log("Attendance bot is running");
+
+
+    await taskBot.launch({ dropPendingUpdates: true });
+    console.log("Task bot is running");
   }
-  catch(err){
+  catch (err) {
     console.error("Failed to initialize application:", err);
     process.exit(1);
   }
@@ -103,7 +128,7 @@ export async function init() {
 
 
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once('SIGINT',  () => { attendanceBot.stop('SIGINT'); taskBot.stop('SIGINT'); });
+process.once('SIGTERM', () => { attendanceBot.stop('SIGTERM'); taskBot.stop('SIGTERM'); });
 
 export default app;
