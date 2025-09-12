@@ -13,14 +13,35 @@ import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import models from './models/index.js';
-import axios from 'axios';
+// import { Op } from "sequelize";
+// import axios from 'axios';
+// const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 dotenv.config();
 
-// Attendance imports
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+
+// --- NEW: Auth middleware & routes ---
+import authenticate from './middlewares/authenticate.js';
+import { requirePermission } from './middlewares/authorize.js';
+import authRoutes from './routes/auth.js';
+
+
+
+// salespipeline routes
+import researchRoutes from './routes/SalesPipeline/researchRoutes.js';
+import approvalRoutes from './routes/SalesPipeline/approvalRoutes.js';
+import telecallRoutes from './routes/SalesPipeline/telecallRoutes.js';
+import meetingRoutes from './routes/SalesPipeline/meetingRoutes.js';
+import crmRoutes from './routes/SalesPipeline/crmRoutes.js';
+import leadRoutes from './routes/SalesPipeline/leadRoutes.js';
+import notFound from './middlewares/SalesPipeline/notFound.js';
+import errorHandler from './middlewares/SalesPipeline/error.js';
+
+
+
+// Attendance routes // Attendance imports
+import attendanceRoutes from './routes/Attendance/attendance.js';
 import attendanceBot from "./utils/attendance/bot.js";
-import { sendTelegramMessage } from "./utils/attendance/telegram.js";
-import { Op } from "sequelize";
+
 
 
 // taskbot imports
@@ -28,31 +49,13 @@ import taskRoutes from './routes/TaskBot/taskRoutes.js';
 import taskBot from './controllers/taskbotController/bot.js';
 
 
-
-
-// salespipeline routes
-
-import researchRoutes from './routes/SalesPipeline/researchRoutes.js';
-import approvalRoutes from './routes/SalesPipeline/approvalRoutes.js';
-import telecallRoutes from './routes/SalesPipeline/telecallRoutes.js';
-import meetingRoutes from './routes/SalesPipeline/meetingRoutes.js';
-import crmRoutes from './routes/SalesPipeline/crmRoutes.js';
-import leadRoutes from './routes/SalesPipeline/leadRoutes.js';
-
-import notFound from './middlewares/SalesPipeline/notFound.js';
-import errorHandler from './middlewares/SalesPipeline/error.js';
-
-
-
-// Attendance routes
-import attendanceRoutes from './routes/Attendance/attendance.js';
-
-
+// Attendance jobs
+import { startWeeklyReportJob } from './jobs/attendance/scheduleWeeklyReport.js';
+import { startMonthlyReportJob } from './jobs/attendance/scheduleMonthlyReport.js';
+import { startAccountantMonthlyReportJob } from './jobs/attendance/scheduleAccountantMonthlyReport.js';
 
 
 const app = express();
-
-
 app.use(helmet());
 app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || true }));
 app.use(express.json());
@@ -60,30 +63,83 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
 
+// ---------- NEW: helper to gate per method ----------
+// GET/HEAD/OPTIONS => permView, others => permMutate (fallback to permView if mutate not provided)
+const gateByMethod = (permView, permMutate = null) => [
+  authenticate,
+  (req, res, next) => {
+    const isRead = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
+    const perm = isRead ? permView : (permMutate || permView);
+    return requirePermission(perm)(req, res, next);
+  }
+];
+
+
+app.use('/api/auth', authRoutes);        // POST /api/auth/login, POST /api/auth/users, GET /api/auth/me
+
+
+
+
 // salespipeline route define
-app.use('/api/sales/research', researchRoutes);
-app.use('/api/sales/approval', approvalRoutes);
-app.use('/api/sales/telecall', telecallRoutes);
-app.use('/api/sales/meeting', meetingRoutes);
-app.use('/api/sales/crm', crmRoutes);
-app.use('/api/sales/leads', leadRoutes);
+app.use('/api/sales/research',
+  ...gateByMethod('sales.research.view', 'sales.research.mutate'),
+  researchRoutes
+);
+app.use('/api/sales/approval',
+  ...gateByMethod('sales.approval.view', 'sales.approval.mutate'),
+  approvalRoutes
+);
+app.use('/api/sales/telecall',
+  ...gateByMethod('sales.telecall.view', 'sales.telecall.mutate'),
+  telecallRoutes
+);
+app.use('/api/sales/meeting',
+  ...gateByMethod('sales.meeting.view', 'sales.meeting.mutate'),
+  meetingRoutes
+);
+app.use('/api/sales/crm',
+  ...gateByMethod('sales.crm.view', 'sales.crm.mutate'),
+  crmRoutes
+);
+app.use('/api/sales/leads',
+  authenticate,
+  requirePermission('sales.dashboard.view'),
+  leadRoutes
+);
 
 
 // Attendance route define
-app.use('/api/attendance', attendanceRoutes);
-import { startWeeklyReportJob } from './jobs/attendance/scheduleWeeklyReport.js';
-startWeeklyReportJob();
-import { startMonthlyReportJob } from './jobs/attendance/scheduleMonthlyReport.js';
-startMonthlyReportJob();
-import { startAccountantMonthlyReportJob } from './jobs/attendance/scheduleAccountantMonthlyReport.js';
-startAccountantMonthlyReportJob();
+app.use('/api/attendance',
+  authenticate,
+  requirePermission('attendance.view'),
+  attendanceRoutes
+);
+
 
 
 
 // taskbot route define
 // Mount the route
-app.use('/api/tasks', taskRoutes);
+app.use('/api/tasks',
+  authenticate,
+  requirePermission('ea.dashboard.view'), taskRoutes);
 
+
+
+
+// function assertEnv() {
+//   const a = process.env.TELEGRAM_TOKEN;
+//   const t = process.env.BOT_TOKEN;
+//   if (!a || !t) throw new Error("Missing ATTENDANCE_BOT_TOKEN or TASK_BOT_TOKEN");
+//   if (a === t) throw new Error("Both bots share the same token — use separate tokens or merge handlers into one bot.");
+// }
+
+startWeeklyReportJob();
+startMonthlyReportJob();
+startAccountantMonthlyReportJob();
+
+
+app.get('/health', (req, res) => res.json({ ok: true }));
 
 
 // error handling middlewares
@@ -91,31 +147,22 @@ app.use(notFound);
 app.use(errorHandler);
 
 
-app.get('/health', (req, res) => res.json({ ok: true }));
-
-
-function assertEnv() {
-  const a = process.env.TELEGRAM_TOKEN;
-  const t = process.env.BOT_TOKEN;
-  if (!a || !t) throw new Error("Missing ATTENDANCE_BOT_TOKEN or TASK_BOT_TOKEN");
-  if (a === t) throw new Error("Both bots share the same token — use separate tokens or merge handlers into one bot.");
-}
 
 
 export async function init() {
   try {
-    assertEnv();
+    // assertEnv();
     await models.sequelize.authenticate();
-    await models.sequelize.sync({ alter: true }); // dev only
+    await models.sequelize.sync({ alter: false }); // dev only
+    console.log("DB sync successful");
 
-    await attendanceBot.telegram.deleteWebhook();
+    // await attendanceBot.telegram.deleteWebhook();
     await taskBot.telegram.deleteWebhook();
 
-    await attendanceBot.launch({ dropPendingUpdates: true });
-    console.log("Attendance bot is running");
+    // await attendanceBot.launch({ dropPendingUpdates: true });
+    // console.log("Attendance bot is running");
 
-
-    await taskBot.launch({ dropPendingUpdates: true });
+    taskBot.launch();
     console.log("Task bot is running");
   }
   catch (err) {
@@ -128,7 +175,7 @@ export async function init() {
 
 
 
-process.once('SIGINT',  () => { attendanceBot.stop('SIGINT'); taskBot.stop('SIGINT'); });
+process.once('SIGINT', () => { attendanceBot.stop('SIGINT'); taskBot.stop('SIGINT'); });
 process.once('SIGTERM', () => { attendanceBot.stop('SIGTERM'); taskBot.stop('SIGTERM'); });
 
 export default app;

@@ -4,4 +4,9 @@ import { createApproval } from '../../controllers/salesPipelineController/approv
 const router = Router();
 router.post('/', createApproval);
 
+// Approval
+router.get('/',
+  (req, res) => res.json({ items: [] })
+);
+
 export default router;

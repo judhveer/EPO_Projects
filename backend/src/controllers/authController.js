@@ -1,0 +1,161 @@
+import jwt from 'jsonwebtoken';
+import { validationResult } from 'express-validator';
+import { authConfig } from '../config/auth.js';
+import models from '../models/index.js';
+
+const { User } = models;
+
+function sign(user) {
+    return jwt.sign(
+        {
+            sub: user.id,
+            role: user.role,
+            dept: user.department
+        },
+        authConfig.jwtSecret,
+        { expiresIn: authConfig.jwtExpiresIn }
+    );
+}
+
+export async function login(req, res) {
+    try {
+        const { identifier, password } = req.body;
+
+        if (!identifier || !password) {
+            return res.status(400).json({
+                message: 'Email and password are required',
+                status: false,
+                data: null
+            });
+        }
+
+        const where = identifier.includes('@') ? { email: identifier } : { username: identifier };
+
+
+        const user = await User.scope('withSecret').findOne({ where });
+
+        if (!user || !user.isActive) {
+            return res.status(401).json({
+                message: 'Invalid credentials or inactive account',
+                status: false,
+                data: null
+            });
+        }
+
+        const ok = await user.checkPassword(password);
+        console.log(ok);
+        if (!ok) {
+            return res.status(401).json({
+                message: 'Invalid credentials',
+                status: false,
+                data: null
+            });
+        }
+
+        user.lastLoginAt = new Date();
+        await user.save();
+
+        const token = sign(user);
+        return res.json({
+            token,
+            user: {
+                id: user.id,
+                email: user.email,
+                username: user.username,
+                role: user.role,
+                department: user.department,
+            }
+        });
+    } catch (error) {
+        return res.status(500).json({
+            message: error.message || 'Login failed',
+            status: false,
+            data: null
+        });
+    }
+}
+
+export async function createUser(req, res) {
+    try {
+        // Only Admin/Boss routes call this (middleware enforced)
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(422).json({
+                errors: errors.array()
+            });
+        }
+
+        const { email, username, role, department, password } = req.body;
+
+        if (!email || !username || !role || !department || !password) {
+            return res.status(400).json({
+                message: 'Email, username, role, department and password are required',
+                status: false,
+                data: null
+            });
+        }
+
+        const exists = await User.findOne({
+            where: { email }
+        });
+
+        if (exists) {
+            return res.status(409).json({
+                message: 'Email already in use',
+                status: false,
+                data: null
+            });
+        }
+
+        const userNameExists = await User.findOne({
+            where: { username }
+        });
+
+        if (userNameExists) {
+            return res.status(409).json({
+                message: 'Username already in use',
+                status: false,
+                data: null
+            });
+        }
+
+        const user = await User.scope('withSecret').create({
+            email,
+            username,
+            role,
+            department,
+            createdBy: req.user.id,
+            passwordHash: password
+        });
+
+
+
+        user._password = password;
+        await user.save();
+
+        return res.status(201).json({
+            message: 'User created successfully',
+            status: true,
+            data: {
+                id: user.id,
+                email: user.email,
+                username: user.username,
+                role: user.role,
+                department: user.department,
+            }
+        });
+    }
+    catch (error) {
+        return res.status(500).json({
+            message: error.message || 'User creation failed',
+            status: false,
+            data: null
+        });
+    }
+}
+
+export async function me(req, res) {
+    return res.json({
+        user: req.user
+    });
+}
