@@ -209,9 +209,9 @@ export async function init() {
   return app;
 }
 
+export default app;
+
 
 
 process.once('SIGINT', () => { attendanceBot.stop('SIGINT'); taskBot.stop('SIGINT'); });
 process.once('SIGTERM', () => { attendanceBot.stop('SIGTERM'); taskBot.stop('SIGTERM'); });
-
-export default app;
