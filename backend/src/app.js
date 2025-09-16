@@ -57,11 +57,47 @@ import { startAccountantMonthlyReportJob } from './jobs/attendance/scheduleAccou
 
 const app = express();
 app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || true }));
+// app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || true }));
+
+
+const raw = process.env.CORS_ORIGIN || ''; // comma-separated
+const ALLOWLIST = raw.split(',').map(s => s.trim()).filter(Boolean);
+
+// allow patterns for common tunnels (so you don't have to change env daily)
+const TUNNEL_SUFFIXES = [
+  '.devtunnels.ms',     // VS Code / Azure dev tunnels
+  '.ngrok.io',
+  '.trycloudflare.com',
+  '.githubpreview.dev',
+  '.app.github.dev',
+];
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true;                           // curl/Postman/mobile apps
+  if (ALLOWLIST.includes(origin)) return true;        // exact match
+  return TUNNEL_SUFFIXES.some(sfx => origin.endsWith(sfx)); // tunnel wildcard
+}
+
+app.use(cors({
+  origin(origin, cb) {
+    cb(null, isAllowedOrigin(origin));
+  },
+  credentials: true, // required if you ever send cookies/Authorization with XHR
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Disposition'],
+}));
+
+// Ensure preflight always answers
+// app.options('*', cors());
+
+
+
+
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
-
 
 // ---------- NEW: helper to gate per method ----------
 // GET/HEAD/OPTIONS => permView, others => permMutate (fallback to permView if mutate not provided)
@@ -110,8 +146,8 @@ app.use('/api/sales/leads',
 
 // Attendance route define
 app.use('/api/attendance',
-  authenticate,
-  requirePermission('attendance.view'),
+  // authenticate,
+  // requirePermission('attendance.view'),
   attendanceRoutes
 );
 

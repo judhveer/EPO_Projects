@@ -3,7 +3,7 @@ import { DataTypes } from 'sequelize';
 export default (sequelize) => {
     const Task = sequelize.define('Task', {
         task: {
-            type: DataTypes.STRING,
+            type: DataTypes.TEXT,
             allowNull: false,
         },
         doer: {

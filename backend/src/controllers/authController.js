@@ -18,12 +18,20 @@ function sign(user) {
 }
 
 export async function login(req, res) {
+    console.log("login controller called");
     try {
         const { identifier, password } = req.body;
 
-        if (!identifier || !password) {
+        if (!identifier ) {
             return res.status(400).json({
-                message: 'Email and password are required',
+                message: 'Email or Username is required',
+                status: false,
+                data: null
+            });
+        }
+        if (!password ) {
+            return res.status(400).json({
+                message: 'Password is required',
                 status: false,
                 data: null
             });
@@ -35,8 +43,8 @@ export async function login(req, res) {
         const user = await User.scope('withSecret').findOne({ where });
 
         if (!user || !user.isActive) {
-            return res.status(401).json({
-                message: 'Invalid credentials or inactive account',
+            return res.status(400).json({
+                message: 'Invalid credentials',
                 status: false,
                 data: null
             });
@@ -45,7 +53,7 @@ export async function login(req, res) {
         const ok = await user.checkPassword(password);
         console.log(ok);
         if (!ok) {
-            return res.status(401).json({
+            return res.status(400).json({
                 message: 'Invalid credentials',
                 status: false,
                 data: null
@@ -77,8 +85,10 @@ export async function login(req, res) {
 
 export async function createUser(req, res) {
     try {
+        console.log("createUser called");
         // Only Admin/Boss routes call this (middleware enforced)
         const errors = validationResult(req);
+        console.log("req.body: ", req.body);
         if (!errors.isEmpty()) {
             return res.status(422).json({
                 errors: errors.array()
@@ -86,6 +96,8 @@ export async function createUser(req, res) {
         }
 
         const { email, username, role, department, password } = req.body;
+
+        console.log("req.body: ", req.body);
 
         if (!email || !username || !role || !department || !password) {
             return res.status(400).json({

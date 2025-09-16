@@ -1,0 +1,105 @@
+import { useState, useEffect } from 'react';
+import api, { toNumberOrNull } from '../../../lib/api.js';
+import FormCard from '../../../components/salesPipeline/FormCard.jsx';
+import Field from '../../../components/salesPipeline/Field.jsx';
+import Input from '../../../components/salesPipeline/Input.jsx';
+import Button from '../../../components/salesPipeline/Button.jsx';
+
+export default function ResearchForm() {
+  const [form, setForm] = useState({
+    ticketId: '',
+    researchDate: '',
+    company: '',
+    contactName: '',
+    mobile: '',
+    email: '',
+    region: '',
+    estimatedBudget: ''
+  });
+  const [ok, setOk] = useState(false);
+  const [err, setErr] = useState('');
+  const [loadingId, setLoadingId] = useState(false);
+
+  const onChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+
+
+  async function fetchNextId() {
+    setLoadingId(true);
+    try {
+      const { data } = await api.get('/api/sales/leads/next-id');
+      setForm(f => ({ ...f, ticketId: data.ticketId || '' }));
+    } catch (e) {
+      console.error(e);
+      setErr(e.response?.data?.error || 'Failed to get next Ticket ID');
+    } finally {
+      setLoadingId(false);
+    }
+  }
+
+  useEffect(() => { fetchNextId(); }, []);
+
+
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    setOk(false); setErr('');
+
+    try {
+      const payload = {
+        // If no ticketId present for any reason, let backend generate
+        ticketId: form.ticketId || 'AUTO',
+        researchDate: form.researchDate || null,
+        company: form.company,
+        contactName: form.contactName,
+        mobile: form.mobile,
+        email: form.email || null,
+        region: form.region || null,
+        estimatedBudget: toNumberOrNull(form.estimatedBudget)
+      };
+      const { data } = await api.post('/api/sales/research', payload);
+      setOk(true);
+      // show the actual ID used (backend may generate a different one in a race)
+      if (data?.ticketId) setForm(f => ({ ...f, ticketId: data.ticketId }));
+    } catch (e) {
+      if (e.response?.status === 409) {
+        // collision; auto-refresh ID
+        await fetchNextId();
+        setErr('Ticket was taken. Generated a new ID — please submit again.');
+      } else {
+        setErr(e.response?.data?.error || e.message);
+      }
+    }
+  }
+
+  return (
+    <FormCard title="Research Form">
+      {ok && <div className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">
+        Saved. Ticket: <b>{form.ticketId || '-'}</b>
+      </div>}
+      {err && <div className="rounded-md bg-red-50 border-red-200 text-red-700 px-3 py-2 text-sm">{err}</div>}
+
+      <form className="grid md:grid-cols-2 gap-4" onSubmit={onSubmit}>
+        <Field label="Ticket ID" required>
+          <div className="flex gap-2">
+            <Input name="ticketId" value={form.ticketId} readOnly />
+            <Button type="button" onClick={fetchNextId} disabled={loadingId}>
+              {loadingId ? '...' : 'Refresh ID'}
+            </Button>
+          </div>
+        </Field>
+
+        <Field label="Research Date" required><Input type="date" name="researchDate" value={form.researchDate} onChange={onChange} required /></Field>
+        <Field label="Company" required><Input name="company" value={form.company} onChange={onChange} required /></Field>
+        <Field label="Contact Name" required><Input name="contactName" value={form.contactName} onChange={onChange} required /></Field>
+        <Field label="Mobile" required><Input name="mobile" value={form.mobile} onChange={onChange} required /></Field>
+        <Field label="Email"><Input name="email" value={form.email} onChange={onChange} /></Field>
+        <Field label="Region"><Input name="region" value={form.region} onChange={onChange} /></Field>
+        <Field label="Estimated Budget" required><Input name="estimatedBudget" value={form.estimatedBudget} onChange={onChange} placeholder="e.g. 500000" required /></Field>
+
+        <div className="md:col-span-2">
+          <Button type="submit">Submit</Button>
+        </div>
+      </form>
+    </FormCard>
+  );
+}
