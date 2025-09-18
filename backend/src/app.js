@@ -53,6 +53,7 @@ import taskBot from './controllers/taskbotController/bot.js';
 import { startWeeklyReportJob } from './jobs/attendance/scheduleWeeklyReport.js';
 import { startMonthlyReportJob } from './jobs/attendance/scheduleMonthlyReport.js';
 import { startAccountantMonthlyReportJob } from './jobs/attendance/scheduleAccountantMonthlyReport.js';
+import {AttendanceSyncAll} from './jobs/attendance/syncAllData.js';
 
 
 const app = express();
@@ -173,6 +174,7 @@ app.use('/api/tasks',
 startWeeklyReportJob();
 startMonthlyReportJob();
 startAccountantMonthlyReportJob();
+AttendanceSyncAll();
 
 
 app.get('/health', (req, res) => res.json({ ok: true }));

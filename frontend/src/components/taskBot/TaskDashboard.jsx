@@ -368,6 +368,7 @@ export default function TaskDashboard() {
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600">
                   <tr>
+                    <th className="text-left px-4 py-3">Created On</th>
                     <th className="text-left px-4 py-3">Task</th>
                     <th className="text-left px-4 py-3">Doer</th>
                     <th className="text-left px-4 py-3">Department</th>
@@ -380,6 +381,7 @@ export default function TaskDashboard() {
                 <tbody>
                   {pageItems.map(t => (
                     <tr key={t.id} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="px-4 py-3">{t.createdAt ? new Date(t.createdAt).toISOString().split('T')[0].split('-').reverse().join('-'): '—'}</td>
                       <td className="px-4 py-3 max-w-[420px]"><div className="font-medium text-gray-900 truncate" title={t.task}>{t.task}</div></td>
                       <td className="px-4 py-3">{t.doer || '—'}</td>
                       <td className="px-4 py-3">{t.department || '—'}</td>

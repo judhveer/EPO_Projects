@@ -246,7 +246,10 @@ async function syncAttendance(req, res) {
     // execution time tracking
     console.log('Sync completed in', Date.now() - start, 'ms');
 
-    res.json({ message: "Attendance synced & processed for today." });
+    res.json({ 
+      message: "Attendance synced & processed for today.",
+      syncedAt: new Date()
+    });
 
   } catch (error) {
     console.error('Sync failed:', error);
