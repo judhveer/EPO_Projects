@@ -15,7 +15,7 @@ function sign(user) {
         authConfig.jwtSecret,
         { expiresIn: authConfig.jwtExpiresIn }
     );
-}
+};
 
 export async function login(req, res) {
     console.log("login controller called");
