@@ -9,13 +9,13 @@ const { sequelize, User } = models;
     let user = await User.scope('withSecret').findOne({ where: { email: 'jaryalv08@gmail.com' } });
     if (!user) {
       user = await User.scope('withSecret').create({
-        email: 'jaryalv08@gmail.com',
-        username: 'harsh01',
+        email: 'harshjw@gmail.com',
+        username: 'Harsh',
         role: 'BOSS',
         department: 'OWNER',
-        passwordHash: 'vishu@123'
+        passwordHash: 'harsh@123'
       });
-      user._password = 'vishu@123';
+      user._password = 'harsh@123';
       await user.save();
       console.log('Boss created:', user.id);
     } else {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../../../lib/api.js';
 import FormCard from '../../../components/salesPipeline/FormCard.jsx';
 import Field from '../../../components/salesPipeline/Field.jsx';
@@ -11,15 +11,31 @@ import StageEligibleTable from '../../../components/salesPipeline/StageEligibleT
 export default function TelecallForm() {
   const [form, setForm] = useState({
     ticketId: '',
-    meetingType: 'phone call',
+    meetingType: 'PHONE CALL',
     meetingDateTime: '',
     meetingAssignee: ''
   });
+  const [assignees, setAssignees] = useState([]); // store dropdown options
   const [ok, setOk] = useState(false);
   const [err, setErr] = useState('');
   const [guard, setGuard] = useState(null);
 
   const onChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+
+
+  // fetch meeting assignees on mount
+  useEffect(() => {
+    const fetchAssignees = async () => {
+      try {
+        const res = await api.get('/api/auth/users/executives');
+        setAssignees(res.data); // expect array of { id, name } or similar
+      } catch (e) {
+        console.error('Failed to fetch assignees', e);
+      }
+    };
+    fetchAssignees();
+  }, []);
+
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -58,13 +74,21 @@ export default function TelecallForm() {
         </Field>
         <Field label="Meeting Type" required>
           <Select name="meetingType" value={form.meetingType} onChange={onChange}>
-            <option>visit</option>
-            <option>phone call</option>
-            <option>video call</option>
+            <option>VISIT</option>
+            <option>PHONE CALL</option>
+            <option>ZOOM MEET</option>
           </Select>
         </Field>
         <Field label="Meeting Date & Time" required><Input type="datetime-local" name="meetingDateTime" value={form.meetingDateTime} onChange={onChange} required /></Field>
-        <Field label="Meeting Assignee" required><Input name="meetingAssignee" value={form.meetingAssignee} onChange={onChange} required/></Field>
+
+        <Field label="Meeting Assignee" required>
+          <Select name="meetingAssignee" value={form.meetingAssignee} onChange={onChange} required>
+            <option value="">Select Assignee</option>
+            {assignees.map(user => (
+              <option key={user.id} value={user.username}>{user.username}</option>
+            ))}
+          </Select>
+        </Field>
 
         <div className="md:col-span-2">
           <Button type="submit">Submit</Button>

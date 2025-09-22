@@ -4,6 +4,8 @@ node_modules/
 
 backend/credentials.json
 
+backend/credentials_epo.json
+
 
 # Editor configs
 .vscode/

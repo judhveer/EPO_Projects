@@ -1,30 +1,99 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../lib/api.js';
 import Input from './Input.jsx';
 import Button from './Button.jsx';
 import { labelForStatus } from '../../lib/labels.js';
 
-function fmtDate(v) {
+function fmtDate(v, opts = {}) {
+  // opts:
+  //   showTime: true|false|'auto' (default 'auto')
+  //   hour12: true|false (default true)
   if (!v) return '-';
-  const d = new Date(v);
-  return isNaN(d) ? '-' : d.toLocaleString();
+  const { showTime = 'auto', hour12 = true } = opts;
+
+  // Keep original raw string for pattern checks
+  const raw = (typeof v === 'string') ? v.trim() : null;
+
+  // If string is a pure date-only like "2025-09-28" or "28/09/2025", treat as date-only
+  const isoDateOnly = raw && /^\d{4}-\d{2}-\d{2}$/.test(raw);
+  const slashDateOnly = raw && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(raw);
+
+  // Construct Date object (if already Date, keep it)
+  const d = (v instanceof Date) ? v : new Date(v);
+  if (isNaN(d)) return '-';
+
+  // If caller explicitly asked to always hide/show time
+  if (showTime === false) {
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+  if (showTime === true) {
+    return d.toLocaleString('en-GB', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12
+    });
+  }
+
+  // showTime === 'auto' (default): decide based on input or the Date object's UTC time
+  if (isoDateOnly || slashDateOnly) {
+    // backend sent a date-only string -> show only date
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
+  // If input wasn't a string (or not date-only), detect if Date has zero UTC time
+  // When new Date('YYYY-MM-DD') -> time components in UTC are 00:00:00.000
+  const isMidnightUTC =
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0 &&
+    d.getUTCMilliseconds() === 0;
+
+  if (isMidnightUTC) {
+    // Likely created from a date-only string -> show only date
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
+  // Otherwise input had time -> show date + time
+  return d.toLocaleString('en-GB', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12
+  });
 }
+
+
+
 
 export default function StageEligibleTable({ stage, preset, onPick, title, detailsPathBase = '/sales/leads' }) {
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await api.get('/api/sales/leads', { params: { stage, q, limit: 50, page: 1 } });
       setRows(data.rows ?? []);
-    } finally { setLoading(false); }
-  }
+    } finally {
+      setLoading(false);
+    }
+  }, [stage, q]);
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [stage]);
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      // optionally check e.detail.ticketId or e.detail.stage
+      load();
+    };
+    window.addEventListener('sales:lead:created', handler);
+    window.addEventListener('sales:approval:completed', handler);
+
+    return () => {
+      window.removeEventListener('sales:lead:created', handler);
+      window.removeEventListener('sales:approval:completed', handler);
+    };
+  }, [load]);
+
 
   const columns = columnsForPreset(preset, detailsPathBase);
 
@@ -82,6 +151,10 @@ function columnsForPreset(preset, detailsPathBase) {
   const TicketCell = (r) => (
     <Link
       to={`${detailsPathBase}/${encodeURIComponent(r.ticketId)}`}
+      onClick={(e) => {
+        e.preventDefault();
+        window.open(`${detailsPathBase}/${encodeURIComponent(r.ticketId)}`, '_blank');
+      }}
       className='font-mono text-blue-700 hover:underline'
       title='Open lead details'
     >
@@ -92,9 +165,9 @@ function columnsForPreset(preset, detailsPathBase) {
   switch ((preset || '').toLowerCase()) {
     case 'approval': // show research data so coordinator can review and decide
       return [
-        { key: 'ticketId', title: 'Ticket', render: TicketCell},
+        { key: 'ticketId', title: 'Ticket', render: TicketCell },
         { key: 'company', title: 'Company' },
-        { key: 'contactName', title: 'Contact' },
+        { key: 'contactName', title: 'Contact Name' },
         { key: 'mobile', title: 'Mobile' },
         { key: 'email', title: 'Email' },
         { key: 'region', title: 'Region' },

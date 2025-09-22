@@ -66,7 +66,7 @@ export default function LeadDetail(){
           )) : <Empty />}
         </Section>
 
-        <Section title="Approval entries">
+        <Section title="Research Approval entries">
           {lead.approvalEntries?.length ? lead.approvalEntries.map(a=>(
             <KV key={a.id} items={{
               'Status': a.approveStatus,

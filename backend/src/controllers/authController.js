@@ -22,14 +22,14 @@ export async function login(req, res) {
     try {
         const { identifier, password } = req.body;
 
-        if (!identifier ) {
+        if (!identifier) {
             return res.status(400).json({
                 message: 'Email or Username is required',
                 status: false,
                 data: null
             });
         }
-        if (!password ) {
+        if (!password) {
             return res.status(400).json({
                 message: 'Password is required',
                 status: false,
@@ -81,7 +81,7 @@ export async function login(req, res) {
             data: null
         });
     }
-}
+};
 
 export async function createUser(req, res) {
     try {
@@ -164,10 +164,52 @@ export async function createUser(req, res) {
             data: null
         });
     }
-}
+};
 
 export async function me(req, res) {
     return res.json({
         user: req.user
     });
+};
+
+
+export async function getTelecallers(req, res) {
+    console.log("get Telecallers called:");
+    try {
+        const users = await User.findAll({
+            where: {
+                department: 'Sales dept',
+                role: 'TELECALLER',
+                is_active: true // optional
+            },
+            attributes: ['id', 'username', 'email'],
+            order: [['username', 'ASC']]
+        });
+        res.status(200).json(users);
+    } catch (err) {
+        console.error('getTelecallers error', err);
+        res.status(500).json({ error: 'Failed to fetch telecallers' });
+    }
+}
+
+
+export async function getExecutives(req, res) {
+    console.log("getExecutives called:");
+    try {
+        const users = await User.findAll({
+            where: {
+                department: 'Sales dept',
+                role: 'EXECUTIVE',
+                is_active: true
+            },
+            attributes: ['id', 'username', 'email'],
+            order: [['username', 'ASC']]
+        });
+
+        res.status(200).json(users);
+    }
+    catch(err){
+        console.error('getExecutives error', err);
+        res.status(500).json({ error: 'Failed to fetch Executives' });
+    }
 }

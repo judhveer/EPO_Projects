@@ -246,9 +246,10 @@ async function syncAttendance(req, res) {
     // execution time tracking
     console.log('Sync completed in', Date.now() - start, 'ms');
 
-    res.json({ 
+    res.status(200).json({ 
       message: "Attendance synced & processed for today.",
-      syncedAt: new Date()
+      syncedAt: new Date(),
+      data: null
     });
 
   } catch (error) {
@@ -421,6 +422,7 @@ async function bulkInsertAttendance(req, res) {
 };
 
 export default {
+  isSyncing,
   syncAttendance,
   listAttendance,
   attendanceSummary,

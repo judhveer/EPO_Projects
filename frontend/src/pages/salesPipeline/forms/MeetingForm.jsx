@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import api, { toNumberOrNull } from '../../../lib/api.js';
 import FormCard from '../../../components/salesPipeline/FormCard.jsx';
 import Field from '../../../components/salesPipeline/Field.jsx';
@@ -32,10 +32,41 @@ export default function MeetingForm() {
   const [err, setErr] = useState('');
   const [guard, setGuard] = useState(null);
 
+  // assignees state
+  const [assignees, setAssignees] = useState([]);
+  const [assigneesLoading, setAssigneesLoading] = useState(false);
+  const [assigneesError, setAssigneesError] = useState('');
+
   const onChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
 
   const isReschedule = form.status === 'RESCHEDULE_MEETING';
   const isCrmFollowUp = form.status === 'CRM_FOLLOW_UP';
+
+  // fetch assignees when reschedule is selected
+  useEffect(() => {
+    let mounted = true;
+
+    async function fetchAssignees() {
+      setAssigneesLoading(true);
+      setAssigneesError('');
+      try {
+        const res = await api.get('/api/auth/users/executives');
+        if (!mounted) return;
+        setAssignees(res.data || []);
+      } catch (e) {
+        if (!mounted) return;
+        console.error('Failed to fetch assignees', e);
+        setAssigneesError(e.response?.data?.error || e.message || 'Failed to load assignees');
+        setAssignees([]);
+      } finally {
+        if (mounted) setAssigneesLoading(false);
+      }
+    }
+
+    if (isReschedule) fetchAssignees();
+
+    return () => { mounted = false; };
+  }, [isReschedule]);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -109,16 +140,32 @@ export default function MeetingForm() {
           <>
             <Field label="Meeting Type" required>
               <Select name="meetingType" value={form.meetingType} onChange={onChange}>
-                <option>visit</option>
-                <option>phone call</option>
-                <option>video call</option>
+                <option>VISIT</option>
+                <option>PHONE CALL</option>
+                <option>ZOOM MEET</option>
               </Select>
             </Field>
+
             <Field label="Meeting Date & Time" required>
               <Input type="datetime-local" name="meetingDateTime" value={form.meetingDateTime} onChange={onChange} required />
             </Field>
+
             <Field label="Meeting Assignee" required>
-              <Input name="meetingAssignee" value={form.meetingAssignee} onChange={onChange} required />
+              {assigneesLoading ? (
+                <div className="p-2 text-sm text-gray-500">Loading assignees…</div>
+              ) : assigneesError ? (
+                <div className="p-2 text-sm text-red-600">Failed to load assignees</div>
+              ) : (
+                <Select name="meetingAssignee" value={form.meetingAssignee} onChange={onChange} required>
+                  <option value="">Select Assignee</option>
+                  {assignees.map(user => (
+                    // keep value compatible with other forms (username) — change to user.id if you prefer numeric id
+                    <option key={user.id} value={user.username || user.id}>
+                      {user.name || user.username || user.email}
+                    </option>
+                  ))}
+                </Select>
+              )}
             </Field>
           </>
         )}
