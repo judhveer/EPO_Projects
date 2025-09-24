@@ -132,8 +132,8 @@ export default function ResearchForm() {
           <Input name="region" value={form.region} onChange={onChange} />
         </Field>
 
-        <Field label="Estimated Budget" required>
-          <Input name="estimatedBudget" type="number" value={form.estimatedBudget} onChange={onChange} placeholder="e.g. 500000" required />
+        <Field label="Estimated Budget" >
+          <Input name="estimatedBudget" type="number" value={form.estimatedBudget} onChange={onChange} placeholder="e.g. 500000" />
         </Field>
 
         <div className="md:col-span-2">

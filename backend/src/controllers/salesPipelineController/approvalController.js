@@ -2,6 +2,8 @@ import db from '../../models/index.js';
 import { transitionStage } from '../../services/salesPipeline/leadService.js';
 import { stageMismatch } from '../../middlewares/SalesPipeline/error.js';
 
+import { sendMail, tplAssigned } from '../../email/salespipeline/mailer.js';
+
 export async function createApproval(req, res, next) {
   const { ticketId, approveStatus, approverRemark, telecallerAssignedTo, approvedBy } = req.body;
   if (!ticketId || !approveStatus) {
@@ -9,6 +11,9 @@ export async function createApproval(req, res, next) {
       error: 'ticketId, approveStatus required'
     });
   }
+
+  // we'll populate this inside the transaction and use it after commit
+  let leadSnapshot = null;
 
   try {
     await db.sequelize.transaction(async (t) => {
@@ -54,7 +59,55 @@ export async function createApproval(req, res, next) {
         await transitionStage(lead, lead.stage, 'Coordinator decision', 'coordinator', t);
       }
       await lead.save({ transaction: t });
+
+      // capture a plain snapshot to use after transaction completes
+      leadSnapshot = lead.get({ plain: true });
     });
+
+    // If telecaller was assigned AND the new state is TELECALL, notify the telecaller
+    if (leadSnapshot && leadSnapshot.telecallerAssignedTo && leadSnapshot.stage === 'TELECALL') {
+      const assignedIdentifier = leadSnapshot.telecallerAssignedTo;
+
+      // find the user by username (or id) — try both if you allow either
+      const user = await db.User.findOne({
+        where: {
+          username: assignedIdentifier
+        },
+        attributes: ['email', 'username']
+      });
+
+      if (user && user.email) {
+        const link = `${process.env.FRONTEND_BASE_URL || 'http://localhost:3000'}/sales/leads/${encodeURIComponent(ticketId)}`;
+
+        // build lead snapshot that tplAssigned expects (you can pass whole leadSnapshot too)
+        const snapshotForEmail = {
+          ticketId: leadSnapshot.ticketId,
+          company: leadSnapshot.company,
+          researchDate: leadSnapshot.researchDate,
+          contactName: leadSnapshot.contactName,
+          mobile: leadSnapshot.mobile,
+          email: leadSnapshot.email,
+          region: leadSnapshot.region,
+          estimatedBudget: leadSnapshot.estimatedBudget,
+          approverRemark: leadSnapshot.approverRemark,
+        };
+
+        const { subject, html, text } = tplAssigned({
+          lead: snapshotForEmail,
+          assigneeName: user.username,
+          roleLabel: 'TELECALLER',
+          link
+        });
+
+        // fire-and-forget (non-blocking). In production consider queueing this.
+        sendMail({ to: user.email, subject, html, text })
+          .catch(err => console.error('Failed to email telecaller:', err));
+        
+          console.log("Email sent successfully.");
+      } else {
+        console.warn('Telecaller user not found or has no email:', assignedIdentifier);
+      }
+    }
 
     res.json({ ok: true });
   } catch (e) { next(e); }

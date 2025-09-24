@@ -104,8 +104,8 @@ export default function StageEligibleTable({ stage, preset, onPick, title, detai
           {title || 'Eligible Tickets'} — Stage: <span className="text-blue-700">{stage}</span>
         </h3>
         <div className="flex gap-2">
-          <Input placeholder="Search company..." value={q} onChange={e => setQ(e.target.value)} />
-          <Button onClick={load}>{loading ? 'Loading...' : 'Apply'}</Button>
+          <Input placeholder="Search company or region..." value={q} onChange={e => setQ(e.target.value)} />
+          <Button onClick={() => setQ('') }>{loading ? 'Loading...' : 'Clear'}</Button>
         </div>
       </div>
 

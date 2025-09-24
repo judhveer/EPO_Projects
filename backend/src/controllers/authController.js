@@ -10,7 +10,8 @@ function sign(user) {
         {
             sub: user.id,
             role: user.role,
-            dept: user.department
+            dept: user.department,
+            username: user.username
         },
         authConfig.jwtSecret,
         { expiresIn: authConfig.jwtExpiresIn }
