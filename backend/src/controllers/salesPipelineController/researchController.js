@@ -69,7 +69,7 @@ export async function createResearch(req, res, next) {
             return;
           }
 
-          const link = `${process.env.FRONTEND_BASE_URL || 'http://localhost:3000'}/sales/leads/${encodeURIComponent(finalTicketId)}`;
+          const link = `/sales/leads/${encodeURIComponent(finalTicketId)}`;
 
           // prepare a basic lead snapshot (tplNewResearch accepts lead object)
           const leadSnapshot = {

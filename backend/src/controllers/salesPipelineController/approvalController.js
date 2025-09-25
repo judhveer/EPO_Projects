@@ -77,7 +77,7 @@ export async function createApproval(req, res, next) {
       });
 
       if (user && user.email) {
-        const link = `${process.env.FRONTEND_BASE_URL || 'http://localhost:3000'}/sales/leads/${encodeURIComponent(ticketId)}`;
+        const link = `/sales/leads/${encodeURIComponent(ticketId)}`;
 
         // build lead snapshot that tplAssigned expects (you can pass whole leadSnapshot too)
         const snapshotForEmail = {
