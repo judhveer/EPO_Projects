@@ -1,11 +1,3 @@
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-});
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection:', reason);
-});
-
-
 
 import express from 'express';
 import helmet from 'helmet';
@@ -13,10 +5,11 @@ import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import models from './models/index.js';
+import fs from 'fs';
+import path from 'path';
 // import { Op } from "sequelize";
 // import axios from 'axios';
 // const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-dotenv.config();
 
 
 // --- NEW: Auth middleware & routes ---
@@ -55,57 +48,45 @@ import { startMonthlyReportJob } from './jobs/attendance/scheduleMonthlyReport.j
 import { startAccountantMonthlyReportJob } from './jobs/attendance/scheduleAccountantMonthlyReport.js';
 import { AttendanceSyncAll } from './jobs/attendance/syncAllData.js';
 
+dotenv.config();
+
+
+
+// --- Database CA setup (for Aiven MySQL) ---
+const { MYSQL_CA } = process.env;
+let caPath;
+if (MYSQL_CA) {
+  const certDir = path.join(process.cwd(), 'certs');
+  if (!fs.existsSync(certDir)) fs.mkdirSync(certDir, { recursive: true, mode: 0o700 });
+  caPath = path.join(certDir, 'ca.pem');
+
+  const current = fs.existsSync(caPath) ? fs.readFileSync(caPath, 'utf8') : null;
+  if (current !== MYSQL_CA) fs.writeFileSync(caPath, MYSQL_CA, { mode: 0o600 });
+}
+
 
 const app = express();
 app.use(helmet());
-// app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || true }));
-
-
-const raw = process.env.CORS_ORIGIN || ''; // comma-separated
-const ALLOWLIST = raw.split(',').map(s => s.trim()).filter(Boolean);
-
-// allow patterns for common tunnels (so you don't have to change env daily)
-const TUNNEL_SUFFIXES = [
-  '.devtunnels.ms',     // VS Code / Azure dev tunnels
-  '.ngrok.io',
-  '.trycloudflare.com',
-  '.githubpreview.dev',
-  '.app.github.dev',
-];
-
-function isAllowedOrigin(origin) {
-  if (!origin) return true;                           // curl/Postman/mobile apps
-  if (ALLOWLIST.includes(origin)) return true;        // exact match
-  return TUNNEL_SUFFIXES.some(sfx => origin.endsWith(sfx)); // tunnel wildcard
-}
 
 app.use(cors({
-  origin(origin, cb) {
-    cb(null, isAllowedOrigin(origin));
-  },
-  credentials: true, // required if you ever send cookies/Authorization with XHR
-  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  origin: '*', // change to frontend URL in production
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['Content-Disposition'],
 }));
-
-// Ensure preflight always answers
-// app.options('*', cors());
-
-
-
-
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
+app.use(express.static('dist'));
+
 
 // ---------- NEW: helper to gate per method ----------
 // GET/HEAD/OPTIONS => permView, others => permMutate (fallback to permView if mutate not provided)
+// ---------- Gate by HTTP method ----------
 const gateByMethod = (permView, permMutate = null) => [
   authenticate,
   (req, res, next) => {
-    const isRead = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
+    const isRead = ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
     const perm = isRead ? permView : (permMutate || permView);
     return requirePermission(perm)(req, res, next);
   }
@@ -162,6 +143,13 @@ app.use('/api/tasks',
   requirePermission('ea.dashboard.view'), taskRoutes);
 
 
+// error handling middlewares
+app.use(notFound);
+app.use(errorHandler);
+
+// --- Bot & Scheduler Flags ---
+let attendanceBotRunning = false;
+let taskBotRunning = false;
 
 
 // function assertEnv() {
@@ -171,29 +159,11 @@ app.use('/api/tasks',
 //   if (a === t) throw new Error("Both bots share the same token — use separate tokens or merge handlers into one bot.");
 // }
 
-startWeeklyReportJob();
-startMonthlyReportJob();
-startAccountantMonthlyReportJob();
-AttendanceSyncAll();
-
-
-app.get('/health', (req, res) => res.json({ ok: true }));
-
-
-// error handling middlewares
-app.use(notFound);
-app.use(errorHandler);
-
-
-
-let attendanceBotRunning = false;
-let taskBotRunning = false;
-
 export async function init() {
   try {
     // assertEnv();
     await models.sequelize.authenticate();
-    await models.sequelize.sync({ alter: false }); // dev only
+    await models.sequelize.sync({ alter: true }); // dev only
     console.log("DB sync successful");
 
     // await attendanceBot.telegram.deleteWebhook();
@@ -206,6 +176,12 @@ export async function init() {
     taskBot.launch();
     console.log("Task bot is running");
     taskBotRunning = true;
+
+    startWeeklyReportJob();
+    startMonthlyReportJob();
+    startAccountantMonthlyReportJob();
+    AttendanceSyncAll();
+
   }
   catch (err) {
     console.error("Failed to initialize application:", err);
@@ -215,8 +191,8 @@ export async function init() {
   return app;
 }
 
-export default app;
 
+app.get('/health', (req, res) => res.json({ ok: true }));
 
 
 // Stop safely
@@ -229,3 +205,6 @@ process.once('SIGTERM', () => {
   if (attendanceBotRunning) attendanceBot.stop('SIGTERM');
   if (taskBotRunning) taskBot.stop('SIGTERM');
 });
+
+
+export default app;

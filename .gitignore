@@ -18,8 +18,11 @@ coverage/
 
 
 # Vite
-dist/
+# dist/
 .vite/
+
+ca.*
+*.pem
 
 
 # Sequelize migrations (compiled cache)
