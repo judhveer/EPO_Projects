@@ -1,6 +1,6 @@
 import db from '../../models/index.js';
 import { transitionStage } from '../../services/salesPipeline/leadService.js';
-import { stageMismatch } from '../../middlewares/SalesPipeline/error.js';
+import { stageMismatch } from '../../middlewares/salesPipeline/error.js';
 import { sendMail, tplAssigned } from '../../email/salespipeline/mailer.js';
 
 export async function createCrmFollowup(req, res, next) {

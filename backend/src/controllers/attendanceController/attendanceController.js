@@ -6,7 +6,7 @@ import { Op } from 'sequelize';
 import { DateTime } from 'luxon';
 
 
-import EMPLOYEE from '../../config/Attendance/employees.js'
+import EMPLOYEE from '../../config/attendance/employees.js'
 
 
 // Utility

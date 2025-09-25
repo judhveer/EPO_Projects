@@ -40,7 +40,7 @@ const FONTS = {
 // Otherwise we'll derive from attendance rows for the period.
 // Example to use canonical list:
 // const EMPLOYEES = require('../config/employees'); // ['ALICE', 'BOB', ...]
-import EMPLOYEES from "../config/Attendance/employees.js";
+import EMPLOYEES from "../config/attendance/employees.js";
 
 // LATE cutoff shown on PDF
 const LATE_LABEL = 'after 10:15 AM';

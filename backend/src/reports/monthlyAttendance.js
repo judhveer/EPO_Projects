@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import db from '../models/index.js';
 const { Attendance } = db;
-import EMPLOYEES from "../config/Attendance/employees.js";
+import EMPLOYEES from "../config/attendance/employees.js";
 
 import week from '../utils/attendance/week.js';
 const { ZONE, ymd, parseDateTimeFlexible, isLate } = week;

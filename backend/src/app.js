@@ -27,18 +27,18 @@ import meetingRoutes from './routes/salesPipeline/meetingRoutes.js';
 import crmRoutes from './routes/salesPipeline/crmRoutes.js';
 import leadRoutes from './routes/salesPipeline/leadRoutes.js';
 import notFound from './middlewares/salesPipeline/notFound.js';
-import errorHandler from './middlewares/SalesPipeline/error.js';
+import errorHandler from './middlewares/salesPipeline/error.js';
 
 
 
 // Attendance routes // Attendance imports
-import attendanceRoutes from './routes/Attendance/attendance.js';
+import attendanceRoutes from './routes/attendance/attendance.js';
 import attendanceBot from "./utils/attendance/bot.js";
 
 
 
 // taskbot imports
-import taskRoutes from './routes/TaskBot/taskRoutes.js';
+import taskRoutes from './routes/taskBot/taskRoutes.js';
 import taskBot from './controllers/taskbotController/bot.js';
 
 
