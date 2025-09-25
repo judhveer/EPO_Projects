@@ -24,10 +24,7 @@ if (MYSQL_CA) {
   // Write only if file doesn't exist or content changed
   const current = fs.existsSync(caPath) ? fs.readFileSync(caPath, 'utf8') : null;
   if (current !== MYSQL_CA) fs.writeFileSync(caPath, MYSQL_CA, { mode: 0o600 });
-  console.log("ca: ", current);
 }
-
-console.log(MYSQL_CA);
 
 
 
