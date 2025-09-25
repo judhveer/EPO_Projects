@@ -20,13 +20,13 @@ import authRoutes from './routes/auth.js';
 
 
 // salespipeline routes
-import researchRoutes from './routes/SalesPipeline/researchRoutes.js';
-import approvalRoutes from './routes/SalesPipeline/approvalRoutes.js';
-import telecallRoutes from './routes/SalesPipeline/telecallRoutes.js';
-import meetingRoutes from './routes/SalesPipeline/meetingRoutes.js';
-import crmRoutes from './routes/SalesPipeline/crmRoutes.js';
-import leadRoutes from './routes/SalesPipeline/leadRoutes.js';
-import notFound from './middlewares/SalesPipeline/notFound.js';
+import researchRoutes from './routes/salesPipeline/researchRoutes.js';
+import approvalRoutes from './routes/salesPipeline/approvalRoutes.js';
+import telecallRoutes from './routes/salesPipeline/telecallRoutes.js';
+import meetingRoutes from './routes/salesPipeline/meetingRoutes.js';
+import crmRoutes from './routes/salesPipeline/crmRoutes.js';
+import leadRoutes from './routes/salesPipeline/leadRoutes.js';
+import notFound from './middlewares/salesPipeline/notFound.js';
 import errorHandler from './middlewares/SalesPipeline/error.js';
 
 

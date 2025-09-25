@@ -1,5 +1,7 @@
 node_modules/
 
+/certs
+
 .env
 
 backend/credentials.json
