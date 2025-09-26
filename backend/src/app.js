@@ -163,7 +163,7 @@ export async function init() {
   try {
     // assertEnv();
     await models.sequelize.authenticate();
-    await models.sequelize.sync({ force: true }); // dev only
+    await models.sequelize.sync({ force: false }); // dev only
     console.log("DB sync successful");
 
     // await attendanceBot.telegram.deleteWebhook();
