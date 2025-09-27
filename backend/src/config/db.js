@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 
-const caPath = path.join(process.cwd(), 'certs', 'ca.pem');
+const caPath = process.env.DB_CERT;
 console.log("caPath, ", caPath);
 const dialectOptions = {};
 
