@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://epo-projects.onrender.com/',
+  baseURL: 'https://epo-projects.onrender.com/' || import.meta.env.VITE_API_BASE_URL,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' }
 });
