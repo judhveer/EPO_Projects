@@ -9,18 +9,35 @@ const { User } = models;
     await sequelize.authenticate();
     console.log('Database connection OK');
 
-    let user = await User.scope('withSecret').findOne({ where: { email: 'jaryalv08@gmail.com' } });
-    if (!user) {
-      user = await User.scope('withSecret').create({
-        email: 'harshjw@gmail.com',
+    let boss = await User.scope('withSecret').findOne({ where: { email: 'harshjw@easternpanorama.in' } });
+    let admin = await User.scope('withSecret').findOne({ where: {email: 'ic@easternpanorama.com'}});
+
+    if(!admin){
+      admin = await User.scope('withSecret').create({
+        email: 'ic@easternpanorama.in',
+        username: "Anita",
+        role: "ADMIN",
+        department: "Admin",
+        passwordHash: 'Anita@123'
+      });
+      admin._password = 'Anita@123';
+      await admin.save();
+      console.log("Admin created: ", admin.id);
+    }else{
+      console.log('Admin already exists');
+    }
+
+    if (!boss) {
+      boss = await User.scope('withSecret').create({
+        email: 'harshjw@easternpanorama.in',
         username: 'Harsh',
         role: 'BOSS',
         department: 'OWNER',
-        passwordHash: 'harsh@123'
+        passwordHash: 'Harsh@123'
       });
-      user._password = 'harsh@123';
-      await user.save();
-      console.log('Boss created:', user.id);
+      boss._password = 'Harsh@123';
+      await boss.save();
+      console.log('Boss created:', boss.id);
     } else {
       console.log('Boss already exists');
     }

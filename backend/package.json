@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "sync": "node -e \"import('./src/models/index.js').then(m=>m.default.sequelize.sync({alter:true})).then(()=>console.log('synced')).catch(err=>{console.error(err); process.exit(1);})\""
+    "sync": "node -e \"import('./src/models/index.js').then(m=>m.default.sequelize.sync({alter:true})).then(()=>console.log('synced')).catch(err=>{console.error(err); process.exit(1);})\"",
+    "bossAdminAccount": "node scripts/seedAdmin.mjs"
   },
   "keywords": [],
   "author": "",
