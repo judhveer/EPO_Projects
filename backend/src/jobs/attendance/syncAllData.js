@@ -1,6 +1,6 @@
 import axios from 'axios';
 import cron from 'node-cron';
-const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+const BASE_URL = process.env.BASE_URL;
 import attendanceController from '../../controllers/attendanceController/attendanceController.js';
 let { isSyncing } = attendanceController;
 
