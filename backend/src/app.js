@@ -64,7 +64,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
-app.use(express.static('dist'));
+app.use(express.static('build1'));
 
 
 // ---------- NEW: helper to gate per method ----------
