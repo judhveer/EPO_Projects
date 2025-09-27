@@ -52,19 +52,6 @@ dotenv.config();
 
 
 
-// --- Database CA setup (for Aiven MySQL) ---
-const { MYSQL_CA } = process.env;
-let caPath;
-if (MYSQL_CA) {
-  const certDir = path.join(process.cwd(), 'certs');
-  if (!fs.existsSync(certDir)) fs.mkdirSync(certDir, { recursive: true, mode: 0o700 });
-  caPath = path.join(certDir, 'ca.pem');
-
-  const current = fs.existsSync(caPath) ? fs.readFileSync(caPath, 'utf8') : null;
-  if (current !== MYSQL_CA) fs.writeFileSync(caPath, MYSQL_CA, { mode: 0o600 });
-}
-
-
 const app = express();
 app.use(helmet());
 

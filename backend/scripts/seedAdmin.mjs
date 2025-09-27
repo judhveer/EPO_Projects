@@ -1,11 +1,14 @@
 import 'dotenv/config';
+import {sequelize} from './../src/config/db.js';
 import models from '../src/models/index.js';
 
-const { sequelize, User } = models;
+const { User } = models;
 
 (async () => {
   try {
     await sequelize.authenticate();
+    console.log('Database connection OK');
+
     let user = await User.scope('withSecret').findOne({ where: { email: 'jaryalv08@gmail.com' } });
     if (!user) {
       user = await User.scope('withSecret').create({
@@ -22,7 +25,7 @@ const { sequelize, User } = models;
       console.log('Boss already exists');
     }
   } catch (e) {
-    console.error(e);
+    console.error('Error seeding admin:', e);
   } finally {
     await sequelize.close();
   }
