@@ -10,7 +10,7 @@ export function startWeeklyReportJob() {
   // Every Sunday at 08:00 (IST)
   
   // 0 8 * * 0
-  cron.schedule('*/5 * * * *', async () => {
+  cron.schedule('0 8 * * 0', async () => {
     try {
       const now = DateTime.now().setZone(ZONE);
       console.log(`[WeeklyReport] Starting at ${now.toISO()}`);
