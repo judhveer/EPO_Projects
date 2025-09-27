@@ -17,6 +17,8 @@ export function startWeeklyReportJob() {
 
       const { outPath, startStr, endStr, agg, performers } = await generateWeeklyAttendancePDF({ when: now });
 
+      console.log("generating Weekly Attendance step 11.......");
+
       const subject = `Weekly Attendance Report (Mon-Sat: ${startStr} → ${endStr})`;
       const html = `
         <p>Hello,</p>
@@ -28,6 +30,8 @@ export function startWeeklyReportJob() {
         </ul>
         <p>— EPO Attendance System</p>
       `;
+
+      console.log("generating Weekly Attendance step 12.......");
 
       await sendWeeklyAttendanceReport({
         to: process.env.REPORT_TO || process.env.EMAIL_USER,

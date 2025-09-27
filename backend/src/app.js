@@ -33,7 +33,7 @@ import errorHandler from './middlewares/salesPipeline/error.js';
 
 // Attendance routes // Attendance imports
 import attendanceRoutes from './routes/attendance/attendance.js';
-import attendanceBot from "./utils/attendance/bot.js";
+// import attendanceBot from "./utils/attendance/bot.js";
 
 
 
@@ -184,12 +184,12 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 
 // Stop safely
 process.once('SIGINT', () => {
-  if (attendanceBotRunning) attendanceBot.stop('SIGINT');
+  // if (attendanceBotRunning) attendanceBot.stop('SIGINT');
   if (taskBotRunning) taskBot.stop('SIGINT');
 });
 
 process.once('SIGTERM', () => {
-  if (attendanceBotRunning) attendanceBot.stop('SIGTERM');
+  // if (attendanceBotRunning) attendanceBot.stop('SIGTERM');
   if (taskBotRunning) taskBot.stop('SIGTERM');
 });
 

@@ -568,11 +568,14 @@ function buildDocDefinition({ title, subtitle, agg, performers, lateLabel }) {
 
 
 export async function generateWeeklyAttendancePDF({ when = DateTime.now().setZone(ZONE) } = {}) {
+  console.log("generating Weekly Attendance PDF.......");
   const { start, end } = getLastWeekMonSatRange(when);
   const weekDates = dateListMonToSat(start);
   const startStr = ymd(start), endStr = ymd(end);
 
   const rows = await fetchRows(startStr, endStr);
+  console.log("generating Weekly Attendance step 2.......");
+  
 
   // If you have a canonical employee list, include those with zero rows:
   if (Array.isArray(EMPLOYEES) && EMPLOYEES.length) {
@@ -585,8 +588,12 @@ export async function generateWeeklyAttendancePDF({ when = DateTime.now().setZon
     }
   }
 
+  console.log("generating Weekly Attendance step 3.......");
+
   const agg = buildAggregates(rows, weekDates);
+  console.log("generating Weekly Attendance step 4.......");
   const performers = pickTopPerformers(agg);
+  console.log("generating Weekly Attendance step 5.......");
 
   const title = 'Weekly Attendance Report';
   const subtitle = `Week: ${startStr} (Mon) -> ${ymd(end)} (Sat) — Zone: ${ZONE}`;
@@ -595,19 +602,26 @@ export async function generateWeeklyAttendancePDF({ when = DateTime.now().setZon
   const filename = `weekly_attendance_${startStr}_to_${ymd(end)}.pdf`;
   const outPath = path.join(REPORT_DIR, filename);
 
+  console.log("generating Weekly Attendance step 6.......");
+
   const printer = new PdfPrinter(FONTS);
   const docDefinition = buildDocDefinition({
     title, subtitle, agg, performers, lateLabel: LATE_LABEL
   });
 
+  console.log("generating Weekly Attendance step 7.......");
+
   await new Promise((resolve, reject) => {
+    console.log("generating Weekly Attendance step 8.......");
     const pdfDoc = printer.createPdfKitDocument(docDefinition);
     const stream = fs.createWriteStream(outPath);
     pdfDoc.pipe(stream);
     pdfDoc.end();
     stream.on('finish', resolve);
     stream.on('error', reject);
+    console.log("generating Weekly Attendance step 9.......");
   });
 
+  console.log("generating Weekly Attendance step 10.......");
   return { outPath, startStr, endStr, filename, agg, performers };
 }

@@ -8,6 +8,7 @@ const transporter = nodemailer.createTransport({
 });
 
 export async function sendWeeklyAttendanceReport({ to, subject, html, attachmentPath }) {
+  console.log("sending Attendance report.......");
   const mailOptions = {
     from: `"EPO Attendance System" <${process.env.EMAIL_USER}>`,
     to,
