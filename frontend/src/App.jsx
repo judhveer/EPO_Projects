@@ -20,6 +20,7 @@ import TaskDashboard from './components/taskBot/TaskDashboard';
 import Login from './pages/Login.jsx';
 import Home from './pages/Home.jsx';
 import CreateUser from './pages/CreateUser.jsx';
+import ExportLeads from './components/salesPipeline/ExportLeads.jsx';
 
 
 export default function App() {
@@ -121,6 +122,9 @@ export default function App() {
                 </Gate>
               }
             />
+
+            <Route path='/sales/export-leads' element={<ExportLeads />} />
+
           </Route>
 
           <Route path="*" element={<div className="p-6">Not Found</div>} />
@@ -132,25 +136,3 @@ export default function App() {
   );
 }
 
-
-// <Layout>
-//   <Routes>
-//     <Route path="/" element={<Navigate to="/dashboard" replace />} />
-//     <Route path="/dashboard" element={<Dashboard />} />
-//     <Route path="/leads/:ticketId" element={<LeadDetail />} />
-
-//     <Route path="/forms/research" element={<ResearchForm />} />
-//     <Route path="/forms/approval" element={<ApprovalForm />} />
-//     <Route path="/forms/telecall" element={<TelecallForm />} />
-//     <Route path="/forms/meeting" element={<MeetingForm />} />
-//     <Route path="/forms/crm" element={<CrmForm />} />
-
-
-//     <Route path="/attendance" element={<AttendanceDashboard />} />
-
-
-//     <Route path="/task" element={<TaskDashboard />} />
-
-//     <Route path="*" element={<div className="p-6">Not found</div>} />
-//   </Routes>
-// </Layout>

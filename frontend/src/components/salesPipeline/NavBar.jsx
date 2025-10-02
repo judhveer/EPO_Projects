@@ -1,9 +1,9 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 const navClass = ({ isActive }) =>
   `px-3 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-200'}`;
-
 
 // central tab definitions (key used for permission checks)
 const ALL_TABS = [
@@ -13,6 +13,9 @@ const ALL_TABS = [
   { key: 'telecall', label: 'Tele-call', to: '/sales/forms/telecall' },
   { key: 'meeting', label: 'Meeting', to: '/sales/forms/meeting' },
   { key: 'crm', label: 'CRM', to: '/sales/forms/crm' },
+
+  // NEW: Export Leads
+  { key: 'export', label: 'Export Leads', to: '/sales/export-leads' },
 ];
 
 function normalize(str = '') {
@@ -20,9 +23,7 @@ function normalize(str = '') {
 }
 
 function hasAccessToTab(user, tabKey) {
-  if (!user) {
-    return false;
-  }
+  if (!user) return false;
 
   const role = normalize(user.role);
   const dept = normalize(user.department);
@@ -58,31 +59,99 @@ function hasAccessToTab(user, tabKey) {
   }
 }
 
-
 export default function NavBar() {
-
-  const { user } = useAuth(); // expects { user: role, department, ... } }
+  const { user } = useAuth(); // expects { role, department, ... }
+  const [open, setOpen] = useState(false);
 
   // Filter visible tabs
-  const visibleTabs = ALL_TABS.filter(t => hasAccessToTab(user, t.key));
+  const visibleTabs = ALL_TABS.filter((t) => hasAccessToTab(user, t.key));
+
+  // Close mobile menu on navigation
+  const handleLinkClick = () => setOpen(false);
 
   return (
     <header className="bg-white border-b border-slate-200">
-      <div className="max-w-6xl mx-auto px-4 py-3 flex gap-3 items-center">
-        <div className="font-bold text-lg">Sales Pipeline</div>
+      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between md:justify-around gap-3">
+        <div className="flex items-center gap-4">
+          <div className="font-bold text-lg">Sales Pipeline</div>
+        </div>
 
-        <nav className="flex gap-2">
+        {/* Desktop nav */}
+        <nav className="hidden md:flex gap-2 items-center">
           {visibleTabs.length === 0 ? (
-            // fallback: show nothing or a minimal dashboard link for authenticated users
             user ? (
-              <NavLink to="/sales/dashboard" className={navClass}>Dashboard</NavLink>
+              <NavLink to="/sales/dashboard" className={navClass}>
+                Dashboard
+              </NavLink>
             ) : null
           ) : (
-            visibleTabs.map(t => (
-              <NavLink key={t.key} to={t.to} className={navClass}>{t.label}</NavLink>
+            visibleTabs.map((t) => (
+              <NavLink key={t.key} to={t.to} className={navClass}>
+                {t.label}
+              </NavLink>
             ))
           )}
         </nav>
+
+        {/* Mobile actions: hamburger */}
+        <div className="md:hidden flex items-center">
+          {/* optionally show a small current-route label here */}
+          <button
+            onClick={() => setOpen((s) => !s)}
+            aria-expanded={open}
+            aria-label={open ? 'Close menu' : 'Open menu'}
+            className="inline-flex items-center justify-center p-2 rounded-md text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {/* hamburger / close icon */}
+            {open ? (
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile menu panel */}
+      <div
+        className={`md:hidden transition-max-h duration-200 ease-in-out overflow-hidden bg-white border-t border-slate-100 ${
+          open ? 'max-h-screen' : 'max-h-0'
+        }`}
+      >
+        <div className="px-4 py-3">
+          <nav className="flex flex-col gap-1">
+            {visibleTabs.length === 0 ? (
+              user ? (
+                <NavLink
+                  to="/sales/dashboard"
+                  className={({ isActive }) =>
+                    `block px-3 py-2 rounded-md text-base font-medium ${isActive ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`
+                  }
+                  onClick={handleLinkClick}
+                >
+                  Dashboard
+                </NavLink>
+              ) : null
+            ) : (
+              visibleTabs.map((t) => (
+                <NavLink
+                  key={t.key}
+                  to={t.to}
+                  className={({ isActive }) =>
+                    `block px-3 py-2 rounded-md text-base font-medium ${isActive ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`
+                  }
+                  onClick={handleLinkClick}
+                >
+                  {t.label}
+                </NavLink>
+              ))
+            )}
+          </nav>
+        </div>
       </div>
     </header>
   );
