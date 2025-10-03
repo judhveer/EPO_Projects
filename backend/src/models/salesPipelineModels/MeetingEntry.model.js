@@ -46,7 +46,6 @@ export default (sequelize) => {
             allowNull: true 
         },
 
-
         createdBy: {
             type: DataTypes.STRING(128),
             field: 'created_by'

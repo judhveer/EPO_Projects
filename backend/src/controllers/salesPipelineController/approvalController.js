@@ -16,6 +16,14 @@ export async function createApproval(req, res, next) {
   let leadSnapshot = null;
 
   try {
+
+    let approvedByName = null;
+
+    if (approvedBy === null || approvedBy === undefined) {
+      const user = req.user;
+      approvedByName = user.username;
+    }
+
     await db.sequelize.transaction(async (t) => {
       // Ensure parent exists (approval should happen after research, but be safe)
       const lead = await db.Lead.findByPk(ticketId, { transaction: t });
@@ -41,7 +49,7 @@ export async function createApproval(req, res, next) {
         approveStatus: norm,
         approverRemark: approverRemark || '',
         telecallerAssignedTo: norm === 'ACCEPTED' ? (telecallerAssignedTo || null) : null,
-        approvedBy: approvedBy || 'coordinator'
+        approvedBy: approvedBy || approvedByName || 'coordinator'
       }, { transaction: t });
 
       const prevStage = lead.stage;
@@ -102,8 +110,8 @@ export async function createApproval(req, res, next) {
         // fire-and-forget (non-blocking). In production consider queueing this.
         sendMail({ to: user.email, subject, html, text })
           .catch(err => console.error('Failed to email telecaller:', err));
-        
-          console.log("Email sent successfully.");
+
+        console.log("Email sent successfully.");
       } else {
         console.warn('Telecaller user not found or has no email:', assignedIdentifier);
       }

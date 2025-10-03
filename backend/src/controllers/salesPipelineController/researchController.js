@@ -13,6 +13,11 @@ export async function createResearch(req, res, next) {
   try {
     let finalTicketId = ticketId && ticketId !== 'AUTO' ? String(ticketId).trim() : '';
 
+    if(createdBy === null || createdBy === undefined){
+      const user = req.user;
+      createdBy = user.username;
+    }
+
     await db.sequelize.transaction(async (t) => {
       if (!finalTicketId) {
         finalTicketId = await generateNextTicketId(t);

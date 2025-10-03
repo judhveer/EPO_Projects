@@ -14,8 +14,7 @@ export async function createMeetingOutcome(req, res, next) {
     // new for reschedule meeting
     meetingType,
     meetingDateTime,
-    meetingAssignee,
-    createdBy
+    meetingAssignee
   } = req.body;
 
   if (!ticketId || !status) return res.status(400).json({ error: 'ticketId, status required' });
@@ -24,6 +23,9 @@ export async function createMeetingOutcome(req, res, next) {
   let leadSnapshot = null;
 
   try {
+
+    const createdBy = req.user.username;
+
     await db.sequelize.transaction(async (t) => {
       const lead = await db.Lead.findByPk(ticketId, { transaction: t });
       if (!lead) throw Object.assign(new Error('Lead not found'), { status: 404 });
@@ -56,7 +58,7 @@ export async function createMeetingOutcome(req, res, next) {
         rescheduleMeetingDateTime: norm === 'RESCHEDULE_MEETING' ? (meetingDateTime ? new Date(meetingDateTime) : null) : null,
         rescheduleMeetingAssignee: norm === 'RESCHEDULE_MEETING' ? (meetingAssignee || null) : null,
         nextFollowUpOn: norm === 'CRM_FOLLOW_UP' ? (nextFollowUpOn ? new Date(nextFollowUpOn) : null) : null,
-        createdBy: createdBy || 'exec'
+        createdBy: createdBy || 'executive'
       }, { transaction: t });
 
       lead.set({

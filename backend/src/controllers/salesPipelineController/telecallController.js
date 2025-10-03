@@ -4,13 +4,16 @@ import { stageMismatch } from '../../middlewares/salesPipeline/error.js';
 import { sendMail, tplAssigned } from '../../email/salespipeline/mailer.js';
 
 export async function createTelecall(req, res, next) {
-  const { ticketId, meetingType, meetingDateTime, meetingAssignee, createdBy } = req.body;
+  const { ticketId, meetingType, meetingDateTime, meetingAssignee } = req.body;
   if (!ticketId) return res.status(400).json({ error: 'ticketId required' });
 
   // we'll populate this inside the transaction and use it after commit
   let leadSnapshot = null;
 
   try {
+
+    const createdBy = req.user.username;
+
     await db.sequelize.transaction(async (t) => {
       const lead = await db.Lead.findByPk(ticketId, { transaction: t });
       if (!lead) throw Object.assign(new Error('Lead not found'), { status: 404 });
@@ -85,7 +88,7 @@ export async function createTelecall(req, res, next) {
         }).catch(err => console.error("Failed to email EXECUTIVE: ", err));
 
         console.log("Email sent successfully.");
-      }else{
+      } else {
         console.warn("EXECUTIVE user not found or has no email: ", assignedIdentifier);
       }
     }
