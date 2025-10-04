@@ -1,10 +1,15 @@
 import db from '../../models/index.js';
 import { Op } from 'sequelize';
 
-export async function exportLeads(req, res){
-    try{
+export async function exportLeads(req, res) {
+
+    if (!['BOSS', 'ADMIN', 'SALES COORDINATOR', 'COORDINATOR'].includes(req.user.role.toUpperCase())) {
+        return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    try {
         const { from, to } = req.query;
-        if(!from || !to ){
+        if (!from || !to) {
             return res.status(400).send('from and to required');
         }
 
@@ -25,7 +30,7 @@ export async function exportLeads(req, res){
 
         return res.status(200).json(leads);
     }
-    catch(err){
+    catch (err) {
         console.error(err);
         return res.status(500).send('Server error');
     }

@@ -29,7 +29,7 @@ export function startAccountantMonthlyReportJob() {
       `;
 
       await sendWeeklyAttendanceReport({
-        to: process.env.REPORT_TO || process.env.EMAIL_USER,
+        to: process.env.REPORT_TO_ACCOUNTS,
         subject, html, attachmentPath: outPath,
       });
 

@@ -16,6 +16,9 @@ const ALL_TABS = [
 
   // NEW: Export Leads
   { key: 'export', label: 'Export Leads', to: '/sales/export-leads' },
+
+  // Coordinator Dashboard (visible only to BOSS, ADMIN, SALES COORDINATOR)
+  { key: 'coordinator', label: 'Coordinator Dashboard', to: '/sales/coordinator' },
 ];
 
 function normalize(str = '') {
@@ -27,6 +30,11 @@ function hasAccessToTab(user, tabKey) {
 
   const role = normalize(user.role);
   const dept = normalize(user.department);
+
+  // Coordinator-specific tab
+  if (tabKey === 'coordinator') {
+    return ['BOSS', 'ADMIN', 'SALES COORDINATOR'].includes(role);
+  }
 
   // Boss & Admin see everything
   if (['BOSS', 'ADMIN'].includes(role)) {
@@ -118,9 +126,8 @@ export default function NavBar() {
 
       {/* Mobile menu panel */}
       <div
-        className={`md:hidden transition-max-h duration-200 ease-in-out overflow-hidden bg-white border-t border-slate-100 ${
-          open ? 'max-h-screen' : 'max-h-0'
-        }`}
+        className={`md:hidden transition-max-h duration-200 ease-in-out overflow-hidden bg-white border-t border-slate-100 ${open ? 'max-h-screen' : 'max-h-0'
+          }`}
       >
         <div className="px-4 py-3">
           <nav className="flex flex-col gap-1">

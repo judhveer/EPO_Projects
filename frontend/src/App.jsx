@@ -21,6 +21,7 @@ import Login from './pages/Login.jsx';
 import Home from './pages/Home.jsx';
 import CreateUser from './pages/CreateUser.jsx';
 import ExportLeads from './components/salesPipeline/ExportLeads.jsx';
+import CoordinatorDashboard from './components/salesPipeline/CoordinatorDashboard.jsx';
 
 
 export default function App() {
@@ -124,6 +125,8 @@ export default function App() {
             />
 
             <Route path='/sales/export-leads' element={<ExportLeads />} />
+
+            {/* <Route path='/sales/coordinator' element={<CoordinatorDashboard />} /> */}
 
           </Route>
 

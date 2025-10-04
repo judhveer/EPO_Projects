@@ -1,25 +1,76 @@
-import nodemailer from 'nodemailer';
-import path from 'path';
+import dotenv from 'dotenv';
+import sgMail from '@sendgrid/mail';
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-});
+dotenv.config();
 
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+const FROM = process.env.SENDGRID_VERIFIED_SENDER;
+
+if (!SENDGRID_API_KEY) {
+  console.error('Missing SENDGRID_API_KEY in environment');
+}
+if (!FROM) {
+  console.error('Missing SENDGRID_VERIFIED_SENDER in environment (verify this sender in SendGrid)');
+}
+
+sgMail.setApiKey(SENDGRID_API_KEY);
+
+// Optional: enable EU data residency if required by your account
+if ((process.env.SENDGRID_DATA_RESIDENCY || '').toLowerCase() === 'eu') {
+  try {
+    if (typeof sgMail.setDataResidency === 'function') {
+      sgMail.setDataResidency('eu');
+    } else {
+      console.warn('sgMail.setDataResidency not available on this SDK version — ignoring');
+    }
+  } catch (e) {
+    console.warn('Failed to set data residency:', e?.message || e);
+  }
+}
+
+/**
+ * sendMail({ to, subject, text, html })
+ * Same signature as your nodemailer function.
+ * - to: string or array of email addresses
+ * - subject: string
+ * - text: plain text fallback
+ * - html: html body
+ */
 export async function sendMail({ to, subject, text, html }) {
-  if (!transporter) {
-    throw new Error('SMTP transporter not configured');
+  if (!SENDGRID_API_KEY) {
+    throw new Error('SENDGRID_API_KEY not configured');
+  }
+  if (!FROM) {
+    throw new Error('SENDGRID_VERIFIED_SENDER not configured/verified in SendGrid');
   }
 
-  const mailOptions = {
-    from: `"EPO Sales Team" <${process.env.EMAIL_USER}>`,
-    to,
-    subject,
-    text,
-    html,
+  const toList = Array.isArray(to) ? to : (typeof to === 'string' ? [to] : []);
+  if (toList.length === 0) throw new Error('No recipients provided');
+
+  const msg = {
+    from: FROM,
+    to: toList,
+    subject: subject,
+    text: text,
+    html: html,
   };
-  const info = await transporter.sendMail(mailOptions);
-  return info;
+
+  try {
+    const res = await sgMail.send(msg);
+    // sgMail.send may return an array (per recipient) in some SDK versions
+    if (Array.isArray(res) && res[0] && res[0].statusCode) {
+      console.log('SendGrid response status:', res[0].statusCode);
+    } else if (res && res.statusCode) {
+      console.log('SendGrid response status:', res.statusCode);
+    } else {
+      console.log('SendGrid send response:', Array.isArray(res) ? res.length : res);
+    }
+    return res;
+  } catch (err) {
+    // Provide the detailed SendGrid response body if available
+    console.error('sendMail SendGrid error:', err?.response?.body ?? err);
+    throw err;
+  }
 }
 
 

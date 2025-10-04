@@ -26,6 +26,7 @@ import telecallRoutes from './routes/salesPipeline/telecallRoutes.js';
 import meetingRoutes from './routes/salesPipeline/meetingRoutes.js';
 import crmRoutes from './routes/salesPipeline/crmRoutes.js';
 import leadRoutes from './routes/salesPipeline/leadRoutes.js';
+import coordinatorRoutes from './routes/salesPipeline/coordinatorRoutes.js';
 import notFound from './middlewares/salesPipeline/notFound.js';
 import errorHandler from './middlewares/salesPipeline/error.js';
 
@@ -111,6 +112,8 @@ app.use('/api/sales/leads',
   requirePermission('sales.dashboard.view'),
   leadRoutes
 );
+
+app.use('/api/sales/coordinator', authenticate, coordinatorRoutes);
 
 
 // Attendance route define

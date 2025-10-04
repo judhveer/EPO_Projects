@@ -34,7 +34,7 @@ export function startWeeklyReportJob() {
       console.log("generating Weekly Attendance step 12.......");
 
       await sendWeeklyAttendanceReport({
-        to: process.env.REPORT_TO || process.env.EMAIL_USER,
+        to: process.env.REPORT_TO,
         subject, html, attachmentPath: outPath,
       });
 
