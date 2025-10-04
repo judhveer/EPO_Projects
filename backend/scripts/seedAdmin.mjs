@@ -29,7 +29,7 @@ const { User } = models;
 
     if (!boss) {
       boss = await User.scope('withSecret').create({
-        email: 'harshjw@easternpanorama.in',
+        email: 'harshjw@gmail.com',
         username: 'Harsh',
         role: 'BOSS',
         department: 'OWNER',
