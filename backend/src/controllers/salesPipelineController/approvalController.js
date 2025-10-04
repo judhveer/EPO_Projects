@@ -1,4 +1,6 @@
 import db from '../../models/index.js';
+import dotenv from 'dotenv';
+dotenv.config();
 import { transitionStage } from '../../services/salesPipeline/leadService.js';
 import { stageMismatch } from '../../middlewares/salesPipeline/error.js';
 
@@ -85,7 +87,7 @@ export async function createApproval(req, res, next) {
       });
 
       if (user && user.email) {
-        const link = `/sales/leads/${encodeURIComponent(ticketId)}`;
+        const link = `${process.env.BASE_URL}/sales/leads/${encodeURIComponent(ticketId)}`;
 
         // build lead snapshot that tplAssigned expects (you can pass whole leadSnapshot too)
         const snapshotForEmail = {

@@ -1,4 +1,6 @@
 import db from '../../models/index.js';
+import dotenv from 'dotenv';
+dotenv.config();
 import { transitionStage } from '../../services/salesPipeline/leadService.js';
 import { stageMismatch } from '../../middlewares/salesPipeline/error.js';
 import { sendMail, tplAssigned } from '../../email/salespipeline/mailer.js';
@@ -55,7 +57,7 @@ export async function createTelecall(req, res, next) {
       });
 
       if (user && user.email) {
-        const link = `/sales/leads/${encodeURIComponent(ticketId)}`;
+        const link = `${process.env.BASE_URL}/sales/leads/${encodeURIComponent(ticketId)}`;
 
         const snapshotForEmail = {
           ticketId: leadSnapshot.ticketId,

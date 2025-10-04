@@ -1,4 +1,6 @@
 import db from '../../models/index.js';
+import dotenv from 'dotenv';
+dotenv.config();
 import { ensureLead, transitionStage, generateNextTicketId } from '../../services/salesPipeline/leadService.js';
 import { sendMail, tplNewResearch } from '../../email/salespipeline/mailer.js';
 import { Op } from 'sequelize';
@@ -74,7 +76,7 @@ export async function createResearch(req, res, next) {
             return;
           }
 
-          const link = `/sales/leads/${encodeURIComponent(finalTicketId)}`;
+          const link = `${process.env.BASE_URL}/sales/leads/${encodeURIComponent(finalTicketId)}`;
 
           // prepare a basic lead snapshot (tplNewResearch accepts lead object)
           const leadSnapshot = {
