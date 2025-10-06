@@ -126,7 +126,7 @@ export default function App() {
 
             <Route path='/sales/export-leads' element={<ExportLeads />} />
 
-            {/* <Route path='/sales/coordinator' element={<CoordinatorDashboard />} /> */}
+            <Route path='/sales/coordinator' element={<CoordinatorDashboard />} />
 
           </Route>
 

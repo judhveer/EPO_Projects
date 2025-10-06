@@ -1,212 +1,429 @@
-// backend/controllers/coordinatorController.js
-import { Op, fn, col, literal } from 'sequelize';
-import db from '../../models/index.js';
-const { User, ResearchEntry, TelecallEntry, MeetingEntry, CrmEntry } = db;
+// controllers/coordinatorController.js
+// ESM controller adapted to use ResearchEntry, Approval, TelecallEntry, MeetingEntry models.
+// Assumes ../models/index.js exports default db = { ResearchEntry, Approval, TelecallEntry, MeetingEntry, User, ... }
+
+import { Op } from 'sequelize';
+import db from '../../models/index.js'; // adjust path if needed
+import Debug from 'debug';
+const debug = Debug('app:coordinatorController');
+
+const { User } = db;
+
+// Try to resolve models with several common names; returns model or null
+function getModel(names = []) {
+  for (const n of names) {
+    if (n && db[n]) return db[n];
+  }
+  return null;
+}
+
+const ResearchModel = getModel(['ResearchEntry', 'Research', 'researchEntries', 'ResearchEntries']);
+const ApprovalModel = getModel(['Approval', 'Approvals', 'approval']);
+const TelecallModel = getModel(['TelecallEntry', 'Telecall', 'Telecalls', 'TelecallEntries']);
+const MeetingModel = getModel(['MeetingEntry', 'Meeting', 'Meetings', 'MeetingForm', 'meetingEntries']);
+const FinalStatuses = ['COMPLETED', 'DONE', 'CLOSED', 'CANCELLED', 'RESOLVED']; // adjust if you use different labels
+
+// Research target logic (used previously in UI) — 5 per day Mon-Sat
+const RESEARCH_TARGET_PER_DAY = 5;
 
 /**
- * Maps role to model + user/date fields
+ * Helper: get user primary key value from user instance or object
  */
-function roleToModel(role) {
-  switch ((role || '').toUpperCase()) {
-    case 'RESEARCHER':
-      return { model: ResearchEntry, modelUserAttr: 'createdBy', modelDateAttr: 'researchDate' };
-    case 'TELECALLER':
-      return { model: TelecallEntry, modelUserAttr: 'meetingAssignee', modelDateAttr: 'meetingDateTime' };
-    case 'SALES_EXECUTIVE':
-      return { model: MeetingEntry, modelUserAttr: 'createdBy', modelDateAttr: 'createdAt' };
-    case 'CRM':
-      return { model: CrmEntry, modelUserAttr: 'createdBy', modelDateAttr: 'nextFollowUpOn' };
-    default:
-      return null;
-  }
+function getUserPk(user) {
+  if (!user) return null;
+  return user.id ?? user.userId ?? user.uid ?? user.username ?? user.usernameId ?? null;
 }
 
 /**
- * Helper: date range filter
+ * Normalize user row
  */
-function dateRangeWhere(colName, from, to) {
+function normalizeUserRow(user, stats = {}) {
   return {
-    [colName]: {
-      [Op.between]: [new Date(from), new Date(to)],
-    },
+    userId: getUserPk(user),
+    name: user.username,
+    email: user.email ?? '',
+    todayCount: Number(stats.todayCount || 0),
+    totalCount: Number(stats.totalCount || 0),
+    pendingCount: Number(stats.pendingCount || 0),
+    raw: user,
   };
 }
 
 /**
- * GET /users
+ * GET /users?role=<ROLE>
+ *
+ * Role handling:
+ * - RESEARCHER: counts from ResearchModel where createdBy = user identifier
+ *   todayCount uses createdAt between todayStart/todayEnd.
+ *   pendingCount = max(0, RESEARCH_TARGET_PER_DAY - todayCount) <-- this matches the UI target behavior.
+ *
+ * - TELECALLER:
+ *   totalCount and todayCount from TelecallModel where createdBy = user identifier (telecall forms done by telecaller)
+ *   pendingCount from ApprovalModel where assignee/telecaller assigned and status NOT in FINAL_STATUSES
+ *
+ * - SALES_EXECUTIVE:
+ *   totalCount and todayCount from MeetingModel where createdBy = user identifier (meeting forms created by exec)
+ *   pendingCount from TelecallModel where meetingAssignee (field name guessed) equals user identifier and meeting not completed
+ *
+ * - CRM:
+ *   totalCount and todayCount from MeetingModel where createdBy = user identifier AND is_followup / followup flag (guessed)
+ *   pendingCount: aggregated pending followups across MeetingModel (same number shown against every CRM user)
+ *
+ * NOTES: field names like `createdBy`, `createdAt`, `assignedTo`, `assignee`, `meetingAssignee`, `followupRequired`
+ * are guessed — adjust the where clauses below to match your schema.
  */
-export async function getUsersStats(req, res) {
-  return res.json("sucess");
-  // try {
-  //   const { role, from: fromISO, to: toISO } = req.query;
-  //   if (!role || !fromISO || !toISO) return res.status(400).json({ message: 'role, from and to are required' });
+export async function getUsers(req, res) {
+  const role = req.query.role;
+  if (!role) return res.status(400).json({ message: 'Missing role parameter' });
 
-  //   const mapping = roleToModel(role);
-  //   if (!mapping) return res.status(400).json({ message: 'Unsupported role' });
+  // today boundaries (server local timezone)
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
 
-  //   const { model, modelUserAttr, modelDateAttr } = mapping;
+  try {
+    // fetch users with this role
+    const users = await User.findAll({ where: { role } });
 
-  //   // Fetch users from User table
-  //   let users = await User.findAll({
-  //     where:
-  //       role.toUpperCase() === 'SALES_EXECUTIVE'
-  //         ? { role: { [Op.in]: ['EXECUTIVE', 'SALES EXECUTIVE'] } }
-  //         : { role: role.toUpperCase() },
-  //     attributes: ['username', 'email'],
-  //     raw: true,
-  //   });
+    // If no records in models, warn once
+    if (role === 'RESEARCHER' && !ResearchModel) debug('Warning: ResearchModel not found in db exports.');
+    if (role === 'TELECALLER' && !TelecallModel) debug('Warning: TelecallModel not found in db exports.');
+    if (role === 'TELECALLER' && !ApprovalModel) debug('Warning: ApprovalModel not found in db exports.');
+    if (role === 'SALES_EXECUTIVE' && !MeetingModel) debug('Warning: MeetingModel not found in db exports.');
+    if (role === 'SALES_EXECUTIVE' && !TelecallModel) debug('Warning: TelecallModel not found in db exports (needed for pending meetings).');
+    if (role === 'CRM' && !MeetingModel) debug('Warning: MeetingModel not found for CRM followups.');
 
-  //   // If no users, get usernames from entries
-  //   if (!users || users.length === 0) {
-  //     const rows = await model.findAll({
-  //       attributes: [[col(userCol), 'username']],
-  //       where: dateRangeWhere(modelDateAttr, fromISO, toISO),
-  //       group: [col(userCol)],
-  //       raw: true,
-  //     });
+    const rows = await Promise.all(users.map(async (u) => {
+      const uid = getUserPk(u);
+      if (!uid) return normalizeUserRow(u);
 
-  //     users = rows.map((r) => ({ username: r.username, email: '' }));
-  //   } else {
-  //     users = users.map((u) => ({ username: u.username, email: u.email || '' }));
-  //   }
+      if (role === 'RESEARCHER') {
+        // Research entries created by researcher
+        const createdByFieldCandidates = ['createdBy', 'created_by', 'creatorId', 'creator', 'userId'];
+        const createdAtField = 'createdAt'; // common
+        const whereBase = {};
+        // build where using first matching createdBy field present in model attributes (best-effort)
+        // Sequelize model rawAttributes may be available: ResearchModel.rawAttributes
+        if (!ResearchModel) {
+          // fallback empty counts
+          return normalizeUserRow(u, { totalCount: 0, todayCount: 0, pendingCount: 0 });
+        }
+        // Helper to pick field name existing in model
+        let createdByField = createdByFieldCandidates.find((f) => ResearchModel.rawAttributes && ResearchModel.rawAttributes[f]);
+        if (!createdByField) createdByField = 'createdBy'; // keep guess
 
-  //   // Date bounds
-  //   const from = new Date(fromISO);
-  //   const to = new Date(toISO);
-  //   to.setHours(23, 59, 59, 999);
-  //   const msPerDay = 24 * 60 * 60 * 1000;
-  //   const daysInRange = Math.max(1, Math.round((to - from) / msPerDay) + 1);
+        const totalCount = await ResearchModel.count({ where: { [createdByField]: uid } });
+        const todayCount = await ResearchModel.count({
+          where: { [createdByField]: uid, [createdAtField]: { [Op.between]: [todayStart, todayEnd] } },
+        });
+        // pending for researcher: target difference (UI shows a target of 5/day Mon-Sat)
+        const pendingCount = Math.max(0, RESEARCH_TARGET_PER_DAY - todayCount);
 
-  //   // resolve column names
-  //   const userCol = model.rawAttributes[modelUserAttr]?.field || modelUserAttr;
-  //   const dateCol = model.rawAttributes[modelDateAttr]?.field || modelDateAttr;
+        return normalizeUserRow(u, { totalCount, todayCount, pendingCount });
+      }
 
-  //   // total counts
-  //   const totalCounts = await model.findAll({
-  //     attributes: [[col(userCol), 'username'], [fn('COUNT', col('*')), 'count']],
-  //     where: {
-  //       ...dateRangeWhere(modelDateAttr, from, to),
-  //       [modelUserAttr]: { [Op.ne]: null },
-  //     },
-  //     group: [col(userCol)],
-  //     raw: true,
-  //   });
+      if (role === 'TELECALLER') {
+        // total/today from TelecallModel createdBy; pending from ApprovalModel where assigned telecaller has pending assignments
+        if (!TelecallModel) {
+          return normalizeUserRow(u, { totalCount: 0, todayCount: 0, pendingCount: 0 });
+        }
 
-  //   // Today's counts
-  //   const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-  //   const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
+        // detect createdBy field
+        const tcCreatedBy = TelecallModel.rawAttributes && TelecallModel.rawAttributes.createdBy ? 'createdBy'
+          : (TelecallModel.rawAttributes && TelecallModel.rawAttributes.created_by ? 'created_by' : 'createdBy');
 
-  //   // today counts
-  //   const todayCounts = await model.findAll({
-  //     attributes: [[col(userCol), 'username'], [fn('COUNT', col('*')), 'count']],
-  //     where: {
-  //       [modelDateAttr]: { [Op.between]: [startOfToday, endOfToday] },
-  //       [modelUserAttr]: { [Op.ne]: null },
-  //     },
-  //     group: [col(userCol)],
-  //     raw: true,
-  //   });
-  //   // Pending counts per role
-  //   let pendingCounts = [];
-  //   if (role.toUpperCase() === 'TELECALLER') {
-  //     pendingCounts = await TelecallEntry.findAll({
-  //       attributes: [[col('meeting_assignee'), 'username'], [fn('COUNT', col('*')), 'count']],
-  //       where: { meeting_assignee: { [Op.ne]: null }, meeting_datetime: { [Op.gte]: new Date() } },
-  //       group: [col('meeting_assignee')],
-  //       raw: true,
-  //     });
-  //   } else if (role.toUpperCase() === 'SALES_EXECUTIVE') {
-  //     pendingCounts = await MeetingEntry.findAll({
-  //       attributes: [[col('created_by'), 'username'], [fn('COUNT', col('*')), 'count']],
-  //       where: { created_by: { [Op.ne]: null }, status: { [Op.notIn]: ['APPROVE', 'REJECT'] } },
-  //       group: [col('created_by')],
-  //       raw: true,
-  //     });
-  //   } else if (role.toUpperCase() === 'CRM') {
-  //     pendingCounts = await CrmEntry.findAll({
-  //       attributes: [[col('created_by'), 'username'], [fn('COUNT', col('*')), 'count']],
-  //       where: { created_by: { [Op.ne]: null }, status: { [Op.notIn]: ['APPROVE', 'REJECT'] } },
-  //       group: [col('created_by')],
-  //       raw: true,
-  //     });
-  //   }
+        const totalCount = await TelecallModel.count({ where: { [tcCreatedBy]: uid } });
+        const todayCount = await TelecallModel.count({
+          where: { [tcCreatedBy]: uid, createdAt: { [Op.between]: [todayStart, todayEnd] } },
+        });
 
-  //   const totalMap = Object.fromEntries(totalCounts.map((r) => [String(r.username), Number(r.count)]));
-  //   const todayMap = Object.fromEntries(todayCounts.map((r) => [String(r.username), Number(r.count)]));
-  //   const pendingMap = Object.fromEntries(pendingCounts.map((r) => [String(r.username), Number(r.count)]));
+        // pendingCount from ApprovalModel where assignee = uid and status NOT final
+        let pendingCount = 0;
+        if (ApprovalModel) {
+          // common assignee field guesses
+          const assigneeFields = ['assignee', 'assignedTo', 'telecallerId', 'assigneeId'];
+          let assigneeField = assigneeFields.find((f) => ApprovalModel.rawAttributes && ApprovalModel.rawAttributes[f]);
+          if (!assigneeField) assigneeField = 'assignee';
 
-  //   const out = users.map((u) => {
-  //     const username = u.username;
-  //     const totalCount = totalMap[username] ?? 0;
-  //     const todayCount = todayMap[username] ?? 0;
-  //     const pendingCount = pendingMap[username] ?? 0;
-  //     const avgPerDay = totalCount / daysInRange;
-  //     return {
-  //       userId: username,
-  //       name: username,
-  //       email: u.email ?? '',
-  //       todayCount,
-  //       avgPerDay: Number(avgPerDay.toFixed(2)),
-  //       totalCount,
-  //       pendingCount,
-  //     };
-  //   });
+          // status field guess
+          const statusField = (ApprovalModel.rawAttributes && ApprovalModel.rawAttributes.status) ? 'status' : 'status';
+          pendingCount = await ApprovalModel.count({
+            where: {
+              [assigneeField]: uid,
+              [statusField]: { [Op.notIn]: FinalStatuses },
+            },
+          });
+        } else {
+          // fallback: try TelecallModel for pendingFlag (if TelecallModel holds assignment)
+          const meetingAssigneeField = TelecallModel.rawAttributes && (TelecallModel.rawAttributes.assignee || TelecallModel.rawAttributes.assignedTo || TelecallModel.rawAttributes.telecallerId) ? 'assignee' : null;
+          if (meetingAssigneeField) {
+            pendingCount = await TelecallModel.count({
+              where: {
+                [meetingAssigneeField]: uid,
+                status: { [Op.notIn]: FinalStatuses },
+              },
+            });
+          } else {
+            pendingCount = 0;
+          }
+        }
 
-  //   return res.json(out);
-  // } catch (err) {
-  //   console.error('coordinatorController.getUsersStats error:', err);
-  //   return res.status(500).json({ message: 'Server error' });
-  // }
+        return normalizeUserRow(u, { totalCount, todayCount, pendingCount });
+      }
+
+      if (role === 'SALES_EXECUTIVE') {
+        // total/today from MeetingModel createdBy (executive creates meeting entries when they complete them)
+        // pending from TelecallModel where meeting assignee is this user and meeting not completed
+        let totalCount = 0;
+        let todayCount = 0;
+        let pendingCount = 0;
+
+        if (MeetingModel) {
+          const meetingCreatedBy = (MeetingModel.rawAttributes && (MeetingModel.rawAttributes.createdBy || MeetingModel.rawAttributes.created_by)) ? (MeetingModel.rawAttributes.createdBy ? 'createdBy' : 'created_by') : 'createdBy';
+          totalCount = await MeetingModel.count({ where: { [meetingCreatedBy]: uid } });
+          todayCount = await MeetingModel.count({
+            where: { [meetingCreatedBy]: uid, createdAt: { [Op.between]: [todayStart, todayEnd] } },
+          });
+        }
+
+        if (TelecallModel) {
+          // guess meeting-assignee field names set by telecaller on telecall form
+          const assigneeCandidates = ['meetingAssignee', 'assignee', 'assignedTo', 'meeting_assignee'];
+          let assigneeField = assigneeCandidates.find((f) => TelecallModel.rawAttributes && TelecallModel.rawAttributes[f]);
+          if (!assigneeField) assigneeField = 'meetingAssignee'; // guess
+
+          // guess meeting status or meeting_confirmed flag
+          const meetingStatusField = 'meetingStatus'; // guessed
+          // We'll try to count telecall records assigned for meeting to this exec and whose meeting status is not final
+          // If TelecallModel doesn't have meetingStatus, we'll count where meetingAssignee = uid and status != final
+          const wherePending = {};
+          wherePending[assigneeField] = uid;
+          if (TelecallModel.rawAttributes && TelecallModel.rawAttributes[meetingStatusField]) {
+            wherePending[meetingStatusField] = { [Op.notIn]: FinalStatuses };
+          } else {
+            wherePending.status = { [Op.notIn]: FinalStatuses };
+          }
+          pendingCount = await TelecallModel.count({ where: wherePending });
+        }
+
+        return normalizeUserRow(u, { totalCount, todayCount, pendingCount });
+      }
+
+      if (role === 'CRM') {
+        // For CRM, followups live in MeetingModel (meeting forms) — total when crm filled entry form (createdBy)
+        // Pending followups: meeting entries with followup required and status not final.
+        let totalCount = 0;
+        let todayCount = 0;
+        // Pending computed globally later (we still compute per user placeholder)
+        let pendingCount = 0;
+
+        if (MeetingModel) {
+          // guess createdBy field
+          const mCreatedBy = (MeetingModel.rawAttributes && MeetingModel.rawAttributes.createdBy) ? 'createdBy' : 'createdBy';
+          // guess followup flag or type
+          const followupFlagCandidates = ['isFollowup', 'followupRequired', 'followup', 'needsFollowup'];
+          const followupFlagField = followupFlagCandidates.find((f) => MeetingModel.rawAttributes && MeetingModel.rawAttributes[f]) ?? null;
+
+          const followupWhere = {};
+          followupWhere[mCreatedBy] = uid;
+          if (followupFlagField) followupWhere[followupFlagField] = true;
+
+          totalCount = await MeetingModel.count({ where: followupWhere });
+          todayCount = await MeetingModel.count({
+            where: { ...followupWhere, createdAt: { [Op.between]: [todayStart, todayEnd] } },
+          });
+
+          // pending for this user we set to 0 placeholder — we'll compute aggregated pending for all CRM users below
+          pendingCount = 0;
+        }
+
+        return normalizeUserRow(u, { totalCount, todayCount, pendingCount });
+      }
+
+      // default fallback
+      return normalizeUserRow(u, { totalCount: 0, todayCount: 0, pendingCount: 0 });
+    }));
+
+    // For CRM role: aggregate pending followups across MeetingModel and set same pendingCount for every CRM user
+    if (role === 'CRM') {
+      let aggregatedPending = 0;
+      if (MeetingModel) {
+        // guess followup flag or followup-type detection
+        const followupFlagCandidates = ['isFollowup', 'followupRequired', 'followup', 'needsFollowup'];
+        const followupFlagField = followupFlagCandidates.find((f) => MeetingModel.rawAttributes && MeetingModel.rawAttributes[f]) ?? null;
+
+        const where = {};
+        if (followupFlagField) where[followupFlagField] = true;
+        // pending where status not final
+        where.status = { [Op.notIn]: FinalStatuses };
+
+        aggregatedPending = await MeetingModel.count({ where });
+      }
+      // set pendingCount for each CRM user row
+      for (const r of rows) {
+        if (r) r.pendingCount = aggregatedPending;
+      }
+    }
+
+    return res.json(rows);
+  } catch (err) {
+    console.error('coordinator.getUsers error', err);
+    return res.status(500).json({ message: err.message ?? 'Failed to fetch users' });
+  }
 }
 
 /**
- * GET /user/:userId/daily
+ * GET /user/:userId/pending?metric=<metric>
+ *
+ * metric parameter helps determine which pending list to return. We'll map metric names:
+ * - research -> return Research entries for the researcher that are maybe draft/missing? (here returning recent research entries)
+ * - telecall -> return pending approvals assigned to telecaller (ApprovalModel)
+ * - meeting -> return pending meetings assigned to exec (TelecallModel rows that have meetingAssignee = user)
+ * - followup -> return meeting entries that need followup (MeetingModel)
+ *
+ * If metric is not provided we'll infer from role query param (optional).
  */
-export const getUserDaily = async (req, res) => {
+export async function getUserPending(req, res) {
+  const userId = req.params.userId;
+  const metric = (req.query.metric || req.query.type || '').toLowerCase();
 
-  return res.json("success");
-    // try {
-    //     const { from, to, metric } = req.query;
-    //     console.log(req.params);
-    //     const { userId } = req.params; // <--- use route param instead of query
+  if (!userId) return res.status(400).json({ message: 'Missing userId param' });
+  if (!metric) return res.status(400).json({ message: 'Missing metric query param' });
 
-    //     const username = userId;
+  try {
+    // RESEARCHER pending: return research entries by the user (could be drafts or recent research)
+    if (metric === 'research') {
+      if (!ResearchModel) return res.json([]);
+      // We'll return research entries created by user (you can adjust where clause to return only incomplete ones)
+      const createdByField = ResearchModel.rawAttributes && ResearchModel.rawAttributes.createdBy ? 'createdBy' : 'createdBy';
+      const items = await ResearchModel.findAll({
+        where: { [createdByField]: userId },
+        order: [['createdAt', 'DESC']],
+        limit: 2000,
+      });
+      const normalized = items.map((r) => ({
+        id: r.id ?? r.entryId ?? null,
+        title: r.title ?? r.subject ?? 'Research',
+        status: r.status ?? 'CREATED',
+        assignedAt: r.createdAt ?? null,
+        dueDate: r.dueDate ?? null,
+        raw: r,
+      }));
+      return res.json(normalized);
+    }
 
-    //     if (!username) {
-    //       console.log("here");
-    //       return res.status(400).json({ error: 'Username is required' });
-    //     }
+    // TELECALLER pending: approvals assigned to telecaller
+    if (metric === 'telecall') {
+      if (!ApprovalModel) return res.json([]);
+      // try to find assignee field
+      const assigneeField = (ApprovalModel.rawAttributes && (ApprovalModel.rawAttributes.assignee || ApprovalModel.rawAttributes.assignedTo || ApprovalModel.rawAttributes.telecallerId)) ? (ApprovalModel.rawAttributes.assignee ? 'assignee' : (ApprovalModel.rawAttributes.assignedTo ? 'assignedTo' : 'telecallerId')) : 'assignee';
+      const items = await ApprovalModel.findAll({
+        where: {
+          [assigneeField]: userId,
+          status: { [Op.notIn]: FinalStatuses },
+        },
+        order: [['createdAt', 'DESC']],
+        limit: 2000,
+      });
+      const normalized = items.map((a) => ({
+        id: a.id ?? a.approvalId ?? null,
+        title: a.title ?? a.taskName ?? 'Telecall Task',
+        status: a.status,
+        assignedAt: a.assignedAt ?? a.createdAt ?? null,
+        dueDate: a.dueDate ?? null,
+        raw: a,
+      }));
+      return res.json(normalized);
+    }
 
-    //     // Map metric to model and attributes
-    //     let model, dateAttr, userAttr;
-    //     if (metric === 'research') {
-    //         model = ResearchEntry;
-    //         dateAttr = 'researchDate'; // Sequelize attribute
-    //         userAttr = 'createdBy';    // Sequelize attribute
-    //     } else {
-    //       // console.log("here");
-    //         return res.status(400).json({ error: 'Invalid metric' });
-    //     }
+    // MEETING pending: telecall entries that created meeting assignment to this exec (meetingAssignee)
+    if (metric === 'meeting') {
+      if (!TelecallModel) return res.json([]);
+      // guess field name set by telecaller while assigning meeting
+      const assigneeCandidates = ['meetingAssignee', 'assignee', 'assignedTo', 'meeting_assignee'];
+      const assigneeField = assigneeCandidates.find((f) => TelecallModel.rawAttributes && TelecallModel.rawAttributes[f]) ?? 'meetingAssignee';
+      // meeting status candidate
+      const meetingStatusField = TelecallModel.rawAttributes && TelecallModel.rawAttributes.meetingStatus ? 'meetingStatus' : 'status';
+      const where = {
+        [assigneeField]: userId,
+        [meetingStatusField]: { [Op.notIn]: FinalStatuses },
+      };
+      const items = await TelecallModel.findAll({ where, order: [['createdAt', 'DESC']], limit: 2000 });
+      const normalized = items.map((t) => ({
+        id: t.id ?? t.entryId ?? null,
+        title: t.title ?? t.subject ?? 'Telecall (meeting assigned)',
+        status: t[meetingStatusField] ?? t.status ?? 'PENDING',
+        assignedAt: t.createdAt ?? null,
+        dueDate: t.dueDate ?? null,
+        raw: t,
+      }));
+      return res.json(normalized);
+    }
 
-    //     // Get actual DB column names
-    //     const tableName = model.getTableName();
-    //     const dateCol = model.rawAttributes[dateAttr].field;  // e.g. 'researchDate'
-    //     const userCol = model.rawAttributes[userAttr].field;  // e.g. 'created_by'
+    // FOLLOWUP pending: meeting entries that require followup (CRM)
+    if (metric === 'followup' || metric === 'crm' || metric === 'followups') {
+      if (!MeetingModel) return res.json([]);
+      // try to find followup flag field
+      const followupFlagCandidates = ['isFollowup', 'followupRequired', 'followup', 'needsFollowup'];
+      const followupFlag = followupFlagCandidates.find((f) => MeetingModel.rawAttributes && MeetingModel.rawAttributes[f]) ?? null;
 
-    //     // Query: group by DATE
-    //     const dailyData = await model.findAll({
-    //         where: {
-    //             [userCol]: username,
-    //             [dateAttr]: { [Op.between]: [from, to] }
-    //         },
-    //     });
+      const where = {};
+      if (followupFlag) where[followupFlag] = true;
+      where.status = { [Op.notIn]: FinalStatuses };
 
-    //     console.log("response: ", dailyData);
-    //     res.json(dailyData);
+      // If userId param is 'all' or the request is for global CRM list, return all. Otherwise return createdBy = userId (but UI expects aggregated list for CRM)
+      const items = await MeetingModel.findAll({ where, order: [['dueDate', 'ASC']], limit: 5000 });
+      const normalized = items.map((m) => ({
+        id: m.id ?? m.entryId ?? null,
+        title: m.title ?? m.subject ?? 'Meeting / Followup',
+        status: m.status,
+        assignedAt: m.createdAt ?? null,
+        dueDate: m.dueDate ?? null,
+        assignedTo: m.assignedTo ?? m.assignee ?? null,
+        raw: m,
+      }));
+      return res.json(normalized);
+    }
 
-    // } catch (error) {
-    //     console.error('coordinatorController.getUserDaily error:', error);
-    //     res.status(500).json({ error: error.message });
-    // }
-};
+    // default: return empty
+    return res.json([]);
+  } catch (err) {
+    console.error('coordinator.getUserPending error', err);
+    return res.status(500).json({ message: err.message ?? 'Failed to fetch pending items' });
+  }
+}
 
+/**
+ * GET /pending/crm
+ * returns aggregated pending followups from MeetingModel (same list shown for all CRMs)
+ */
+export async function getCrmPending(req, res) {
+  try {
+    if (!MeetingModel) return res.json([]);
+
+    const followupFlagCandidates = ['isFollowup', 'followupRequired', 'followup', 'needsFollowup'];
+    const followupFlag = followupFlagCandidates.find((f) => MeetingModel.rawAttributes && MeetingModel.rawAttributes[f]) ?? null;
+
+    const where = {};
+    if (followupFlag) where[followupFlag] = true;
+    where.status = { [Op.notIn]: FinalStatuses };
+
+    const items = await MeetingModel.findAll({ where, order: [['dueDate', 'ASC']], limit: 5000 });
+
+    const normalized = items.map((m) => ({
+      id: m.id ?? m.entryId ?? null,
+      title: m.title ?? m.subject ?? 'Meeting / Followup',
+      status: m.status,
+      assignedAt: m.createdAt ?? null,
+      dueDate: m.dueDate ?? null,
+      assignedTo: m.assignedTo ?? m.assignee ?? null,
+      raw: m,
+    }));
+
+    return res.json(normalized);
+  } catch (err) {
+    console.error('coordinator.getCrmPending error', err);
+    return res.status(500).json({ message: err.message ?? 'Failed to fetch CRM pending items' });
+  }
+}

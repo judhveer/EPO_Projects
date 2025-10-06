@@ -1,14 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../../lib/api';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-} from 'recharts';
 
 // ---------- Helpers ----------
 function toYMD(d) {
@@ -19,39 +10,6 @@ function toYMD(d) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function jsonToCsv(rows = [], columns = []) {
-  if (!rows || rows.length === 0) return '';
-  const headers = columns.length ? columns : Object.keys(rows[0]);
-  const esc = (v) => {
-    if (v === null || v === undefined) return '';
-    const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
-    if (s.includes('"')) return `"${s.replace(/"/g, '""')}"`;
-    if (s.search(/,|\n/) >= 0) return `"${s}"`;
-    return s;
-  };
-  const lines = [headers.join(',')];
-  rows.forEach((r) => {
-    lines.push(headers.map((h) => esc(r[h])).join(','));
-  });
-  return lines.join('\n');
-}
-
-function downloadCsv(text, filename) {
-  const blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
-  const name = filename || `export_${toYMD(new Date())}.csv`;
-  if (navigator.msSaveBlob) navigator.msSaveBlob(blob, name);
-  else {
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.href = url;
-    link.setAttribute('download', name);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }
-}
-
 // ---------- Constants ----------
 const ROLE_TABS = [
   { key: 'RESEARCHER', label: 'Researchers', metricName: 'research' },
@@ -60,22 +18,12 @@ const ROLE_TABS = [
   { key: 'CRM', label: 'CRM', metricName: 'followup' },
 ];
 
-const PERIOD_PRESETS = [
-  { key: '1d', label: '1 day' },
-  { key: '7d', label: '7 days' },
-  { key: '30d', label: '30 days' },
-  { key: '90d', label: '90 days' },
-  { key: 'custom', label: 'Custom' },
-];
-
 const PAGE_SIZE = 20;
+const RESEARCH_TARGET_PER_DAY = 5; // 5 research per day (Mon-Sat) as requested
 
 // ---------- Main Component ----------
-export default function CoordinatorUsers() {
+export default function CoordinatorUsersSimple() {
   const [activeRole, setActiveRole] = useState('RESEARCHER');
-  const [period, setPeriod] = useState('7d');
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]); // fetched rows for active role
   const [error, setError] = useState('');
@@ -83,76 +31,43 @@ export default function CoordinatorUsers() {
   const [sort, setSort] = useState({ col: 'name', dir: 'asc' });
   const [page, setPage] = useState(1);
 
-  // modal state
+  // modal state for pending details
   const [modalOpen, setModalOpen] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState('');
-  const [modalData, setModalData] = useState(null); // { user, daily: [{date,count}], tasks: [...] }
-  const [modalMetric, setModalMetric] = useState('research'); // metricName
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalItems, setModalItems] = useState([]); // list of pending items (meetings/followups/etc)
 
-  // compute range
-  const range = useMemo(() => {
-    const now = new Date();
-    if (period === 'custom') {
-      if (!customFrom || !customTo) return null;
-      const from = new Date(customFrom);
-      const to = new Date(customTo);
-      to.setHours(23, 59, 59, 999);
-      return { from, to };
-    }
-    const to = new Date();
-    const from = new Date();
-    switch (period) {
-      case '1d':
-        from.setDate(to.getDate() - 1);
-        break;
-      case '7d':
-        from.setDate(to.getDate() - 7);
-        break;
-      case '30d':
-        from.setDate(to.getDate() - 30);
-        break;
-      case '90d':
-        from.setDate(to.getDate() - 90);
-        break;
-      default:
-        from.setDate(to.getDate() - 7);
-    }
-    from.setHours(0, 0, 0, 0);
-    to.setHours(23, 59, 59, 999);
-    return { from, to };
-  }, [period, customFrom, customTo]);
-
-  // Fetch role users
+  // Fetch users for the selected role
   const fetchForRole = async (role) => {
     setError('');
     setRows([]);
-    if (!range) {
-      setError('Select a valid date range first (for custom set both From and To).');
-      return;
-    }
     setLoading(true);
     try {
-      const fromISO = range.from.toISOString();
-      const toISO = range.to.toISOString();
-
-      const res = await api.get(`/api/sales/coordinator/users`, {
-        params: { role, from: fromISO, to: toISO },
-      });
-
+      // NOTE: backend contract expected:
+      // GET /api/sales/coordinator/users?role=<ROLE>
+      // Each user object should include: id/userId, name, email, todayCount, totalCount, pendingCount
+      const res = await api.get('/api/sales/coordinator/users', { params: { role } });
       const data = Array.isArray(res.data) ? res.data : [];
+
       const normalized = data.map((u) => ({
         userId: u.userId ?? u.id ?? u.uid,
         name: u.name ?? u.fullName ?? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
         email: u.email ?? u.emailId ?? '',
-        todayCount: u.todayCount ?? u.metricToday ?? 0,
-        avgPerDay: u.avgPerDay ?? u.metricAvg ?? 0,
-        totalCount: u.totalCount ?? u.metricTotal ?? 0,
-        pendingCount: u.pendingCount ?? u.pendingTasks ?? 0,
+        todayCount: Number(u.todayCount ?? u.metricToday ?? 0),
+        totalCount: Number(u.totalCount ?? u.metricTotal ?? 0),
+        pendingCount: Number(u.pendingCount ?? u.pendingTasks ?? 0),
         raw: u,
       }));
 
-      setRows(normalized);
+      // Special handling for CRM: pending should be same for all CRMs (aggregate)
+      if (role === 'CRM') {
+        const totalPending = normalized.reduce((s, r) => s + (r.pendingCount || 0), 0);
+        const unified = normalized.map((r) => ({ ...r, pendingCount: totalPending }));
+        setRows(unified);
+      } else {
+        setRows(normalized);
+      }
       setPage(1);
     } catch (err) {
       console.error(err);
@@ -165,7 +80,7 @@ export default function CoordinatorUsers() {
   useEffect(() => {
     fetchForRole(activeRole);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRole, period, customFrom, customTo]);
+  }, [activeRole]);
 
   // filtering + sorting + pagination
   const filtered = useMemo(() => {
@@ -178,7 +93,7 @@ export default function CoordinatorUsers() {
     r = [...r].sort((a, b) => {
       const ca = a[sort.col];
       const cb = b[sort.col];
-      if (typeof ca === 'string') return ca.localeCompare(cb || '') * dir;
+      if (typeof ca === 'string') return (ca || '').localeCompare(cb || '') * dir;
       if (typeof ca === 'number') return ((ca ?? 0) - (cb ?? 0)) * dir;
       return 0;
     });
@@ -190,67 +105,46 @@ export default function CoordinatorUsers() {
 
   const toggleSort = (col) => setSort((s) => (s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' }));
 
-  const handleExport = () => {
-    const columns = ['name', 'email', 'todayCount', 'avgPerDay', 'totalCount', 'pendingCount'];
-    const data = filtered.map((r) => ({
-      name: r.name,
-      email: r.email,
-      todayCount: r.todayCount,
-      avgPerDay: r.avgPerDay,
-      totalCount: r.totalCount,
-      pendingCount: r.pendingCount,
-    }));
-    const csv = jsonToCsv(data, columns);
-    downloadCsv(csv, `${activeRole.toLowerCase()}_users_${toYMD(range.from)}_to_${toYMD(range.to)}.csv`);
-  };
-
-  // ---------- MODAL: fetch per-user daily + tasks ----------
-  const openUserModal = async (user, metricName) => {
-    setModalMetric(metricName);
+  // Open modal to fetch pending details for a particular user (or CRM combined)
+  const openPendingModal = async (user, metricName) => {
+    setModalItems([]);
     setModalError('');
-    setModalData(null);
+    setModalTitle('');
     setModalLoading(true);
     setModalOpen(true);
 
     try {
-      if (!range) throw new Error('Select a valid date range first.');
+      let res;
+      // For CRM we fetch combined pending list
+      if (activeRole === 'CRM') {
+        setModalTitle('Pending followups (All CRM)');
+        // NOTE: expected endpoint for combined CRM pending items:
+        // GET /api/sales/coordinator/pending/crm
+        res = await api.get('/api/sales/coordinator/pending/crm');
+      } else {
+        // per-user pending details
+        setModalTitle(`${user.name} — Pending ${metricName}`);
+        // NOTE: expected endpoint:
+        // GET /api/sales/coordinator/user/:userId/pending?metric=<metricName>
+        res = await api.get(`/api/sales/coordinator/user/${encodeURIComponent(user.userId)}/pending`, {
+          params: { metric: metricName },
+        });
+      }
 
-      const fromISO = range.from.toISOString();
-      const toISO = range.to.toISOString();
-
-      // backend contract:
-      // GET /api/sales/coordinator/user/:userId/daily?from=&to=&metric=
-      const res = await api.get(`/api/sales/coordinator/user/${encodeURIComponent(user.userId)}/daily`, {
-        params: { from: fromISO, to: toISO, metric: metricName },
-      });
-
-      const data = res.data || {};
-      // normalize
-      const userObj = data.user ?? { userId: user.userId, name: user.name, email: user.email };
-      const daily = Array.isArray(data.daily) ? data.daily.map((d) => ({
-        date: d.date ?? d.day ?? toYMD(d.timestamp ?? Date.now()),
-        count: Number(d.count ?? d.value ?? 0),
-      })) : [];
-      const tasks = Array.isArray(data.tasks) ? data.tasks : [];
-
-      // ensure daily has entries for every day in range (fill missing with 0)
-      const filledDaily = (() => {
-        if (!range) return daily;
-        const arr = [];
-        const cur = new Date(range.from);
-        while (cur <= range.to) {
-          const dstr = toYMD(cur);
-          const found = daily.find((x) => (x.date ? x.date.startsWith(dstr) : false) || x.date === dstr);
-          arr.push({ date: dstr, count: found ? found.count : 0 });
-          cur.setDate(cur.getDate() + 1);
-        }
-        return arr;
-      })();
-
-      setModalData({ user: userObj, daily: filledDaily, tasks });
+      const items = Array.isArray(res.data) ? res.data : (res.data?.items ?? []);
+      // normalize a bit
+      const normalized = items.map((t) => ({
+        id: t.id ?? t.taskId ?? t.meetingId ?? Math.random().toString(36).slice(2, 9),
+        title: t.title ?? t.name ?? t.subject ?? 'Untitled',
+        status: t.status ?? t.state ?? 'PENDING',
+        assignedAt: t.assignedAt ?? t.createdAt ?? t.timestamp,
+        dueDate: t.dueDate ?? t.due_at ?? null,
+        raw: t,
+      }));
+      setModalItems(normalized);
     } catch (err) {
       console.error(err);
-      setModalError(err?.response?.data?.message ?? err.message ?? 'Failed to load user details');
+      setModalError(err?.response?.data?.message ?? err.message ?? 'Failed to load pending items');
     } finally {
       setModalLoading(false);
     }
@@ -258,31 +152,17 @@ export default function CoordinatorUsers() {
 
   const closeModal = () => {
     setModalOpen(false);
-    setModalData(null);
+    setModalItems([]);
     setModalError('');
   };
 
-  const exportModalDaily = () => {
-    if (!modalData || !modalData.daily) return;
-    const cols = ['date', 'count'];
-    const csv = jsonToCsv(modalData.daily, cols);
-    downloadCsv(csv, `${modalData.user?.name?.replace(/\s+/g, '_') || 'user'}_${modalMetric}_daily_${toYMD(range.from)}_to_${toYMD(range.to)}.csv`);
-  };
-
-  const exportModalTasks = () => {
-    if (!modalData || !modalData.tasks) return;
-    const cols = Object.keys(modalData.tasks[0] || {});
-    const csv = jsonToCsv(modalData.tasks, cols);
-    downloadCsv(csv, `${modalData.user?.name?.replace(/\s+/g, '_') || 'user'}_${modalMetric}_tasks.csv`);
-  };
-
-  // ---------- UI ----------
+  // UI
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Coordinator — Team Stats</h1>
-          <p className="text-sm text-slate-500">Overview of role-wise performance and pending tasks</p>
+          <h1 className="text-2xl font-bold">Coordinator — Team Summary</h1>
+          <p className="text-sm text-slate-500">Simple role-wise stats (name, total, today, pending)</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -303,14 +183,6 @@ export default function CoordinatorUsers() {
               title="Refresh"
             >
               Refresh
-            </button>
-
-            <button
-              onClick={handleExport}
-              className="px-3 py-2 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700"
-              title="Export current view to CSV"
-            >
-              Export CSV
             </button>
           </div>
         </div>
@@ -334,31 +206,11 @@ export default function CoordinatorUsers() {
         </div>
       </div>
 
-      {/* Period selector */}
-      <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
-        <div className="flex gap-2 flex-wrap">
-          {PERIOD_PRESETS.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => setPeriod(p.key)}
-              className={`px-3 py-1 rounded text-sm ${period === p.key ? 'bg-blue-600 text-white' : 'bg-white border'}`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        {period === 'custom' && (
-          <div className="flex gap-2">
-            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="border px-2 py-1 rounded" />
-            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="border px-2 py-1 rounded" />
-          </div>
+      {/* short info */}
+      <div className="mb-4 text-sm text-slate-600">
+        {activeRole === 'RESEARCHER' && (
+          <div>Target for researchers: <strong>{RESEARCH_TARGET_PER_DAY} per day</strong> (Mon–Sat)</div>
         )}
-
-        <div className="text-sm text-slate-500 md:text-right">
-          <div>Range: {range ? `${toYMD(range.from)} — ${toYMD(range.to)}` : '—'}</div>
-          <div>Rows: <strong>{rows.length}</strong></div>
-        </div>
       </div>
 
       {/* Table */}
@@ -367,66 +219,45 @@ export default function CoordinatorUsers() {
           <thead className="bg-slate-50 sticky top-0">
             <tr>
               <th className="px-3 py-2 text-left">#</th>
-              <th className="px-3 py-2 text-left">Name</th>
-              <th className="px-3 py-2 text-left">Email</th>
-              <th className="px-3 py-2 text-right">Today</th>
-              <th className="px-3 py-2 text-right">Avg / Day</th>
-              <th className="px-3 py-2 text-right">Total</th>
+              <th className="px-3 py-2 text-left cursor-pointer" onClick={() => toggleSort('name')}>Name</th>
+              <th className="px-3 py-2 text-right cursor-pointer" onClick={() => toggleSort('totalCount')}>Total</th>
+              <th className="px-3 py-2 text-right cursor-pointer" onClick={() => toggleSort('todayCount')}>Today</th>
               <th className="px-3 py-2 text-right">Pending</th>
-              <th className="px-3 py-2 text-center">Actions</th>
+              <th className="px-3 py-2 text-left">Notes</th>
             </tr>
           </thead>
 
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="p-6 text-center text-slate-500">Loading...</td></tr>
+              <tr><td colSpan={6} className="p-6 text-center text-slate-500">Loading...</td></tr>
             ) : error ? (
-              <tr><td colSpan={8} className="p-6 text-center text-red-600">{error}</td></tr>
+              <tr><td colSpan={6} className="p-6 text-center text-red-600">{error}</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={8} className="p-6 text-center text-slate-500">No users found for this role / range.</td></tr>
+              <tr><td colSpan={6} className="p-6 text-center text-slate-500">No users found for this role.</td></tr>
             ) : (
               pageRows.map((u, idx) => (
                 <tr key={u.userId ?? idx} className="odd:bg-white even:bg-slate-50">
                   <td className="px-3 py-2">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                   <td className="px-3 py-2">
+                    <div className="font-medium">{u.name}</div>
+                    <div className="text-xs text-slate-500">{u.email}</div>
+                  </td>
+                  <td className="px-3 py-2 text-right">{u.totalCount ?? 0}</td>
+                  <td className="px-3 py-2 text-right">{u.todayCount ?? 0}</td>
+                  <td className="px-3 py-2 text-right">
                     <button
-                      className="text-slate-700 hover:underline text-left"
-                      onClick={() => openUserModal(u, ROLE_TABS.find(r => r.key === activeRole).metricName)}
+                      onClick={() => openPendingModal(u, ROLE_TABS.find(r => r.key === activeRole).metricName)}
+                      className="text-sm px-2 py-1 border rounded disabled:opacity-50"
                     >
-                      {u.name}
+                      {u.pendingCount ?? 0}
                     </button>
                   </td>
-                  <td className="px-3 py-2">{u.email}</td>
-                  <td className="px-3 py-2 text-right">{u.todayCount ?? 0}</td>
-                  <td className="px-3 py-2 text-right">{Number(u.avgPerDay ?? 0).toFixed(2)}</td>
-                  <td className="px-3 py-2 text-right">{u.totalCount ?? 0}</td>
-                  <td className="px-3 py-2 text-right">{u.pendingCount ?? 0}</td>
-                  <td className="px-3 py-2 text-center">
-                    <div className="flex justify-center gap-2">
-                      <button
-                        onClick={() => {
-                          const csv = jsonToCsv([{
-                            name: u.name,
-                            email: u.email,
-                            todayCount: u.todayCount,
-                            avgPerDay: u.avgPerDay,
-                            totalCount: u.totalCount,
-                            pendingCount: u.pendingCount,
-                          }], ['name','email','todayCount','avgPerDay','totalCount','pendingCount']);
-                          downloadCsv(csv, `${u.name?.replace(/\s+/g,'_') || 'user'}_${activeRole}_${toYMD(range.from)}.csv`);
-                        }}
-                        className="px-2 py-1 text-xs border rounded"
-                      >
-                        Export
-                      </button>
-
-                      <button
-                        onClick={() => openUserModal(u, ROLE_TABS.find(r => r.key === activeRole).metricName)}
-                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded"
-                      >
-                        View
-                      </button>
-                    </div>
+                  <td className="px-3 py-2">
+                    {activeRole === 'RESEARCHER' ? (
+                      <div className="text-xs text-slate-600">Target: {RESEARCH_TARGET_PER_DAY}/day (Mon–Sat)</div>
+                    ) : activeRole === 'CRM' ? (
+                      <div className="text-xs text-slate-600">Common pending followups shown to all CRMs</div>
+                    ) : null}
                   </td>
                 </tr>
               ))
@@ -448,7 +279,7 @@ export default function CoordinatorUsers() {
         </div>
       </div>
 
-      {/* ---------- Modal ---------- */}
+      {/* ---------- Modal: pending details ---------- */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-start md:items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={closeModal} />
@@ -456,76 +287,36 @@ export default function CoordinatorUsers() {
           <div className="relative w-full max-w-3xl bg-white rounded-lg shadow-lg overflow-auto max-h-[90vh]">
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <div>
-                <div className="text-lg font-semibold">{modalData?.user?.name ?? 'User details'}</div>
-                <div className="text-xs text-slate-500">{modalData?.user?.email ?? ''}</div>
+                <div className="text-lg font-semibold">{modalTitle}</div>
+                <div className="text-xs text-slate-500">{modalItems.length} items</div>
               </div>
 
               <div className="flex items-center gap-2">
-                <button onClick={exportModalDaily} className="text-sm px-3 py-1 border rounded">Export Daily</button>
-                <button onClick={exportModalTasks} className="text-sm px-3 py-1 border rounded">Export Tasks</button>
                 <button onClick={closeModal} className="text-sm px-3 py-1 bg-slate-100 rounded">Close</button>
               </div>
             </div>
 
             <div className="p-4 space-y-4">
               {modalLoading ? (
-                <div className="p-6 text-center text-slate-500">Loading data...</div>
+                <div className="p-6 text-center text-slate-500">Loading pending items...</div>
               ) : modalError ? (
                 <div className="p-4 text-red-600">{modalError}</div>
-              ) : !modalData ? (
-                <div className="p-4 text-slate-500">No data</div>
+              ) : modalItems.length === 0 ? (
+                <div className="p-4 text-slate-500">No pending items.</div>
               ) : (
-                <>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={modalData.daily}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                        <YAxis allowDecimals={false} />
-                        <Tooltip />
-                        <Line type="monotone" dataKey="count" stroke="#2563EB" strokeWidth={2} dot={{ r: 2 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-slate-50 p-3 rounded">
-                      <div className="text-xs text-slate-500">Metric</div>
-                      <div className="font-semibold mt-1">{modalMetric}</div>
-                    </div>
-                    <div className="bg-slate-50 p-3 rounded">
-                      <div className="text-xs text-slate-500">Total (range)</div>
-                      <div className="font-semibold mt-1">{modalData.daily.reduce((s, d) => s + (Number(d.count) || 0), 0)}</div>
-                    </div>
-                    <div className="bg-slate-50 p-3 rounded">
-                      <div className="text-xs text-slate-500">Average / day</div>
-                      <div className="font-semibold mt-1">
-                        {(modalData.daily.reduce((s,d)=>s+(Number(d.count)||0),0) / modalData.daily.length).toFixed(2)}
+                <div className="space-y-2">
+                  {modalItems.map((t) => (
+                    <div key={t.id} className="p-3 border rounded flex justify-between items-start">
+                      <div>
+                        <div className="text-sm font-medium">{t.title}</div>
+                        <div className="text-xs text-slate-500">
+                          {t.status} • Assigned: {t.assignedAt ? toYMD(t.assignedAt) : '-'} • Due: {t.dueDate ? toYMD(t.dueDate) : '-'}
+                        </div>
                       </div>
+                      <div className="text-xs text-slate-600">{t.id}</div>
                     </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-medium mb-2">Recent tasks</h4>
-                    {modalData.tasks.length === 0 ? (
-                      <div className="text-sm text-slate-500">No tasks found.</div>
-                    ) : (
-                      <div className="space-y-2">
-                        {modalData.tasks.slice(0, 20).map((t) => (
-                          <div key={t.id || t.taskId} className="p-2 border rounded flex justify-between items-start">
-                            <div>
-                              <div className="text-sm font-medium">{t.title ?? t.name ?? 'Untitled task'}</div>
-                              <div className="text-xs text-slate-500">
-                                {t.status ?? t.state ?? 'UNKNOWN'} • Assigned: {t.assignedAt ? toYMD(t.assignedAt) : '-'} • Due: {t.dueDate ? toYMD(t.dueDate) : '-'}
-                              </div>
-                            </div>
-                            <div className="text-xs text-slate-600">{t.id ?? t.taskId}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </>
+                  ))}
+                </div>
               )}
             </div>
           </div>

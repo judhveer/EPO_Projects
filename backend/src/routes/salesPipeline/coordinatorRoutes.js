@@ -1,25 +1,20 @@
 // backend/routes/coordinatorRoutes.js
 import express from 'express';
-import { getUsersStats, getUserDaily } from '../../controllers/salesPipelineController/coordinatorController.js';
+import * as controller  from '../../controllers/salesPipelineController/coordinatorController.js';
 
+
+// routes/coordinatorRoutes.js
+// ESM-style express router that wires controller functions to endpoints
 
 const router = express.Router();
 
-// Only allow BOSS / ADMIN / SALES COORDINATOR
-function requireCoordinatorRole(req, res, next) {
-  const allowed = new Set(['BOSS', 'ADMIN', 'SALES COORDINATOR']);
-  const role = (req.user?.role || '').toUpperCase();
-  if (!allowed.has(role)) return res.status(403).json({ message: 'Forbidden' });
-  return next();
-}
+// GET /api/sales/coordinator/users?role=
+router.get('/users', controller.getUsers);
 
-// Protect all coordinator routes
-router.use( requireCoordinatorRole);
+// GET /api/sales/coordinator/user/:userId/pending?metric=
+router.get('/user/:userId/pending', controller.getUserPending);
 
-// GET /api/sales/coordinator/users
-router.get('/users', getUsersStats);
-
-// GET /api/sales/coordinator/user/:userId/daily
-router.get('/user/:userId/daily', getUserDaily);
+// GET /api/sales/coordinator/pending/crm
+router.get('/pending/crm', controller.getCrmPending);
 
 export default router;
