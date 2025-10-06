@@ -9,8 +9,8 @@ const { User } = models;
     await sequelize.authenticate();
     console.log('Database connection OK');
 
-    let boss = await User.scope('withSecret').findOne({ where: { email: 'harshjw@easternpanorama.in' } });
-    let admin = await User.scope('withSecret').findOne({ where: {email: 'ic@easternpanorama.com'}});
+    let boss = await User.scope('withSecret').findOne({ where: { email: 'harshjw@gmail.com' } });
+    let admin = await User.scope('withSecret').findOne({ where: {email: 'ic@easternpanorama.in'}});
 
     if(!admin){
       admin = await User.scope('withSecret').create({

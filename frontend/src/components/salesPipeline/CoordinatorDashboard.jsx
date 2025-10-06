@@ -14,7 +14,7 @@ function toYMD(d) {
 const ROLE_TABS = [
   { key: 'RESEARCHER', label: 'Researchers', metricName: 'research' },
   { key: 'TELECALLER', label: 'Telecallers', metricName: 'telecall' },
-  { key: 'SALES_EXECUTIVE', label: 'Sales Execs', metricName: 'meeting' },
+  { key: 'EXECUTIVE', label: 'Sales Execs', metricName: 'meeting' },
   { key: 'CRM', label: 'CRM', metricName: 'followup' },
 ];
 

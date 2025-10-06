@@ -99,6 +99,7 @@ export async function getUsers(req, res) {
       if (!uid) return normalizeUserRow(u);
 
       if (role === 'RESEARCHER') {
+        console.log("role1: ", role);
         // Research entries created by researcher
         const createdByFieldCandidates = ['createdBy', 'created_by', 'creatorId', 'creator', 'userId'];
         const createdAtField = 'createdAt'; // common
@@ -124,6 +125,7 @@ export async function getUsers(req, res) {
       }
 
       if (role === 'TELECALLER') {
+        console.log("role2: ", role);
         // total/today from TelecallModel createdBy; pending from ApprovalModel where assigned telecaller has pending assignments
         if (!TelecallModel) {
           return normalizeUserRow(u, { totalCount: 0, todayCount: 0, pendingCount: 0 });
@@ -172,7 +174,8 @@ export async function getUsers(req, res) {
         return normalizeUserRow(u, { totalCount, todayCount, pendingCount });
       }
 
-      if (role === 'SALES_EXECUTIVE') {
+      if (role === 'EXECUTIVE') {
+        console.log("role3: ", role);
         // total/today from MeetingModel createdBy (executive creates meeting entries when they complete them)
         // pending from TelecallModel where meeting assignee is this user and meeting not completed
         let totalCount = 0;
@@ -211,6 +214,7 @@ export async function getUsers(req, res) {
       }
 
       if (role === 'CRM') {
+        console.log("role4: ", role);
         // For CRM, followups live in MeetingModel (meeting forms) — total when crm filled entry form (createdBy)
         // Pending followups: meeting entries with followup required and status not final.
         let totalCount = 0;
@@ -247,6 +251,7 @@ export async function getUsers(req, res) {
 
     // For CRM role: aggregate pending followups across MeetingModel and set same pendingCount for every CRM user
     if (role === 'CRM') {
+      console.log("role5: ", role);
       let aggregatedPending = 0;
       if (MeetingModel) {
         // guess followup flag or followup-type detection
