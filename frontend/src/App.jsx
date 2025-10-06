@@ -1,3 +1,4 @@
+import React, { useCallback, useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { Gate } from './components/Permission.jsx';
@@ -24,17 +25,57 @@ import ExportLeads from './components/salesPipeline/ExportLeads.jsx';
 import CoordinatorDashboard from './components/salesPipeline/CoordinatorDashboard.jsx';
 
 
+/**
+ * Simple auth hook.
+ * - By default it checks localStorage for "authToken" or "user" keys.
+ * - If you have a different auth mechanism (Redux/context/cookie), replace the check inside `checkAuth`.
+ */
+
+
+function useAuth() {
+  const [isAuthed, setIsAuthed] = useState(false);
+
+  const checkAuth = useCallback(() => {
+    // adapt this to your real auth storage: token, user object, etc.
+    const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+    const user = localStorage.getItem('user'); // optional
+    setIsAuthed(Boolean(token || user));
+  }, []);
+
+  useEffect(() => {
+    checkAuth();
+
+    // listen to storage events so login/logout in another tab updates this tab
+    const onStorage = (e) => {
+      if (e.key === 'authToken' || e.key === 'token' || e.key === 'user') checkAuth();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [checkAuth]);
+
+  return { isAuthed, checkAuth };
+}
+
 export default function App() {
+  const { isAuthed } = useAuth();
+
   return (
     <Routes>
-      {/* Public */}
-      <Route path="/login" element={<Login />} />
-      <Route path="/" element={<Navigate to="/home" replace />} />
+      {/* Public: /login -> if already authed redirect to /home */}
+      <Route
+        path="/login"
+        element={isAuthed ? <Navigate to="/home" replace /> : <Login />}
+      />
 
-      {/* Protected  */}
+      {/* root: send to appropriate landing based on auth */}
+      <Route
+        path="/"
+        element={isAuthed ? <Navigate to="/home" replace /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Protected routes */}
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
-
           <Route path="/home" element={<Home />} />
           {/* Attendance: everyone authenticated */}
           <Route path="/attendance" element={<AttendanceDashboard />} />
@@ -49,22 +90,18 @@ export default function App() {
             }
           />
 
-          {/* Boss/Admin: Create User */}
+          {/* Create user */}
           <Route
             path="/create-user"
             element={
-              <Gate
-                perm="attendance.view" // everyone has this; we’ll check role inside page
-                fallback={<div className='p-6'>Not Authorized</div>}
-              >
+              <Gate perm="attendance.view" fallback={<div className='p-6'>Not Authorized</div>}>
                 <CreateUser />
               </Gate>
             }
           />
 
-          {/* Sales (use your Layout around sales pages only) */}
+          {/* Sales */}
           <Route path="/sales" element={<Layout />}>
-            {/* Default under /sales -> /sales/dashboard */}
             <Route index element={<Navigate to="dashboard" replace />} />
 
             <Route
@@ -78,7 +115,6 @@ export default function App() {
 
             <Route path="leads/:ticketId" element={<LeadDetail />} />
 
-            {/* Forms with view/mutate guards per role */}
             <Route
               path="forms/research"
               element={
@@ -124,16 +160,13 @@ export default function App() {
               }
             />
 
-            <Route path='/sales/export-leads' element={<ExportLeads />} />
-
-            <Route path='/sales/coordinator' element={<CoordinatorDashboard />} />
-
+            <Route path="export-leads" element={<ExportLeads />} />
+            <Route path="coordinator" element={<CoordinatorDashboard />} />
           </Route>
 
-          <Route path="*" element={<div className="p-6">Not Found</div>} />
-
+          {/* wildcard: if unmatched route under protected area, send to home */}
+          <Route path="*" element={<Navigate to={isAuthed ? "/home" : "/login"} replace />} />
         </Route>
-
       </Route>
     </Routes>
   );
