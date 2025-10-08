@@ -117,36 +117,80 @@ export default function LeadDetail() {
         </Section>
 
         <Section title="Telecall entries">
-          {lead.telecallEntries?.length ? lead.telecallEntries.map(t => (
-            <KV key={t.id} items={{
+          {lead.telecallEntries?.length ? lead.telecallEntries.map(t => {
+            const general = {
               'Type': t.meetingType,
               'DateTime': t.meetingDateTime ? new Date(t.meetingDateTime).toLocaleString('en-IN') : '-',
               'Assignee': t.meetingAssignee,
               'By': t.createdBy
-            }} />
-          )) : <Empty />}
+            };
+
+            if (t.meetingType === 'VISIT') {
+              general.location = t.location;
+            }
+
+            return < KV key={t.id} items={general} />
+          }) : <Empty />}
         </Section>
 
         <Section title="Meeting entries">
-          {lead.meetingEntries?.length ? lead.meetingEntries.map(m => (
-            <KV key={m.id} items={{
+          {lead.meetingEntries?.length ? lead.meetingEntries.map(m => {
+
+            const general = {
               'Status': m.status,
-              'Notes': m.outcomeNotes,
-              'New Budget': m.newActualBudget,
               'By': m.createdBy
-            }} />
-          )) : <Empty />}
+            };
+
+            if (m.outcomeNotes) {
+              general['Notes'] = m.outcomeNotes;
+            }
+            if (m.newActualBudget) {
+              general['New Budget'] = m.newActualBudget;
+            }
+
+            if (m.status === 'RESCHEDULE_MEETING') {
+              general.MeetingType = m.rescheduleMeetingType;
+              general.DateTime = m.rescheduleMeetingDateTime ? new Date(m.rescheduleMeetingDateTime).toLocaleString('en-IN') : '-';
+              general.Assignee = m.rescheduleMeetingAssignee;
+              if (m.rescheduleMeetingType === 'VISIT') {
+                general.location = m.location;
+              }
+            }
+            else if (m.status === 'CRM_FOLLOW_UP') {
+              general['Follow Up Date'] = m.nextFollowUpOn
+            }
+
+
+            return < KV key={m.id} items={general} />
+          }) : <Empty />}
         </Section>
 
         <Section title="CRM entries">
-          {lead.crmEntries?.length ? lead.crmEntries.map(c => (
-            <KV key={c.id} items={{
+          {lead.crmEntries?.length ? lead.crmEntries.map(c => {
+            const general = {
               'Status': c.status,
-              'Notes': c.followupNotes,
-              'Next Follow-up': c.nextFollowUpOn ? new Date(c.nextFollowUpOn).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
               'By': c.createdBy
-            }} />
-          )) : <Empty />}
+            };
+
+            if (c.followupNotes) {
+              general['Notes'] = c.followupNotes;
+            }
+
+            if (c.status === 'CRM_FOLLOW_UP') {
+              general['Next Follow-up'] = c.nextFollowUpOn ? new Date(c.nextFollowUpOn).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+            }
+            else if (c.status === 'RESCHEDULE_MEETING') {
+              general.MeetingType = c.rescheduleMeetingType;
+              general.DateTime = c.rescheduleMeetingDateTime ? new Date(c.rescheduleMeetingDateTime).toLocaleString('en-IN') : '-';
+              general.Assignee = c.rescheduleMeetingAssignee;
+              if (c.rescheduleMeetingType === 'VISIT') {
+                general.location = c.location;
+              }
+            }
+
+
+            return <KV key={c.id} items={general} />
+          }) : <Empty />}
         </Section>
       </div>
 

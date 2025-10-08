@@ -78,7 +78,7 @@ export default function ApprovalForm() {
 
       // dispatch a DOM event so any table/dashboard can listen and refresh
       try {
-        window.dispatchEvent(new CustomEvent('sales:approval:completed', { detail: { ticketId: savedTicketId } }));
+        window.dispatchEvent(new CustomEvent('sales:approval:completed', { detail: { ticketId: form.ticketId} }));
       } catch (evErr) {
         // non-fatal
         console.warn('Could not dispatch sales:approval:completed event', evErr);
