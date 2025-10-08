@@ -134,7 +134,7 @@ export default function CoordinatorUsersSimple() {
       const items = Array.isArray(res.data) ? res.data : (res.data?.items ?? []);
       // normalize a bit
       const normalized = items.map((t) => ({
-        id: t.id ?? t.taskId ?? t.meetingId ?? Math.random().toString(36).slice(2, 9),
+        id: t.assignedTo,
         title: t.title ?? t.name ?? t.subject ?? 'Untitled',
         status: t.status ?? t.state ?? 'PENDING',
         assignedAt: t.assignedAt ?? t.createdAt ?? t.timestamp,

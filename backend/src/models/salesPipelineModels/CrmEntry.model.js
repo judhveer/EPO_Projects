@@ -26,16 +26,19 @@ export default (sequelize) => {
         },
 
         // NEW: if CRM reschedules a meeting directly
-        rescheduleMeetingType: { 
-            type: DataTypes.STRING(32), allowNull: true 
+        rescheduleMeetingType: {
+            type: DataTypes.STRING(32), allowNull: true
         },
-        rescheduleMeetingDateTime: { 
-            type: DataTypes.DATE, allowNull: true 
+        location: {
+            type: DataTypes.STRING(258),
+            allowNull: true,
         },
-        rescheduleMeetingAssignee: { 
-            type: DataTypes.STRING(128), allowNull: true 
+        rescheduleMeetingDateTime: {
+            type: DataTypes.DATE, allowNull: true
         },
-
+        rescheduleMeetingAssignee: {
+            type: DataTypes.STRING(128), allowNull: true
+        },
         createdBy: {
             type: DataTypes.STRING(128),
             field: 'created_by'

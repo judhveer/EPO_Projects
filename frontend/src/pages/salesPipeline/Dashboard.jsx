@@ -48,7 +48,7 @@ export default function Dashboard() {
     { key: 'mobile', title: 'Mobile' },
     { key: 'stage', title: 'Stage', render: (r) => <Badge>{r.stage}</Badge> },
     { key: 'clientStatus', title: 'Client', render: (r) => <span className="text-xs font-semibold">{r.clientStatus}</span> },
-    { key: 'updatedAt', title: 'Updated', render: (r) => new Date(r.updatedAt).toLocaleString() },
+    { key: 'updatedAt', title: 'Updated', render: (r) => new Date(r.updatedAt).toLocaleString('en-IN') },
   ];
 
   return (

@@ -85,7 +85,7 @@ const AttendanceDashboard = () => {
                     <h1 className="text-3xl font-bold text-gray-800">Employee Attendance Dashboard</h1>
                     <p className="text-gray-600 mt-1">Track and manage employee attendance records</p>
                     {lastSyncAt && (
-                        <p className="text-xs text-gray-500 mt-1">Last synced: {new Date(lastSyncAt).toLocaleString()}</p>
+                        <p className="text-xs text-gray-500 mt-1">Last synced: {new Date(lastSyncAt).toLocaleString('en-IN')}</p>
                     )}
                 </div>
                 <div className="flex gap-3">

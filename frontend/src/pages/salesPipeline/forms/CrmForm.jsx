@@ -26,7 +26,8 @@ export default function CrmForm() {
     // if rescheduling
     meetingType: 'PHONE CALL',
     meetingDateTime: '',
-    meetingAssignee: ''
+    meetingAssignee: '',
+    location: ''
   });
   const [ok, setOk] = useState(false);
   const [err, setErr] = useState('');
@@ -84,7 +85,8 @@ export default function CrmForm() {
         nextFollowUpOn: form.nextFollowUpOn || null,
         meetingType: isReschedule ? form.meetingType : null,
         meetingDateTime: isReschedule ? (form.meetingDateTime ? new Date(form.meetingDateTime).toISOString() : null) : null,
-        meetingAssignee: isReschedule ? (form.meetingAssignee || null) : null
+        meetingAssignee: isReschedule ? (form.meetingAssignee || null) : null,
+        location: isReschedule && form.meetingType === 'VISIT' ? (form.location || null) : null
       });
       setOk(true);
     } catch (e) {
@@ -162,6 +164,13 @@ export default function CrmForm() {
                 </Select>
               )}
             </Field>
+
+            {/* Conditionally render Location field for VISIT */}
+            {form.meetingType === 'VISIT' && (
+              <Field label="Location" required>
+                <Input name="location" value={form.location || ''} onChange={onChange} required />
+              </Field>
+            )}
           </>
         )}
 

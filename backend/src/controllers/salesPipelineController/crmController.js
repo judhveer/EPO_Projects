@@ -14,7 +14,8 @@ export async function createCrmFollowup(req, res, next) {
     // NEW when CRM reschedules
     meetingType,
     meetingDateTime,
-    meetingAssignee
+    meetingAssignee,
+    location
   } = req.body;
 
   if (!ticketId || !status) return res.status(400).json({ error: 'ticketId, status required' });
@@ -42,7 +43,14 @@ export async function createCrmFollowup(req, res, next) {
           const err = new Error('For "RESCHEDULE_MEETING", Meeting Type and Meeting Date & Time are required.');
           err.status = 400; throw err;
         }
+        if (meetingType === 'VISIT') {
+          if (!location) {
+            return res.status(400).json({ error: 'location is required' });
+          }
+        }
       }
+
+
 
 
       await db.CrmEntry.create({
@@ -53,6 +61,7 @@ export async function createCrmFollowup(req, res, next) {
         rescheduleMeetingType: norm === 'RESCHEDULE_MEETING' ? meetingType : null,
         rescheduleMeetingDateTime: norm === 'RESCHEDULE_MEETING' ? (meetingDateTime ? new Date(meetingDateTime) : null) : null,
         rescheduleMeetingAssignee: norm === 'RESCHEDULE_MEETING' ? (meetingAssignee || null) : null,
+        location: norm === 'RESCHEDULE_MEETING' ? ( (meetingType === 'VISIT') ? location : null ) : null,
         createdBy: createdBy || 'crm'
       }, { transaction: t });
 
@@ -174,6 +183,7 @@ export async function createCrmFollowup(req, res, next) {
           meetingType: leadSnapshot.meetingType,
           meetingDateTime: leadSnapshot.meetingDateTime,
           meetingAssignee: leadSnapshot.meetingAssignee,
+          location
         };
 
         const { subject, html, text } = tplAssigned({

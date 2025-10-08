@@ -25,10 +25,10 @@ function fmtDate(v, opts = {}) {
 
   // If caller explicitly asked to always hide/show time
   if (showTime === false) {
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   }
   if (showTime === true) {
-    return d.toLocaleString('en-GB', {
+    return d.toLocaleString('en-IN', {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12
     });
@@ -37,7 +37,7 @@ function fmtDate(v, opts = {}) {
   // showTime === 'auto' (default): decide based on input or the Date object's UTC time
   if (isoDateOnly || slashDateOnly) {
     // backend sent a date-only string -> show only date
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   }
 
   // If input wasn't a string (or not date-only), detect if Date has zero UTC time
@@ -50,11 +50,11 @@ function fmtDate(v, opts = {}) {
 
   if (isMidnightUTC) {
     // Likely created from a date-only string -> show only date
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   }
 
   // Otherwise input had time -> show date + time
-  return d.toLocaleString('en-GB', {
+  return d.toLocaleString('en-IN', {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12
   });

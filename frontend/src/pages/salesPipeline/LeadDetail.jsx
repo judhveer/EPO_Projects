@@ -2,15 +2,15 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../lib/api.js';
 
-export default function LeadDetail(){
+export default function LeadDetail() {
   const { ticketId } = useParams();
   const [lead, setLead] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(()=>{
-    (async()=>{
+  useEffect(() => {
+    (async () => {
       setLoading(true);
-      try{
+      try {
         const { data } = await api.get(`/api/sales/leads/${ticketId}`);
         setLead(data);
       } finally { setLoading(false); }
@@ -25,9 +25,10 @@ export default function LeadDetail(){
       <div className="bg-white border rounded-xl p-4">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-lg">Lead {lead.ticketId}</h2>
-          <div className="text-xs text-slate-500">Updated {new Date(lead.updatedAt).toLocaleString()}</div>
+          <div className="text-xs text-slate-500">Updated {new Date(lead.updatedAt).toLocaleString('en-IN')}</div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3 text-sm">
+          <div><span className="font-medium">Research Type:</span> {lead.researchType || '-'}</div>
           <div><span className="font-medium">Company:</span> {lead.company || '-'}</div>
           <div><span className="font-medium">Contact:</span> {lead.contactName || '-'}</div>
           <div><span className="font-medium">Mobile:</span> {lead.mobile || '-'}</div>
@@ -35,7 +36,7 @@ export default function LeadDetail(){
           <div><span className="font-medium">Region:</span> {lead.region || '-'}</div>
           <div><span className="font-medium">Stage:</span> {lead.stage || '-'}</div>
           <div><span className="font-medium">Client Status:</span> {lead.clientStatus || '-'}</div>
-          <div><span className="font-medium">Meeting:</span> {lead.meetingType || '-'} {lead.meetingDateTime ? ` @ ${new Date(lead.meetingDateTime).toLocaleString()}` : ''}</div>
+          <div><span className="font-medium">Meeting:</span> {lead.meetingType || '-'} {lead.meetingDateTime ? ` @ ${new Date(lead.meetingDateTime).toLocaleString('en-IN')}` : ''}</div>
           <div><span className="font-medium">Budget (Est):</span> {lead.estimatedBudget ?? '-'}</div>
           <div><span className="font-medium">Budget (Actual):</span> {lead.newActualBudget ?? '-'}</div>
         </div>
@@ -43,31 +44,69 @@ export default function LeadDetail(){
 
       <div className="grid md:grid-cols-2 gap-6">
         <Section title="History">
-          {lead.history?.length ? lead.history.map(h=>(
+          {lead.history?.length ? lead.history.map(h => (
             <div key={h.id} className="border rounded-md p-2 text-sm">
               <div><b>{h.fromStage} → {h.toStage}</b></div>
               <div className="text-slate-600">{h.notes}</div>
-              <div className="text-xs text-slate-500">{h.by} • {new Date(h.createdAt).toLocaleString()}</div>
+              <div className="text-xs text-slate-500">{h.by} • {new Date(h.createdAt).toLocaleString('en-IN')}</div>
             </div>
           )) : <Empty />}
         </Section>
 
         <Section title="Research entries">
-          {lead.researchEntries?.length ? lead.researchEntries.map(r=>(
-            <KV key={r.id} items={{
-              'Date': r.researchDate ? new Date(r.researchDate).toLocaleDateString() : '-',
-              'Company': r.company,
-              'Contact': r.contactName,
-              'Mobile': r.mobile,
-              'Email': r.email,
-              'Region': r.region,
-              'Est. Budget': r.estimatedBudget
-            }} />
-          )) : <Empty />}
+          {lead.researchEntries?.length ? lead.researchEntries.map(r => {
+            const type = (String(r.researchType || 'GENERAL')).toUpperCase();
+            // common/general fields
+            const general = {
+              'Date': r.researchDate ? new Date(r.researchDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
+              'Company': r.company || '-',
+              'Contact': r.contactName || '-',
+              'Mobile': r.mobile || '-',
+              'Email': r.email || '-',
+              'Region': r.region || '-',
+              'Est. Budget': r.estimatedBudget ?? '-',
+            };
+
+            if (type === 'TENDER') {
+              // derive financial period display from year/month if available
+              let fpDisplay = '-';
+              const yr = r.financialPeriodYear ?? r.financialPeriod_year ?? null;
+              const mm = r.financialPeriodMonth ?? r.financial_period_month ?? null;
+              if (yr && mm) {
+                const mmStr = String(mm).padStart(2, '0');
+                fpDisplay = `${yr}-${mmStr}`;
+              } else if (r.financialPeriod) {
+                // in case backend sends a single date string like 'YYYY-MM-01' or 'YYYY-MM'
+                const fpRaw = String(r.financialPeriod);
+                const m = fpRaw.match(/^(\d{4})-(\d{2})/);
+                if (m) fpDisplay = `${m[1]}-${m[2]}`;
+              }
+
+              const tenderItems = {
+                ...general,
+                'Tender Open': r.tenderOpeningDate ? new Date(r.tenderOpeningDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
+                'Tender Close': r.tenderClosingDate ? new Date(r.tenderClosingDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
+                'Financial Period': fpDisplay,
+                'Requirements': r.requirements || '-',
+                'Remarks': r.remarks || '-',
+                'Created By': r.createdBy || r.created_by || '-',
+              };
+              return <KV key={r.id} items={tenderItems} />;
+            } else {
+              // GENERAL
+              const generalItems = {
+                ...general,
+                'Requirements': r.requirements || '-',
+                'Remarks': r.remarks || '-',
+                'Created By': r.createdBy || r.created_by || '-',
+              };
+              return <KV key={r.id} items={generalItems} />;
+            }
+          }) : <Empty />}
         </Section>
 
         <Section title="Research Approval entries">
-          {lead.approvalEntries?.length ? lead.approvalEntries.map(a=>(
+          {lead.approvalEntries?.length ? lead.approvalEntries.map(a => (
             <KV key={a.id} items={{
               'Status': a.approveStatus,
               'Remark': a.approverRemark,
@@ -78,10 +117,10 @@ export default function LeadDetail(){
         </Section>
 
         <Section title="Telecall entries">
-          {lead.telecallEntries?.length ? lead.telecallEntries.map(t=>(
+          {lead.telecallEntries?.length ? lead.telecallEntries.map(t => (
             <KV key={t.id} items={{
               'Type': t.meetingType,
-              'DateTime': t.meetingDateTime ? new Date(t.meetingDateTime).toLocaleString() : '-',
+              'DateTime': t.meetingDateTime ? new Date(t.meetingDateTime).toLocaleString('en-IN') : '-',
               'Assignee': t.meetingAssignee,
               'By': t.createdBy
             }} />
@@ -89,7 +128,7 @@ export default function LeadDetail(){
         </Section>
 
         <Section title="Meeting entries">
-          {lead.meetingEntries?.length ? lead.meetingEntries.map(m=>(
+          {lead.meetingEntries?.length ? lead.meetingEntries.map(m => (
             <KV key={m.id} items={{
               'Status': m.status,
               'Notes': m.outcomeNotes,
@@ -100,11 +139,11 @@ export default function LeadDetail(){
         </Section>
 
         <Section title="CRM entries">
-          {lead.crmEntries?.length ? lead.crmEntries.map(c=>(
+          {lead.crmEntries?.length ? lead.crmEntries.map(c => (
             <KV key={c.id} items={{
               'Status': c.status,
               'Notes': c.followupNotes,
-              'Next Follow-up': c.nextFollowUpOn ? new Date(c.nextFollowUpOn).toLocaleDateString() : '-',
+              'Next Follow-up': c.nextFollowUpOn ? new Date(c.nextFollowUpOn).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
               'By': c.createdBy
             }} />
           )) : <Empty />}
@@ -118,7 +157,7 @@ export default function LeadDetail(){
   );
 }
 
-function Section({ title, children }){
+function Section({ title, children }) {
   return (
     <div className="bg-white border rounded-xl p-4">
       <h3 className="font-semibold mb-3">{title}</h3>
@@ -126,13 +165,13 @@ function Section({ title, children }){
     </div>
   );
 }
-function KV({ items }){
+function KV({ items }) {
   return (
     <div className="border rounded-md p-2 text-sm grid grid-cols-1 sm:grid-cols-2 gap-1">
-      {Object.entries(items).map(([k,v])=>(
+      {Object.entries(items).map(([k, v]) => (
         <div key={k}><span className="font-medium">{k}:</span> {String(v ?? '-')}</div>
       ))}
     </div>
   );
 }
-function Empty(){ return <div className="text-sm text-slate-500">No entries yet.</div>; }
+function Empty() { return <div className="text-sm text-slate-500">No entries yet.</div>; }

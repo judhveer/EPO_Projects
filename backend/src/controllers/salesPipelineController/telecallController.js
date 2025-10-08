@@ -6,8 +6,14 @@ import { stageMismatch } from '../../middlewares/salesPipeline/error.js';
 import { sendMail, tplAssigned } from '../../email/salespipeline/mailer.js';
 
 export async function createTelecall(req, res, next) {
-  const { ticketId, meetingType, meetingDateTime, meetingAssignee } = req.body;
+  const { ticketId, meetingType, meetingDateTime, meetingAssignee, location } = req.body;
   if (!ticketId) return res.status(400).json({ error: 'ticketId required' });
+
+  if(meetingType === 'VISIT'){
+    if(!location){
+      return res.status(400).json({ error: 'location is required' });
+    }
+  }
 
   // we'll populate this inside the transaction and use it after commit
   let leadSnapshot = null;
@@ -30,7 +36,8 @@ export async function createTelecall(req, res, next) {
         meetingType,
         meetingDateTime: meetingDateTime ? new Date(meetingDateTime) : null,
         meetingAssignee: meetingAssignee || null,
-        createdBy: createdBy || 'telecaller'
+        createdBy: createdBy || 'telecaller',
+        location
       }, { transaction: t });
 
       lead.set({
@@ -73,6 +80,7 @@ export async function createTelecall(req, res, next) {
           meetingType: leadSnapshot.meetingType,
           meetingDateTime: leadSnapshot.meetingDateTime,
           meetingAssignee: leadSnapshot.meetingAssignee,
+          location
         };
 
         const { subject, html, text } = tplAssigned({

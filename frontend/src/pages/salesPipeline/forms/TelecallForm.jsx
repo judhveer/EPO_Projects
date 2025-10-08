@@ -13,7 +13,8 @@ export default function TelecallForm() {
     ticketId: '',
     meetingType: 'PHONE CALL',
     meetingDateTime: '',
-    meetingAssignee: ''
+    meetingAssignee: '',
+    location: ''
   });
   const [assignees, setAssignees] = useState([]); // store dropdown options
   const [ok, setOk] = useState(false);
@@ -89,6 +90,13 @@ export default function TelecallForm() {
             ))}
           </Select>
         </Field>
+
+        {/* Conditionally render Location field if meeting type is VISIT */}
+        {form.meetingType === 'VISIT' && (
+          <Field label="Location" required>
+            <Input name="location" value={form.location} onChange={onChange} required />
+          </Field>
+        )}
 
         <div className="md:col-span-2">
           <Button type="submit">Submit</Button>

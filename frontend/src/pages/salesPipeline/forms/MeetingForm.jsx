@@ -23,10 +23,11 @@ export default function MeetingForm() {
     outcomeNotes: '',
     status: 'CRM_FOLLOW_UP',    // default to CRM follow-up
     newActualBudget: '',
-    meetingType: 'phone call',
+    meetingType: 'PHONE CALL',
     meetingDateTime: '',
     meetingAssignee: '',
     nextFollowUpOn: '',
+    location: '',
   });
   const [ok, setOk] = useState(false);
   const [err, setErr] = useState('');
@@ -80,7 +81,8 @@ export default function MeetingForm() {
         nextFollowUpOn: isCrmFollowUp ? (form.nextFollowUpOn || null) : null,
         meetingType: isReschedule ? form.meetingType : null,
         meetingDateTime: isReschedule ? (form.meetingDateTime ? new Date(form.meetingDateTime).toISOString() : null) : null,
-        meetingAssignee: isReschedule ? (form.meetingAssignee || null) : null
+        meetingAssignee: isReschedule ? (form.meetingAssignee || null) : null,
+        location: isReschedule && form.meetingType === 'VISIT' ? (form.location || null) : null
       });
       setOk(true);
     } catch (e) {
@@ -167,6 +169,13 @@ export default function MeetingForm() {
                 </Select>
               )}
             </Field>
+
+            {/* Conditionally render Location field for VISIT */}
+            {form.meetingType === 'VISIT' && (
+              <Field label="Location" required>
+                <Input name="location" value={form.location || ''} onChange={onChange} required />
+              </Field>
+            )}
           </>
         )}
 

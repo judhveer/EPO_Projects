@@ -31,6 +31,10 @@ export default (sequelize) => {
             type: DataTypes.STRING(32), 
             allowNull: true 
         },
+        location: {
+            type: DataTypes.STRING(258),
+            allowNull: true,
+        },
         rescheduleMeetingDateTime: { 
             type: DataTypes.DATE, 
             allowNull: true 

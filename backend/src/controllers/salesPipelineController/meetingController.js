@@ -16,7 +16,8 @@ export async function createMeetingOutcome(req, res, next) {
     // new for reschedule meeting
     meetingType,
     meetingDateTime,
-    meetingAssignee
+    meetingAssignee,
+    location
   } = req.body;
 
   if (!ticketId || !status) return res.status(400).json({ error: 'ticketId, status required' });
@@ -49,7 +50,11 @@ export async function createMeetingOutcome(req, res, next) {
         err.status = 400; throw err;
       }
 
-
+      if(meetingType === 'VISIT'){
+        if(!location){
+          return res.status(400).json({ error: 'location is required' });
+        }
+      }
 
       await db.MeetingEntry.create({
         ticketId,
@@ -60,6 +65,7 @@ export async function createMeetingOutcome(req, res, next) {
         rescheduleMeetingDateTime: norm === 'RESCHEDULE_MEETING' ? (meetingDateTime ? new Date(meetingDateTime) : null) : null,
         rescheduleMeetingAssignee: norm === 'RESCHEDULE_MEETING' ? (meetingAssignee || null) : null,
         nextFollowUpOn: norm === 'CRM_FOLLOW_UP' ? (nextFollowUpOn ? new Date(nextFollowUpOn) : null) : null,
+        location: norm === 'RESCHEDULE_MEETING' ? ( (meetingType === 'VISIT') ? location : null ) : null,
         createdBy: createdBy || 'executive'
       }, { transaction: t });
 
@@ -177,6 +183,7 @@ export async function createMeetingOutcome(req, res, next) {
           meetingType: leadSnapshot.meetingType,
           meetingDateTime: leadSnapshot.meetingDateTime,
           meetingAssignee: leadSnapshot.meetingAssignee,
+          location
         };
 
         const { subject, html, text } = tplAssigned({

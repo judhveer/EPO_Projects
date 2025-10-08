@@ -25,7 +25,10 @@ export default (sequelize) => {
             type: DataTypes.STRING(128),
             field: 'meeting_assignee'
         },
-
+        location: {
+            type: DataTypes.STRING(256),
+            allowNull: true
+        },
         createdBy: {
             type: DataTypes.STRING(128),
             field: 'created_by'
