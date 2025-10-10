@@ -57,7 +57,7 @@ const app = express();
 app.use(helmet());
 
 app.use(cors({
-  origin: '*', // change to frontend URL in production
+  origin: 'https://management.easternpanoramaoffset.com', // change to frontend URL in production
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
