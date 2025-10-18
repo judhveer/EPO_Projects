@@ -51,6 +51,8 @@ import { AttendanceSyncAll } from './jobs/attendance/syncAllData.js';
 
 dotenv.config();
 
+console.log("environment:", process.env);
+
 
 
 const app = express();
