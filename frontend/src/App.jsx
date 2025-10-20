@@ -168,10 +168,10 @@ export default function App() {
           <Route path="*" element={<Navigate to={isAuthed ? "/home" : "/login"} replace />} />
         </Route>
         {/* wildcard: if unmatched route under protected area, send to home */}
-        {/* <Route path="*" element={<Navigate to={isAuthed ? "/home" : "/login"} replace />} /> */}
+        <Route path="*" element={<Navigate to={isAuthed ? "/home" : "/login"} replace />} />
       </Route>
       {/* wildcard: if unmatched route under protected area, send to home */}
-      {/* <Route path="*" element={<Navigate to={isAuthed ? "/home" : "/login"} replace />} /> */}
+      <Route path="*" element={<Navigate to={isAuthed ? "/home" : "/login"} replace />} />
     </Routes>
   );
 }
