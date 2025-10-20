@@ -29,7 +29,6 @@
     "luxon": "^3.7.1",
     "morgan": "^1.10.1",
     "mysql2": "^3.14.4",
-    "ngrok": "^5.0.0-beta.2",
     "node-cron": "^4.2.1",
     "pdfmake": "^0.2.20",
     "sequelize": "^6.37.7",
