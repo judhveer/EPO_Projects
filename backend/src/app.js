@@ -51,7 +51,6 @@ import { AttendanceSyncAll } from './jobs/attendance/syncAllData.js';
 
 dotenv.config();
 
-console.log("environment:", process.env);
 
 
 
@@ -67,7 +66,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
-app.use(express.static('dist'));
+// app.use(express.static('dist'));
 
 
 // ---------- NEW: helper to gate per method ----------
