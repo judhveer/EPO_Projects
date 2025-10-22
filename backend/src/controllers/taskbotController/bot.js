@@ -188,7 +188,6 @@ bot.command('register', async (ctx) => {
 
 // Helper to show department options as buttons
 function showDepartmentOptions(ctx, prompt, prefix = 'REG_SELECT_DEPT') {
-    console.log("prefix: ", prefix);
     // You can get from Doer model or hardcode for now:
     const departments = [
         "Accounts", "Admin", "CRM", "Designer", "EA", "Foundation", "HR",
@@ -212,7 +211,6 @@ bot.action(/REG_SELECT_DEPT_UPDATE_(.+)/, async (ctx) => {
     const department = ctx.match[1];
     const reg = registrationSession[chatId];
     if (!reg || !reg.doerId) {
-        console.log("at REG_SELECT_DEPT_UPDATE_");
         return ctx.reply("Session expired. Please use /register again.");
     }
     try {
@@ -349,7 +347,7 @@ bot.action(/REG_REJECT_DEPT_CHANGE_(\d+)/, async (ctx) => {
 bot.action('REG_SELF_ADD', (ctx) => {
     const chatId = getChatId(ctx);
     if (!registrationSession[chatId]) {
-        console.log("at REG_SELF_ADD");
+        // console.log("at REG_SELF_ADD");
         return ctx.reply("Session expired. Please use /register again.");
     }
     registrationSession[chatId].step = 'ask_name';

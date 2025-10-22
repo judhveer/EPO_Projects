@@ -268,8 +268,6 @@ export async function getUserPending(req, res) {
         raw: l,
       }));
 
-      console.log("normalized: ", normalized);
-
       return res.json({ items: normalized });
     }
 
@@ -307,7 +305,6 @@ export async function getUserPending(req, res) {
  */
 export async function getCrmPending(req, res) {
   try {
-    console.log("crm pending2");
     const items = await Lead.findAll({
       where: { [LEAD_STAGE_FIELD]: STAGE_CRM },
       order: [['updatedAt', 'DESC']],

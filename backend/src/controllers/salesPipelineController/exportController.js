@@ -13,9 +13,6 @@ export async function exportLeads(req, res) {
             return res.status(400).send('from and to required');
         }
 
-        console.log("from: ", from);
-        console.log("to: ", to);
-
         const fromDate = new Date(from);
         const toDate = new Date(to);
 

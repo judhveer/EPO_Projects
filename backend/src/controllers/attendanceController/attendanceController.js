@@ -72,7 +72,6 @@ async function syncAttendance(req, res) {
     const attendanceMap = {};
     // Current IST date/time
     let nowIST = DateTime.now().setZone('Asia/Kolkata');
-    console.log("nowIST: ", nowIST);
 
 
     const todayStr = getDateStringFromDate(nowIST);
@@ -80,9 +79,7 @@ async function syncAttendance(req, res) {
 
     // 1. Process existing IN/OUT rows (today only, for valid EMPLOYEE)
     for (const row of dataRows) {
-      // console.log("row: ", row);
       const timestampRaw = row[COLS.timestamp];
-      // console.log("timestampRaw: ", timestampRaw);
       if (!timestampRaw) continue;
 
       const timestamp = parseCustomTimestamp(timestampRaw);
@@ -94,10 +91,9 @@ async function syncAttendance(req, res) {
       if (dateStr !== todayStr) continue; // Process ONLY today's records
 
       let name = row[COLS.name]?.trim().toUpperCase();
-      console.log("name: ", name);
+      
       let action = row[COLS.action]?.toUpperCase();
       const location = row[COLS.location]?.toUpperCase();
-      console.log("action: ", action);
       if (!name || !action || !location) {
         // skip
         continue;
@@ -129,7 +125,6 @@ async function syncAttendance(req, res) {
           attendanceMap[name].check_out_time = timestampRaw;
         }
       }
-      console.log("attendanceMap[name]: ", attendanceMap[name]);
     }
 
     // 2. AUTO-MARK ABSENT, LATE, AND SHIFT CALCULATION
@@ -189,7 +184,6 @@ async function syncAttendance(req, res) {
 
       // PRESENT/LATE
       const checkInDate = parseCustomTimestamp(check_in_time);
-      // console.log("checkInDate: ", checkInDate);
       if (checkInDate > officeStart) {
         const late_time_calculation = Math.round(checkInDate.diff(officeStart, 'minutes').minutes);
         // Convert minutes to hours and remaining minutes
@@ -203,7 +197,6 @@ async function syncAttendance(req, res) {
       }
 
       // Auto check-out at 6 PM if not out and now is after 10 PM
-      console.log("nowIST.hour: ", nowIST.hour);
       console.log(typeof nowIST.hour);
       if (!check_out_time && nowIST.hour >= 22) {
         check_out_time = nowIST.toFormat('dd/LL/yyyy') + ' 18:00:00';
@@ -281,7 +274,6 @@ async function listAttendance(req, res) {
       // Default: fetch today (IST)
       const nowIST = DateTime.now().setZone('Asia/Kolkata');
       const todayStr = getDateStringFromDate(nowIST);
-      console.log("todayStr: ", todayStr);
       where.date = todayStr;
     }
     if (name) {
@@ -355,9 +347,7 @@ async function absentList(req, res) {
 
     const nowIST = DateTime.now().setZone('Asia/Kolkata');
     const date = req.query.date || getDateStringFromDate(nowIST);
-    console.log("Date: ", req.query.date);
     const month = req.query.month || null;
-    console.log("Month: ", month);
     const name = req.query.name || null;
 
     let where = { status: 'ABSENT' };

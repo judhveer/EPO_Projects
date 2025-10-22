@@ -89,7 +89,6 @@ export async function createUser(req, res) {
         console.log("createUser called");
         // Only Admin/Boss routes call this (middleware enforced)
         const errors = validationResult(req);
-        console.log("req.body: ", req.body);
         if (!errors.isEmpty()) {
             return res.status(422).json({
                 errors: errors.array()

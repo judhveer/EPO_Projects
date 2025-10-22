@@ -5,7 +5,6 @@ dotenv.config();
 
 
 const caPath = process.env.DB_CERT;
-console.log("caPath, ", caPath);
 const dialectOptions = {};
 
 if (fs.existsSync(caPath)) {
