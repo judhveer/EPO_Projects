@@ -10,10 +10,10 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 
 const ROLES = {
     // boss: 7724001439,         // ← replace with your Telegram ID
-    boss: 1359630106,
-    // boss: 778013761,   // sunny 
-    // boss: 1096067043,   // harsh sir
-    ea: 1359630106            // ← EA's Telegram ID
+    // boss: 1359630106,        // judhveer
+    boss: 1096067043,   // harsh sir
+    ea:6445053570       // EWAN EA
+    // ea: 1359630106            // ← EA's Telegram ID
 };
 
 
