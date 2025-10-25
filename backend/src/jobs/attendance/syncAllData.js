@@ -25,7 +25,7 @@ export function AttendanceSyncAll() {
   );
 
   cron.schedule(
-    "13 14 * * 1-6",
+    "06 15 * * 1-6",
     async () => {
       try {
         console.log("Running Attendance SyncAll");
