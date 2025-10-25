@@ -8,7 +8,7 @@ export function AttendanceSyncAll() {
   // syncAll
   // mon-sat 11:59 pm
   cron.schedule(
-    "*/5 * * * 1-6",
+    "59 23 * * 1-6",
     async () => {
       try {
         console.log("Running Attendance SyncAll");
@@ -24,22 +24,6 @@ export function AttendanceSyncAll() {
     { timezone: "Asia/Kolkata" }
   );
 
-  cron.schedule(
-    "06 15 * * 1-6",
-    async () => {
-      try {
-        console.log("Running Attendance SyncAll");
-        const res = await axios.get(`${BASE_URL}/api/attendance/syncAll`);
-        console.log("Attendance syncAll result:", res.data);
-      } catch (error) {
-        console.error(
-          "Attendance sync cron failed:",
-          error.response?.data || error.message
-        );
-      }
-    },
-    { timezone: "Asia/Kolkata" }
-  );
 
   // schedule cron job to run every Sunday at 4 AM
   cron.schedule(
