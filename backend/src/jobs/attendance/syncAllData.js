@@ -8,7 +8,7 @@ export function AttendanceSyncAll() {
   // syncAll
   // mon-sat 11:59 pm
   cron.schedule(
-    "59 23 * * 1-6",
+    "*/5 * * * 1-6",
     async () => {
       try {
         console.log("Running Attendance SyncAll");
