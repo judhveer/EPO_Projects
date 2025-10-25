@@ -76,7 +76,6 @@ bot.hears(
       },
     });
 
-    console.log("doer: ", doer);
 
     // 2️⃣ Save temporary AI session for confirmation
     taskSession[chatId] = {
