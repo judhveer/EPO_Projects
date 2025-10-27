@@ -64,7 +64,7 @@ export async function createTelecall(req, res, next) {
       });
 
       if (user && user.email) {
-        const link = `${process.env.BASE_URL}/sales/leads/${encodeURIComponent(ticketId)}`;
+        const link = `${process.env.LEADS_URL}/sales/leads/${encodeURIComponent(ticketId)}`;
 
         const snapshotForEmail = {
           ticketId: leadSnapshot.ticketId,

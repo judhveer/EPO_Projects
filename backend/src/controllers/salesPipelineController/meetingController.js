@@ -118,7 +118,7 @@ export async function createMeetingOutcome(req, res, next) {
       });
 
       if (crmUsers && crmUsers.length > 0) {
-        const link = `${process.env.BASE_URL}/sales/leads/${encodeURIComponent(ticketId)}`;
+        const link = `${process.env.LEADS_URL}/sales/leads/${encodeURIComponent(ticketId)}`;
 
         // build lead snapshot that tplAssigned expects (you can pass whole leadSnapshot too)
         const snapshotForEmail = {
@@ -167,7 +167,7 @@ export async function createMeetingOutcome(req, res, next) {
       });
 
       if (user && user.email) {
-        const link = `${process.env.BASE_URL}/sales/leads/${encodeURIComponent(ticketId)}`;
+        const link = `${process.env.LEADS_URL}/sales/leads/${encodeURIComponent(ticketId)}`;
 
         const snapshotForEmail = {
           ticketId: leadSnapshot.ticketId,
