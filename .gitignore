@@ -9,6 +9,9 @@ backend/credentials.json
 backend/credentials_epo.json
 
 
+backend/src/reports/out
+
+
 # Editor configs
 .vscode/
 .idea/
