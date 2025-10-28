@@ -3,7 +3,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 import { transitionStage } from '../../services/salesPipeline/leadService.js';
 import { stageMismatch } from '../../middlewares/salesPipeline/error.js';
-import { sendMail, tplAssigned } from '../../email/salespipeline/mailer.js';
+import {  tplAssigned } from '../../email/salespipeline/template.js';
+import { sendMail } from "../../email/sendMail.js"
 
 export async function createTelecall(req, res, next) {
   const { ticketId, meetingType, meetingDateTime, meetingAssignee, location } = req.body;

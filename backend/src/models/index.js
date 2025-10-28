@@ -19,6 +19,8 @@ import DoerModel from './telegramTaskbotModels/Doer.model.js'
 import TaskModel from './telegramTaskbotModels/Task.model.js'
 
 
+import DiscResult from './discReport/DiscResult.model.js'
+
 // SalesPipeline Models
 const Lead = LeadModel(sequelize);
 const ResearchEntry = ResearchEntryModel(sequelize);
@@ -36,6 +38,8 @@ const TelegramUser = TelegramUserModel(sequelize);
 // TaskBot Models
 const Doer = DoerModel(sequelize);
 const Task = TaskModel(sequelize);
+
+const Disc = DiscResult(sequelize); 
 
 // Associations (ticketId attribute)
 Lead.hasMany(ResearchEntry, {
@@ -89,5 +93,6 @@ export default {
     Attendance,
     TelegramUser,
     Doer,
-    Task
+    Task,
+    Disc
 };

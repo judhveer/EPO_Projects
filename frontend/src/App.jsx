@@ -12,6 +12,8 @@ import ApprovalForm from './pages/salesPipeline/forms/ApprovalForm.jsx';
 import TelecallForm from './pages/salesPipeline/forms/TelecallForm.jsx';
 import MeetingForm from './pages/salesPipeline/forms/MeetingForm.jsx';
 import CrmForm from './pages/salesPipeline/forms/CrmForm.jsx';
+import ExportLeads from './components/salesPipeline/ExportLeads.jsx';
+import CoordinatorDashboard from './components/salesPipeline/CoordinatorDashboard.jsx';
 
 // Attendance
 import AttendanceDashboard from './components/attendance/AttendanceDashboard';
@@ -21,8 +23,10 @@ import TaskDashboard from './components/taskBot/TaskDashboard';
 import Login from './pages/Login.jsx';
 import Home from './pages/Home.jsx';
 import CreateUser from './pages/CreateUser.jsx';
-import ExportLeads from './components/salesPipeline/ExportLeads.jsx';
-import CoordinatorDashboard from './components/salesPipeline/CoordinatorDashboard.jsx';
+
+// ✅ Public DISC test
+import DiscTest from './pages/discPage/DiscTest.jsx';
+
 
 
 /**
@@ -61,6 +65,10 @@ export default function App() {
 
   return (
     <Routes>
+
+      {/* ✅ PUBLIC ROUTES */}
+      <Route path="/disc-test" element={<DiscTest />} />
+
       {/* Public: /login -> if already authed redirect to /home */}
       <Route
         path="/login"
@@ -163,13 +171,9 @@ export default function App() {
             <Route path="export-leads" element={<ExportLeads />} />
             <Route path="coordinator" element={<CoordinatorDashboard />} />
           </Route>
-
-          {/* wildcard: if unmatched route under protected area, send to home */}
-          <Route path="*" element={<Navigate to={isAuthed ? "/home" : "/login"} replace />} />
         </Route>
-        {/* wildcard: if unmatched route under protected area, send to home */}
-        <Route path="*" element={<Navigate to={isAuthed ? "/home" : "/login"} replace />} />
       </Route>
+
       {/* wildcard: if unmatched route under protected area, send to home */}
       <Route path="*" element={<Navigate to={isAuthed ? "/home" : "/login"} replace />} />
     </Routes>

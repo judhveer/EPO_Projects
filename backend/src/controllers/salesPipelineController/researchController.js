@@ -2,7 +2,8 @@ import db from '../../models/index.js';
 import dotenv from 'dotenv';
 dotenv.config();
 import { ensureLead, transitionStage, generateNextTicketId } from '../../services/salesPipeline/leadService.js';
-import { sendMail, tplNewResearch } from '../../email/salespipeline/mailer.js';
+import {  tplNewResearch } from '../../email/salespipeline/template.js';
+import { sendMail } from "../../email/sendMail.js"
 import { Op } from 'sequelize';
 
 // Create a new research entry, and update the parent lead's snapshot + stage

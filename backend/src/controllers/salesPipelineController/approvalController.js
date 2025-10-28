@@ -4,7 +4,8 @@ dotenv.config();
 import { transitionStage } from '../../services/salesPipeline/leadService.js';
 import { stageMismatch } from '../../middlewares/salesPipeline/error.js';
 
-import { sendMail, tplAssigned } from '../../email/salespipeline/mailer.js';
+import {  tplAssigned } from '../../email/salespipeline/template.js';
+import { sendMail } from "../../email/sendMail.js"
 
 export async function createApproval(req, res, next) {
   const { ticketId, approveStatus, approverRemark, telecallerAssignedTo, approvedBy } = req.body;

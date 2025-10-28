@@ -49,6 +49,11 @@ import { startMonthlyReportJob } from './jobs/attendance/scheduleMonthlyReport.j
 import { startAccountantMonthlyReportJob } from './jobs/attendance/scheduleAccountantMonthlyReport.js';
 import { AttendanceSyncAll } from './jobs/attendance/syncAllData.js';
 
+
+// disc routes
+import discRoutes from "./routes/discResult/discRoutes.js"
+
+
 dotenv.config();
 
 
@@ -83,6 +88,9 @@ const gateByMethod = (permView, permMutate = null) => [
 
 
 app.use('/api/auth', authRoutes);        // POST /api/auth/login, POST /api/auth/users, GET /api/auth/me
+
+
+app.use("/api/disc", discRoutes);
 
 
 
@@ -154,7 +162,7 @@ export async function init() {
   try {
     // assertEnv();
     await models.sequelize.authenticate();
-    await models.sequelize.sync({ alter: false }); // dev only
+    await models.sequelize.sync({ alter: true }); // dev only
     console.log("DB sync successful");
 
     // await attendanceBot.telegram.deleteWebhook();
