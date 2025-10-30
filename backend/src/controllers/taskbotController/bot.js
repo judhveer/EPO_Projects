@@ -7,6 +7,7 @@ import { sequelize } from "../../config/db.js";
 const bot = new Telegraf(process.env.BOT_TOKEN);
 import { extractTaskDetails } from "../../services/taskbot/aiProcessor.js"; // adjust path as needed
 import * as chrono from "chrono-node";
+import stringSimilarity from "string-similarity";
 
 import { format, isToday, isTomorrow } from "date-fns";
 
@@ -38,74 +39,170 @@ function formatDueDate(date) {
 bot.hears(
   /assign|give|create|prepare|design|print|make|complete/i,
   async (ctx) => {
-    const chatId = getChatId(ctx);
+    try {
+      const chatId = getChatId(ctx);
 
-    if (!isBoss(ctx)) {
-      return ctx.reply("❌ Only the Boss can assign tasks using AI mode.");
-    }
+      // 🔒 Only Boss can assign via AI
+      if (!isBoss(ctx)) {
+        return ctx.reply("❌ Only the Boss can assign tasks using AI mode.");
+      }
 
-    const inputText = ctx.message.text.trim();
+      const inputText = ctx.message.text.trim();
+      ctx.reply("🤖 Analyzing your message with AI... please wait.");
 
-    ctx.reply("🤖 Analyzing your message with AI... please wait.");
+      // 1️⃣ Extract task details using AI model
+      const extracted = await extractTaskDetails(inputText);
 
-    // 1️⃣ Extract details from the AI model
-    const extracted = await extractTaskDetails(inputText);
+      if (!extracted || !extracted.doer || !extracted.task) {
+        return ctx.reply(
+          "⚠️ I couldn’t understand your message clearly. Try again like:\n\n_Assign Rahul to print 200 brochures by tomorrow morning — urgent._",
+          { parse_mode: "Markdown" }
+        );
+      }
 
-    if (!extracted || !extracted.doer || !extracted.task) {
-      return ctx.reply(
-        "⚠️ I couldn’t understand your message clearly. Try again like:\n\n_Assign Rahul to print 200 brochures by tomorrow morning — urgent._",
-        {
-          parse_mode: "Markdown",
+      // 2️⃣ Try to find matching doer in DB
+      const allDoers = await db.Doer.findAll({
+        where: { isActive: true },
+        attributes: ["name", "department"],
+      });
+
+      let doer = allDoers.find((d) =>
+        d.name.toLowerCase().includes(extracted.doer.toLowerCase())
+      );
+
+      // 3️⃣ Fuzzy match if no direct match found
+      if (!doer) {
+        const names = allDoers.map((d) => d.name.toLowerCase());
+        const matches = stringSimilarity.findBestMatch(
+          extracted.doer.toLowerCase(),
+          names
+        );
+        const bestMatch = matches.bestMatch;
+
+        if (bestMatch.rating >= 0.4) {
+          const matchedName = bestMatch.target;
+
+          // Ask for confirmation instead of auto-selecting
+          await ctx.reply(
+            `🤖 I couldn't find *${extracted.doer}*, but found a similar name: *${matchedName}*.\nDo you want to use this doer?`,
+            {
+              parse_mode: "Markdown",
+              ...Markup.inlineKeyboard([
+                [
+                  Markup.button.callback(
+                    `✅ Yes, use ${matchedName}`,
+                    `AI_DOER_${matchedName}`
+                  ),
+                ],
+                [Markup.button.callback("❌ No, cancel", "AI_CANCEL")],
+              ]),
+            }
+          );
+
+          // Save session temporarily for this chat
+          taskSession[chatId] = {
+            step: "await_doer_confirm",
+            extracted,  
+            bestMatch: matchedName,
+          };
+          return;
         }
-      );
-    }
 
-    const doer = await db.Doer.findOne({
-      where: {
-        name: {
-          [Op.like]: `%${extracted.doer}%`,
-        },
-        isActive: true,
-      },
-    });
+        // ❌ No close match found
+        return ctx.reply(
+          `⚠️ I couldn't find any active doer similar to *${extracted.doer}*.\nPlease check spelling or ensure they're registered.`,
+          { parse_mode: "Markdown" }
+        );
+      }
 
-    // 🧩 Handle missing doer
-    if (!doer) {
-      return ctx.reply(
-        `⚠️ I couldn't find any active doer matching the name *${extracted.doer}*.\n\nPlease check the spelling or ensure they are registered and active.`,
-        { parse_mode: "Markdown" }
-      );
-    }
+      // 4️⃣ Save temporary AI session for confirmation
+      taskSession[chatId] = {
+        step: "ai_review",
+        ...extracted,
+        doer: doer.name,
+        department: doer.department,
+      };
 
-    // 2️⃣ Save temporary AI session for confirmation
-    taskSession[chatId] = {
-      step: "ai_review",
-      ...extracted,
-      doer: doer.name,
-      department: doer.department,
-    };
-
-    const summary = `
+      // 5️⃣ Create summary message
+      const summary = `
 🧠 *AI Task Suggestion*
 
 👤 Doer: ${doer.name}
 🧾 Task: ${extracted.task}
-⚡ Urgency: ${extracted.urgency || "high"}
+⚡ Urgency: ${extracted.urgency || "High"}
 📅 Due Date: ${extracted.due_date || "Not mentioned"}
 🏢 Department: ${doer.department || "Not specified"}
 
 Would you like to confirm this assignment?
 `;
 
-    ctx.reply(summary, {
+      await ctx.reply(summary, {
+        parse_mode: "Markdown",
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback("✅ Confirm & Assign", "AI_CONFIRM")],
+          [Markup.button.callback("❌ Cancel", "AI_CANCEL")],
+        ]),
+      });
+    } catch (error) {
+      console.error("❌ Error in AI assign handler:", error);
+      ctx.reply("⚠️ Something went wrong while processing your request.");
+    }
+  }
+);
+
+// 🧠 Handle fuzzy doer confirmation (Yes → use matched doer)
+bot.action(/AI_DOER_(.+)/, async (ctx) => {
+  try {
+    const chatId = getChatId(ctx);
+    const matchedName = ctx.match[1];
+    const session = taskSession[chatId];
+
+    if (!session || session.step !== "await_doer_confirm") {
+      return ctx.answerCbQuery("Session expired or invalid.");
+    }
+
+    const doer = await db.Doer.findOne({
+      where: { name: matchedName, isActive: true },
+    });
+
+    if (!doer) {
+      return ctx.reply(`⚠️ Doer *${matchedName}* not found or inactive.`, {
+        parse_mode: "Markdown",
+      });
+    }
+
+    // Update session to review stage
+    taskSession[chatId] = {
+      step: "ai_review",
+      ...session.extracted,
+      doer: doer.name,
+      department: doer.department,
+    };
+
+    const summary = `
+🧠 *AI Task Suggestion (After Name Confirmation)*
+
+👤 Doer: ${doer.name}
+🧾 Task: ${session.extracted.task}
+⚡ Urgency: ${session.extracted.urgency || "High"}
+📅 Due Date: ${session.extracted.due_date || "Not mentioned"}
+🏢 Department: ${doer.department || "Not specified"}
+
+Would you like to confirm this assignment?
+`;
+
+    await ctx.editMessageText(summary, {
       parse_mode: "Markdown",
       ...Markup.inlineKeyboard([
         [Markup.button.callback("✅ Confirm & Assign", "AI_CONFIRM")],
         [Markup.button.callback("❌ Cancel", "AI_CANCEL")],
       ]),
     });
+  } catch (error) {
+    console.error("❌ Error in AI_DOER handler:", error);
+    ctx.reply("⚠️ Something went wrong confirming the doer name.");
   }
-);
+});
 
 // ========== 1. Helper: Check if current user is the Boss ==========
 // Checks if the current ctx is from the Boss by comparing chatId to ROLES.boss

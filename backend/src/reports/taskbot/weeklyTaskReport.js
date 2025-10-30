@@ -6,109 +6,156 @@ import bot from "../../controllers/taskbotController/bot.js";
 import dotenv from "dotenv";
 dotenv.config();
 
+
 export async function generateWeeklyTaskReport() {
-  console.log("Generating week task report...");
+  console.log("📊 Generating Overall Task Performance Report...");
 
-  const today = new Date();
-  const lastWeek = new Date(today);
-  lastWeek.setDate(today.getDate() - 7);
+  try {
+    // 🧩 1️⃣ Fetch all tasks (no time filter)
+    const tasks = await db.Task.findAll();
 
-  // Fetch last week's tasks
-  const tasks = await db.Task.findAll({
-    where: {
-      createdAt: { [Op.between]: [lastWeek, today] },
-    },
-  });
-
-  if (!tasks.length) {
-    console.log("No tasks found this week.");
-    return;
-  }
-
-  const summary = {};
-  for (const t of tasks) {
-    const doer = t.doer;
-    if (!summary[doer]) {
-      summary[doer] = {
-        total: 0,
-        completed: 0,
-        pending: 0,
-        revised: 0,
-        canceled: 0,
-      };
+    if (!tasks.length) {
+      console.log("⚠️ No tasks found in the database.");
+      return;
     }
-    summary[doer].total++;
-    summary[doer][t.status]++;
-  }
 
-  console.log("Task summary:", summary);
+    // 🧮 2️⃣ Build summary per doer
+    const summary = {};
+    for (const t of tasks) {
+      const doer = t.doer;
+      if (!summary[doer]) {
+        summary[doer] = {
+          total: 0,
+          completed: 0,
+          pending: 0,
+          revised: 0,
+          canceled: 0,
+        };
+      }
+      summary[doer].total++;
+      if (summary[doer][t.status] !== undefined) {
+        summary[doer][t.status]++;
+      }
+    }
 
-  // get AI report
-  const aiReport = await generateAIReport(summary);
+    console.log("📈 Aggregated Task Summary:", summary);
 
-  // Build message content
-  const formattedSummary = Object.entries(summary)
-    .map(
-      ([name, s]) =>
-        `👤 *${name}*\n• Total: ${s.total}\n• ✅ Completed: ${s.completed}\n• 🕒 Pending: ${s.pending}\n• 🔁 Revised: ${s.revised}\n• ❌ Canceled: ${s.canceled}`
-    )
-    .join("\n\n");
+    // 🧠 3️⃣ Generate AI Analysis (overall report + remarks)
+    const aiReport = await generateAIReport(summary);
+    const aiRemarks = aiReport.remarks || {};
 
-  const telegramText = `
-📊 *Weekly Task Performance Report*
-_Period: ${lastWeek.toDateString()} → ${today.toDateString()}_
+    // 🧮 4️⃣ Add completion %, benchmark, and AI remark
+    for (const doer of Object.keys(summary)) {
+      const s = summary[doer];
+      s.completion_rate = s.total
+        ? ((s.completed / s.total) * 100).toFixed(1)
+        : "0.0";
+
+      if (s.completion_rate >= 90) s.benchmark_rating = "🌟 Excellent";
+      else if (s.completion_rate >= 75) s.benchmark_rating = "👍 Good";
+      else if (s.completion_rate >= 50) s.benchmark_rating = "⚠️ Average";
+      else s.benchmark_rating = "❌ Poor";
+
+      s.remarks =
+        aiRemarks[doer] ||
+        "No AI remark available — insufficient data or new employee.";
+    }
+
+    // 🧾 5️⃣ Telegram message summary
+    const formattedSummary = Object.entries(summary)
+      .map(
+        ([name, s]) => `
+👤 *${name}*
+• Total: ${s.total}
+• ✅ Completed: ${s.completed}
+• 🕒 Pending: ${s.pending}
+• 🔁 Revised: ${s.revised}
+• ❌ Canceled: ${s.canceled}
+• 📈 Completion Rate: ${s.completion_rate}%
+• 🏅 Benchmark: ${s.benchmark_rating}
+🗒️ Remark: _${s.remarks}_
+`
+      )
+      .join("\n");
+
+    const telegramText = `
+📊 *Overall Task Performance Report*
+_(All-time performance of every doer)_
 
 ${formattedSummary}
 
 🧠 *AI Analysis Summary:*
 ${aiReport.summary}
 
-🏅 *Top Performers:* ${aiReport.top_performers?.join(", ") || "None"}
+🏆 *Top Performers:* ${aiReport.top_performers?.join(", ") || "None"}
 ⭐ *Overall Rating:* ${aiReport.overall_rating}
 `;
 
-  // email
-  const htmlReport = `
-    <h2>📊 Weekly Task Performance Report</h2>
-    <p><b>Period:</b> ${lastWeek.toDateString()} - ${today.toDateString()}</p>
-    <hr/>
-    <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse;">
-      <tr><th>Doer</th><th>Total</th><th>Completed</th><th>Pending</th><th>Revised</th><th>Canceled</th></tr>
-      ${Object.entries(summary)
-        .map(
-          ([doer, s]) => `
+    // 📧 6️⃣ Build HTML Report for email
+    const htmlReport = `
+      <h2>📊 Overall Task Performance Report</h2>
+      <p><b>Data Range:</b> All-time tasks from database</p>
+      <hr/>
+      <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: Arial;">
+        <thead style="background-color: #f8f9fa;">
           <tr>
-            <td>${doer}</td>
-            <td>${s.total}</td>
-            <td>${s.completed}</td>
-            <td>${s.pending}</td>
-            <td>${s.revised}</td>
-            <td>${s.canceled}</td>
-          </tr>`
-        )
-        .join("")}
-    </table>
-    <hr/>
-    <h3>🧠 AI Insights</h3>
-    <p>${aiReport.summary}</p>
-    <p><b>Top Performers:</b> ${
-      aiReport.top_performers?.join(", ") || "None"
-    }</p>
-    <p><b>Overall Rating:</b> ${aiReport.overall_rating}</p>
-  `;
+            <th>Doer</th>
+            <th>Total</th>
+            <th>Completed</th>
+            <th>Pending</th>
+            <th>Revised</th>
+            <th>Canceled</th>
+            <th>Completion %</th>
+            <th>Benchmark Rating</th>
+            <th>AI Remark</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${Object.entries(summary)
+            .map(
+              ([doer, s]) => `
+              <tr>
+                <td>${doer}</td>
+                <td>${s.total}</td>
+                <td>${s.completed}</td>
+                <td>${s.pending}</td>
+                <td>${s.revised}</td>
+                <td>${s.canceled}</td>
+                <td>${s.completion_rate}%</td>
+                <td>${s.benchmark_rating}</td>
+                <td>${s.remarks}</td>
+              </tr>`
+            )
+            .join("")}
+        </tbody>
+      </table>
+      <hr/>
+      <h3>🧠 AI Insights</h3>
+      <p>${aiReport.summary}</p>
+      <p><b>Top Performers:</b> ${
+        aiReport.top_performers?.join(", ") || "None"
+      }</p>
+      <p><b>Overall Rating:</b> ${aiReport.overall_rating}</p>
+    `;
 
-  await sendMail({
-    to: process.env.TASK_REPORT_EMAIL,
-    subject: "📅 Weekly Task Performance Report",
-    text: telegramText.replace(/\*/g, ""),
-    html: htmlReport,
-  });
+    // ✉️ 7️⃣ Send email
+    await sendMail({
+      to: process.env.TASK_REPORT_EMAIL,
+      subject: "📈 Overall Task Performance Report",
+      text: telegramText.replace(/\*/g, ""),
+      html: htmlReport,
+    });
 
-  console.log("📧 Weekly Task Report emailed successfully!");
+    console.log("📧 Overall Task Report emailed successfully!");
 
-  // send telegram message
-  await sendTelegramMessage(telegramText);
+    // 💬 8️⃣ Send Telegram message
+    await sendTelegramMessage(telegramText);
+  } catch (error) {
+    console.error("❌ Error generating overall report:", error.message);
+  }
 }
+
+
 
 // --- Helper: Send Telegram Message ---
 async function sendTelegramMessage(text) {
