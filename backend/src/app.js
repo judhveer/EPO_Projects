@@ -49,6 +49,9 @@ import { startMonthlyReportJob } from './jobs/attendance/scheduleMonthlyReport.j
 import { startAccountantMonthlyReportJob } from './jobs/attendance/scheduleAccountantMonthlyReport.js';
 import { AttendanceSyncAll } from './jobs/attendance/syncAllData.js';
 
+//Taskbot jobs
+ import { startTaskReportJob } from "./jobs/taskbot/scheduleReports.js";
+
 
 // disc routes
 import discRoutes from "./routes/discResult/discRoutes.js"
@@ -180,6 +183,7 @@ export async function init() {
     startMonthlyReportJob();
     startAccountantMonthlyReportJob();
     AttendanceSyncAll();
+    startTaskReportJob();
 
   }
   catch (err) {

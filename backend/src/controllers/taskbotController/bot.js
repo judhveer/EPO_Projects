@@ -10,16 +10,12 @@ import * as chrono from "chrono-node";
 
 import { format, isToday, isTomorrow } from "date-fns";
 
-
-
 const ROLES = {
   // boss: 7724001439,         // ← replace with your Telegram ID
   // ea: 1359630106            // ← EA's Telegram ID
   boss: Number(process.env.BOSS_TELEGRAM_ID),
   ea: Number(process.env.EA_TELEGRAM_ID),
 };
-
-
 
 // =======================================================
 // 🤖 AI-POWERED TASK ASSIGNMENT FEATURE
@@ -38,7 +34,6 @@ function formatDueDate(date) {
 
   return format(date, "dd MMM yyyy, h:mm a");
 }
-
 
 bot.hears(
   /assign|give|create|prepare|design|print|make|complete/i,
@@ -65,8 +60,6 @@ bot.hears(
       );
     }
 
-    
-
     const doer = await db.Doer.findOne({
       where: {
         name: {
@@ -76,17 +69,23 @@ bot.hears(
       },
     });
 
+    // 🧩 Handle missing doer
+    if (!doer) {
+      return ctx.reply(
+        `⚠️ I couldn't find any active doer matching the name *${extracted.doer}*.\n\nPlease check the spelling or ensure they are registered and active.`,
+        { parse_mode: "Markdown" }
+      );
+    }
 
     // 2️⃣ Save temporary AI session for confirmation
     taskSession[chatId] = {
       step: "ai_review",
       ...extracted,
       doer: doer.name,
-      department: doer.department
+      department: doer.department,
     };
 
-    if (doer) {
-      const summary = `
+    const summary = `
 🧠 *AI Task Suggestion*
 
 👤 Doer: ${doer.name}
@@ -98,15 +97,13 @@ bot.hears(
 Would you like to confirm this assignment?
 `;
 
-
-      ctx.reply(summary, {
-        parse_mode: "Markdown",
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback("✅ Confirm & Assign", "AI_CONFIRM")],
-          [Markup.button.callback("❌ Cancel", "AI_CANCEL")],
-        ]),
-      });
-    }
+    ctx.reply(summary, {
+      parse_mode: "Markdown",
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback("✅ Confirm & Assign", "AI_CONFIRM")],
+        [Markup.button.callback("❌ Cancel", "AI_CANCEL")],
+      ]),
+    });
   }
 );
 
@@ -2228,7 +2225,7 @@ bot.action("AI_CONFIRM", async (ctx) => {
     );
   }
 
-// 🧠 Parse human-readable due date
+  // 🧠 Parse human-readable due date
   let parsedDate = null;
   if (due_date) {
     if (["asap", "soon", "urgent"].includes(due_date.toLowerCase())) {
@@ -2238,7 +2235,7 @@ bot.action("AI_CONFIRM", async (ctx) => {
     }
   }
 
-    // 🧾 Format date for display
+  // 🧾 Format date for display
   const displayDate = formatDueDate(parsedDate);
 
   // 2️⃣ Save in DB
@@ -2267,25 +2264,25 @@ ${task}
 📅 *Due Date:* ${displayDate}
 
 Please take appropriate action below if required.`,
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "🗓️ Request Extension",
-                  callback_data: `TASK_EXT_${newTask.id}`,
-                },
-              ],
-              [
-                {
-                  text: "🚫 Request Cancellation",
-                  callback_data: `TASK_CANCEL_${newTask.id}`,
-                },
-              ],
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🗓️ Request Extension",
+                callback_data: `TASK_EXT_${newTask.id}`,
+              },
             ],
-          },
-        }
+            [
+              {
+                text: "🚫 Request Cancellation",
+                callback_data: `TASK_CANCEL_${newTask.id}`,
+              },
+            ],
+          ],
+        },
+      }
     );
   }
 
@@ -2304,11 +2301,6 @@ Please take appropriate action below if required.`,
   clearSessions(chatId);
   showOptions(ctx);
 });
-
-
-
-
-
 
 bot.action("AI_CANCEL", (ctx) => {
   const chatId = getChatId(ctx);
