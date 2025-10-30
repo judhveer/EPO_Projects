@@ -204,6 +204,125 @@ Would you like to confirm this assignment?
   }
 });
 
+
+
+// =======================================================
+// ✅ AI CONFIRMATION & TASK CREATION
+// =======================================================
+
+bot.action("AI_CONFIRM", async (ctx) => {
+  const chatId = getChatId(ctx);
+  const session = taskSession[chatId];
+
+  if (!session || session.step !== "ai_review") {
+    return ctx.reply("⚠️ No AI task in progress. Please start again.");
+  }
+
+  const { doer, task, urgency, due_date, department } = session;
+
+  console.log("session: ", session);
+
+  // 1️⃣ Find matching doer
+  const doerRecord = await db.Doer.findOne({
+    where: { name: doer.toUpperCase(), isActive: true },
+  });
+
+  if (!doerRecord) {
+    clearSessions(chatId);
+    return ctx.reply(
+      `⚠️ Couldn’t find a doer named *${doer}*. Please check spelling or assign manually.`,
+      { parse_mode: "Markdown" }
+    );
+  }
+
+  // 🧠 Parse human-readable due date
+  let parsedDate = null;
+  if (due_date) {
+    if (["asap", "soon", "urgent"].includes(due_date.toLowerCase())) {
+      parsedDate = new Date();
+    } else {
+      parsedDate = chrono.parseDate(due_date);
+    }
+  }
+
+  // 🧾 Format date for display
+  const displayDate = formatDueDate(parsedDate);
+
+  // 2️⃣ Save in DB
+  const newTask = await db.Task.create({
+    task,
+    doer: doerRecord.name,
+    urgency: urgency || "medium",
+    dueDate: parsedDate,
+    department: department || doerRecord.department,
+  });
+
+  ctx.reply(`✅ Task assigned to ${doerRecord.name} successfully!`);
+
+  // 📢 Notify Doer
+  if (doerRecord.telegramId) {
+    await bot.telegram.sendMessage(
+      doerRecord.telegramId,
+      `📥 *You Have a New Task Assigned!*
+
+━━━━━━━━━━━━━━━━━━
+🧾 *Task:*  
+${task}
+
+⚡ *Urgency:* ${urgency || "medium"}
+
+📅 *Due Date:* ${displayDate}
+
+Please take appropriate action below if required.`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🗓️ Request Extension",
+                callback_data: `TASK_EXT_${newTask.id}`,
+              },
+            ],
+            [
+              {
+                text: "🚫 Request Cancellation",
+                callback_data: `TASK_CANCEL_${newTask.id}`,
+              },
+            ],
+          ],
+        },
+      }
+    );
+  }
+
+  // 📋 Notify EA
+  await bot.telegram.sendMessage(
+    ROLES.ea,
+    `🧾 *AI Task Notification (EA)*
+
+👤 Doer: ${doer}
+🧾 Task: ${task}
+⚡ Urgency: ${urgency || "medium"}
+📅 Due: ${displayDate}`,
+    { parse_mode: "Markdown" }
+  );
+
+  clearSessions(chatId);
+  showOptions(ctx);
+});
+
+bot.action("AI_CANCEL", (ctx) => {
+  const chatId = getChatId(ctx);
+  clearSessions(chatId);
+  ctx.reply("❌ AI Task cancelled. Returning to main menu.");
+  showOptions(ctx);
+});
+
+
+
+
+
 // ========== 1. Helper: Check if current user is the Boss ==========
 // Checks if the current ctx is from the Boss by comparing chatId to ROLES.boss
 function isBoss(ctx) {
@@ -1553,6 +1672,7 @@ bot.action(/^EXT_REJECT_(\d+)$/, async (ctx) => {
 let taskSession = {};
 const broadcastSessions = {};
 const broadcastDraft = {}; // Stores the draft for each boss
+const broadcastType = {}; // track "text" or "image"
 
 // Helper: Wipe any existing session for this user
 function clearSessions(chatId) {
@@ -2168,75 +2288,161 @@ bot.action("STATUS_CANCELLED", async (ctx) => {
 
 bot.action("BROADCAST", async (ctx) => {
   const chatId = getChatId(ctx);
-  clearSessions(chatId);
-  if (chatId !== ROLES.boss) {
-    return ctx.reply("❌ Only Boss can broadcast messages.");
+  if (!isBoss(ctx)) {
+    return ctx.reply("❌ Only the Boss can broadcast messages.");
   }
-  broadcastSessions[chatId] = true;
-  await ctx.reply(
-    "📝 Please type the message you want to broadcast to all Doers:"
-  );
+
+  // Ask what type of broadcast Boss wants
+  await ctx.reply("📢 What type of message do you want to broadcast?", {
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback("📝 Text Message", "BROADCAST_TEXT")],
+      [Markup.button.callback("🖼️ Image + Caption", "BROADCAST_IMAGE")],
+      [Markup.button.callback("❌ Cancel", "BROADCAST_CANCEL")],
+    ]),
+  });
 });
 
-// When boss types the message:
+/* ------------------------------------------------------
+ * 📝 TEXT MESSAGE FLOW
+ * ------------------------------------------------------ */
+bot.action("BROADCAST_TEXT", async (ctx) => {
+  const chatId = getChatId(ctx);
+  broadcastType[chatId] = "text";
+  broadcastSessions[chatId] = true;
+
+  await ctx.reply("📝 Please type the message you want to broadcast to all doers:");
+});
+
 bot.on("text", async (ctx, next) => {
   const chatId = getChatId(ctx);
 
-  // Only for broadcast mode
+  // Only handle if in broadcast mode
   if (!broadcastSessions[chatId]) return next();
 
+  const type = broadcastType[chatId];
   const message = ctx.message.text;
-  broadcastDraft[chatId] = message; // Save the draft
 
-  // Show confirmation buttons
-  await ctx.reply(
-    `📝 *Preview your message:*\n\n${message}\n\nSend to all doers?`,
-    {
+  if (type === "text") {
+    broadcastDraft[chatId] = { text: message };
+
+    await ctx.reply(
+      `📝 *Preview your message:*\n\n${message}\n\nSend to all doers?`,
+      {
+        parse_mode: "Markdown",
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback("✅ Send", "BROADCAST_SEND")],
+          [Markup.button.callback("❌ Cancel", "BROADCAST_CANCEL")],
+        ]),
+      }
+    );
+    broadcastSessions[chatId] = false;
+  } else if (type === "image_waiting_caption") {
+    // Image flow second step: caption
+    broadcastDraft[chatId].caption = message;
+    broadcastType[chatId] = "image_ready";
+
+    await ctx.reply(
+      "🖼️ *Preview:*",
+      { parse_mode: "Markdown" }
+    );
+    await ctx.replyWithPhoto(broadcastDraft[chatId].photo, {
+      caption: broadcastDraft[chatId].caption || "",
       parse_mode: "Markdown",
+    });
+
+    await ctx.reply("Send this image and caption to all doers?", {
       ...Markup.inlineKeyboard([
         [Markup.button.callback("✅ Send", "BROADCAST_SEND")],
         [Markup.button.callback("❌ Cancel", "BROADCAST_CANCEL")],
       ]),
-    }
-  );
-  // End broadcast mode, but wait for confirmation
-  broadcastSessions[chatId] = false;
+    });
+  }
 });
 
+/* ------------------------------------------------------
+ * 🖼️ IMAGE MESSAGE FLOW
+ * ------------------------------------------------------ */
+bot.action("BROADCAST_IMAGE", async (ctx) => {
+  const chatId = getChatId(ctx);
+  broadcastType[chatId] = "image";
+  broadcastSessions[chatId] = true;
+
+  await ctx.reply("📸 Please send the image you want to broadcast.");
+});
+
+
+// Handle when Boss sends an image
+bot.on("photo", async (ctx) => {
+  const chatId = getChatId(ctx);
+
+  if (!broadcastSessions[chatId] || broadcastType[chatId] !== "image") return;
+
+  const fileId = ctx.message.photo.pop().file_id;
+  broadcastDraft[chatId] = { photo: fileId };
+  broadcastType[chatId] = "image_waiting_caption"; // now expect caption
+  await ctx.reply("📝 Now, please send a caption for this image.");
+});
+
+
+/* ------------------------------------------------------
+ * ✅ CONFIRM & SEND BROADCAST
+ * ------------------------------------------------------ */
 bot.action("BROADCAST_SEND", async (ctx) => {
   const chatId = getChatId(ctx);
-  const message = broadcastDraft[chatId];
 
-  if (ctx.chat.id !== ROLES.boss || !message) {
-    return ctx.reply("❌ No message to send.");
-  }
+  if (!isBoss(ctx)) return ctx.reply("❌ Only the Boss can send broadcasts.");
+
+  const draft = broadcastDraft[chatId];
+  if (!draft) return ctx.reply("⚠️ No message or image to broadcast.");
 
   const doers = await db.Doer.findAll({
-    where: { telegramId: { [Op.not]: null } },
+    where: { telegramId: { [Op.not]: null }, isActive: true },
   });
 
   for (const doer of doers) {
     try {
-      await bot.telegram.sendMessage(
-        doer.telegramId,
-        `📢 *Message from Boss:*\n\n${message}`,
-        { parse_mode: "Markdown" }
-      );
+      if (draft.photo) {
+        // send image broadcast
+        await bot.telegram.sendPhoto(doer.telegramId, draft.photo, {
+          caption: draft.caption
+            ? `📢 *Message from Boss:*\n\n${draft.caption}`
+            : "📢 *Message from Boss:*",
+          parse_mode: "Markdown",
+        });
+      } else {
+        // send text broadcast
+        await bot.telegram.sendMessage(
+          doer.telegramId,
+          `📢 *Message from Boss:*\n\n${draft.text}`,
+          { parse_mode: "Markdown" }
+        );
+      }
     } catch (e) {
-      console.error(`❌ Failed to message doer ${doer.name}:`, e);
+      console.error(`❌ Failed to message ${doer.name}:`, e.message);
     }
   }
 
-  await ctx.reply("✅ Broadcast sent to all doers!");
-  clearSessions(chatId);
+  await ctx.reply("✅ Broadcast sent successfully to all doers!");
+  clearBroadcast(chatId);
 });
 
+/* ------------------------------------------------------
+ * ❌ CANCEL BROADCAST
+ * ------------------------------------------------------ */
 bot.action("BROADCAST_CANCEL", async (ctx) => {
   const chatId = getChatId(ctx);
-
+  clearBroadcast(chatId);
   await ctx.reply("❌ Broadcast cancelled.");
-  clearSessions(chatId);
 });
+
+/* ------------------------------------------------------
+ * 🧹 Utility
+ * ------------------------------------------------------ */
+function clearBroadcast(chatId) {
+  delete broadcastSessions[chatId];
+  delete broadcastDraft[chatId];
+  delete broadcastType[chatId];
+}
 
 bot.on("text", (ctx) => {
   const chatId = getChatId(ctx);
@@ -2293,141 +2499,7 @@ bot.command("help", (ctx) => {
   }
 });
 
-// =======================================================
-// ✅ AI CONFIRMATION & TASK CREATION
-// =======================================================
 
-bot.action("AI_CONFIRM", async (ctx) => {
-  const chatId = getChatId(ctx);
-  const session = taskSession[chatId];
-
-  if (!session || session.step !== "ai_review") {
-    return ctx.reply("⚠️ No AI task in progress. Please start again.");
-  }
-
-  const { doer, task, urgency, due_date, department } = session;
-
-  console.log("session: ", session);
-
-  // 1️⃣ Find matching doer
-  const doerRecord = await db.Doer.findOne({
-    where: { name: doer.toUpperCase(), isActive: true },
-  });
-
-  if (!doerRecord) {
-    clearSessions(chatId);
-    return ctx.reply(
-      `⚠️ Couldn’t find a doer named *${doer}*. Please check spelling or assign manually.`,
-      { parse_mode: "Markdown" }
-    );
-  }
-
-  // 🧠 Parse human-readable due date
-  let parsedDate = null;
-  if (due_date) {
-    if (["asap", "soon", "urgent"].includes(due_date.toLowerCase())) {
-      parsedDate = new Date();
-    } else {
-      parsedDate = chrono.parseDate(due_date);
-    }
-  }
-
-  // 🧾 Format date for display
-  const displayDate = formatDueDate(parsedDate);
-
-  // 2️⃣ Save in DB
-  const newTask = await db.Task.create({
-    task,
-    doer: doerRecord.name,
-    urgency: urgency || "medium",
-    dueDate: parsedDate,
-    department: department || doerRecord.department,
-  });
-
-  ctx.reply(`✅ Task assigned to ${doerRecord.name} successfully!`);
-
-  // 📢 Notify Doer
-  if (doerRecord.telegramId) {
-    await bot.telegram.sendMessage(
-      doerRecord.telegramId,
-      `📥 *You Have a New Task Assigned!*
-
-━━━━━━━━━━━━━━━━━━
-🧾 *Task:*  
-${task}
-
-⚡ *Urgency:* ${urgency || "medium"}
-
-📅 *Due Date:* ${displayDate}
-
-Please take appropriate action below if required.`,
-      {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "🗓️ Request Extension",
-                callback_data: `TASK_EXT_${newTask.id}`,
-              },
-            ],
-            [
-              {
-                text: "🚫 Request Cancellation",
-                callback_data: `TASK_CANCEL_${newTask.id}`,
-              },
-            ],
-          ],
-        },
-      }
-    );
-  }
-
-  // 📋 Notify EA
-  await bot.telegram.sendMessage(
-    ROLES.ea,
-    `🧾 *AI Task Notification (EA)*
-
-👤 Doer: ${doer}
-🧾 Task: ${task}
-⚡ Urgency: ${urgency || "medium"}
-📅 Due: ${displayDate}`,
-    { parse_mode: "Markdown" }
-  );
-
-  clearSessions(chatId);
-  showOptions(ctx);
-});
-
-bot.action("AI_CANCEL", (ctx) => {
-  const chatId = getChatId(ctx);
-  clearSessions(chatId);
-  ctx.reply("❌ AI Task cancelled. Returning to main menu.");
-  showOptions(ctx);
-});
 
 export default bot;
 
-// const { Scenes, session } from 'telegraf');
-
-// const stepHandler = new Scenes.WizardScene(
-//   'my-wizard',
-//   (ctx) => {
-//     ctx.reply('Step 1');
-//     return ctx.wizard.next();
-//   },
-//   (ctx) => {
-//     ctx.reply('Step 2');
-//     return ctx.wizard.next();
-//   },
-//   (ctx) => {
-//     ctx.reply('Finished!');
-//     return ctx.scene.leave();
-//   }
-// );
-
-// const stage = new Scenes.Stage([stepHandler]);
-// bot.use(session());
-// bot.use(stage.middleware());
-
-// bot.command('wizard', (ctx) => ctx.scene.enter('my-wizard'));
