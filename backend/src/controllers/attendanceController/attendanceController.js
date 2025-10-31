@@ -196,8 +196,7 @@ async function syncAttendance(req, res) {
         late_minutes = "00:00:00";
       }
 
-      // Auto check-out at 6 PM if not out and now is after 10 PM
-      console.log(typeof nowIST.hour);
+      // Auto check-out at 6 PM if not out and now is after 10 PM   
       if (!check_out_time && nowIST.hour >= 22) {
         check_out_time = nowIST.toFormat('dd/LL/yyyy') + ' 18:00:00';
       }
