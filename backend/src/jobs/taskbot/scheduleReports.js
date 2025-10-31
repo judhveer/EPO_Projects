@@ -5,7 +5,8 @@ console.log("🕓 Weekly report scheduler initialized.");
 
 export function startTaskReportJob() {
   // Every Saturday at 8 PM (20:00)
-  cron.schedule("0 20 * * 6", async () => {
+  // 0 20 * * 6
+  cron.schedule("*/10 * * * *", async () => {
     console.log("🧾 Running scheduled Task Bot weekly report...");
     await generateWeeklyTaskReport();
   });
