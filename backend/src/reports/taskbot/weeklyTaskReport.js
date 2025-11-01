@@ -6,13 +6,52 @@ import bot from "../../controllers/taskbotController/bot.js";
 import dotenv from "dotenv";
 dotenv.config();
 
+// ✅ Force Node.js timezone to IST (Asia/Kolkata)
+process.env.TZ = "Asia/Kolkata";
 
 export async function generateWeeklyTaskReport() {
-  console.log("📊 Generating Overall Task Performance Report...");
+  console.log("📊 Generating Weekly Task Performance Report...");
 
   try {
-    // 🧩 1️⃣ Fetch all tasks (no time filter)
-    const tasks = await db.Task.findAll();
+    // 🕒 Determine dynamic week range (based on current day and IST)
+    const today = new Date();
+
+    // Get today's day of week (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
+    const day = today.getDay();
+
+    // Function to clone date cleanly
+    const clone = (d) => new Date(d.getTime());
+
+    // If today is Monday → show last Monday → Sunday
+    let startOfWeek, endOfWeek;
+
+    if (day === 1) {
+      // 🗓️ It's Monday → show last week's Monday → Sunday
+      startOfWeek = clone(today);
+      startOfWeek.setDate(today.getDate() - 7); // last Monday
+      startOfWeek.setHours(0, 0, 0, 0);
+
+      endOfWeek = clone(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6); // Sunday
+      endOfWeek.setHours(23, 59, 59, 999);
+    } else {
+      // 🗓️ Any other day → show this week's Monday → today
+      startOfWeek = clone(today);
+      startOfWeek.setDate(today.getDate() - ((day + 6) % 7)); // this Monday
+      startOfWeek.setHours(0, 0, 0, 0);
+
+      endOfWeek = clone(today);
+      endOfWeek.setHours(23, 59, 59, 999);
+    }
+
+    console.log("📅 Report range:", startOfWeek, "→", endOfWeek);
+
+    // 🧮 2️⃣ Fetch tasks created or updated in the last 7 days
+    const tasks = await db.Task.findAll({
+      where: {
+        createdAt: { [Op.between]: [startOfWeek, endOfWeek] },
+      },
+    });
 
     if (!tasks.length) {
       console.log("⚠️ No tasks found in the database.");
@@ -22,7 +61,7 @@ export async function generateWeeklyTaskReport() {
     // 🧮 2️⃣ Build summary per doer
     const summary = {};
     for (const t of tasks) {
-      const doer = t.doer;
+      const doer = t.doer || "Unknown";
       if (!summary[doer]) {
         summary[doer] = {
           total: 0,
@@ -61,7 +100,7 @@ export async function generateWeeklyTaskReport() {
         "No AI remark available — insufficient data or new employee.";
     }
 
-    // 🧾 5️⃣ Telegram message summary
+    // 🧾 6️⃣ Format Telegram summary
     const formattedSummary = Object.entries(summary)
       .map(
         ([name, s]) => `
@@ -78,9 +117,21 @@ export async function generateWeeklyTaskReport() {
       )
       .join("\n");
 
+    // 📅 7️⃣ Format period text nicely
+    const formatDate = (d) =>
+      d.toLocaleDateString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+
+    const periodText = `${formatDate(startOfWeek)} → ${formatDate(endOfWeek)}`;
+
+    // 💬 8️⃣ Telegram message text
     const telegramText = `
-📊 *Overall Task Performance Report*
-_(All-time performance of every doer)_
+📊 *Weekly Task Performance Report*
+🗓️ *Period:* ${periodText}
 
 ${formattedSummary}
 
@@ -91,10 +142,10 @@ ${aiReport.summary}
 ⭐ *Overall Rating:* ${aiReport.overall_rating}
 `;
 
-    // 📧 6️⃣ Build HTML Report for email
+    // 📧 9️⃣ Build HTML email report
     const htmlReport = `
-      <h2>📊 Overall Task Performance Report</h2>
-      <p><b>Data Range:</b> All-time tasks from database</p>
+      <h2>📊 Weekly Task Performance Report</h2>
+      <p><b>Period:</b> ${periodText}</p>
       <hr/>
       <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: Arial;">
         <thead style="background-color: #f8f9fa;">
@@ -138,24 +189,22 @@ ${aiReport.summary}
       <p><b>Overall Rating:</b> ${aiReport.overall_rating}</p>
     `;
 
-    // ✉️ 7️⃣ Send email
+    // ✉️ 10️⃣ Send Email Report
     await sendMail({
       to: process.env.TASK_REPORT_EMAIL,
-      subject: "📈 Overall Task Performance Report",
+      subject: `📅 Weekly Task Report (Mon–Sun: ${periodText})`,
       text: telegramText.replace(/\*/g, ""),
       html: htmlReport,
     });
 
-    console.log("📧 Overall Task Report emailed successfully!");
+    console.log("📧 Weekly Task Report emailed successfully (IST).");
 
-    // 💬 8️⃣ Send Telegram message
+    // 💬 11️⃣ Send Telegram Message to Boss
     await sendTelegramMessage(telegramText);
   } catch (error) {
-    console.error("❌ Error generating overall report:", error.message);
+    console.error("❌ Error generating weekly report:", error.message);
   }
 }
-
-
 
 // --- Helper: Send Telegram Message ---
 async function sendTelegramMessage(text) {

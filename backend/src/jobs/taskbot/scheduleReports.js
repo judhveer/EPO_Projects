@@ -4,9 +4,9 @@ import { generateWeeklyTaskReport } from "../../reports/taskbot/weeklyTaskReport
 console.log("🕓 Weekly report scheduler initialized.");
 
 export function startTaskReportJob() {
-  // Every Saturday at 8 PM (20:00)
-  // 0 20 * * 6
-  cron.schedule("0 18 * * 6", async () => {
+  // Every Monday at 10 AM (10:00)
+  // "0 10 * * MON"
+  cron.schedule("0 10 * * MON", async () => {
     console.log("🧾 Running scheduled Task Bot weekly report...");
     await generateWeeklyTaskReport();
   }, { timezone: "Asia/Kolkata" } );
