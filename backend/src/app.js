@@ -57,6 +57,12 @@ import { AttendanceSyncAll } from './jobs/attendance/syncAllData.js';
 import discRoutes from "./routes/discResult/discRoutes.js"
 
 
+// jobFms Routes
+import jobCardRoutes from "./routes/jobFmsRoutes/jobCard.routes.js";
+
+
+
+
 dotenv.config();
 
 
@@ -145,9 +151,19 @@ app.use('/api/tasks',
   requirePermission('ea.dashboard.view'), taskRoutes);
 
 
+
+// Job FMS Routes
+app.use("/api/fms/jobcards",
+  authenticate,
+  jobCardRoutes
+);
+
+
 // error handling middlewares
 app.use(notFound);
 app.use(errorHandler);
+
+
 
 // --- Bot & Scheduler Flags ---
 let attendanceBotRunning = false;

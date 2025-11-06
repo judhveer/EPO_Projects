@@ -80,7 +80,7 @@ const AttendanceDashboard = () => {
     return (
         <div className="min-h-screen bg-gray-50 p-6 max-w-7xl mx-auto">
             {/* Header with Refresh + Sync Buttons */}
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4"> 
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">Employee Attendance Dashboard</h1>
                     <p className="text-gray-600 mt-1">Track and manage employee attendance records</p>
@@ -88,7 +88,7 @@ const AttendanceDashboard = () => {
                         <p className="text-xs text-gray-500 mt-1">Last synced: {new Date(lastSyncAt).toLocaleString('en-IN')}</p>
                     )}
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
                     <button
                         onClick={fetchData}
                         className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold shadow hover:from-indigo-600 hover:to-purple-700 transition"

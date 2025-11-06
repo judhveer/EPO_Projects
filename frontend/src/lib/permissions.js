@@ -9,6 +9,11 @@ export function can(user, perm) {
 
     const { role, department: dept } = user;
 
+    // 🔹 Boss/Admin can do everything
+    if (SUPER.has(role)) {
+        return true;
+    }
+
     if (perm === 'attendance.view') {
         return true;
     }
@@ -37,12 +42,42 @@ export function can(user, perm) {
 
     // Mutations - Admin / Boss: view-only in UI
     switch (perm) {
-        case 'sales.research.mutate': return isSalesDept(dept) && role === 'RESEARCH';
-        case 'sales.approval.mutate': return isSalesDept(dept) && role === 'COORDINATOR';
-        case 'sales.telecall.mutate': return isSalesDept(dept) && role === 'TELECALLER';
-        case 'sales.meeting.mutate': return isSalesDept(dept) && role === 'EXECUTIVE';
-        case 'sales.crm.mutate': return isSalesDept(dept) && role === 'CRM';
-        default: return false;
-    }
+        case 'sales.research.mutate': 
+            return isSalesDept(dept) && role === 'RESEARCH';
+
+        case 'sales.approval.mutate': 
+            return isSalesDept(dept) && role === 'COORDINATOR';
+
+        case 'sales.telecall.mutate': 
+            return isSalesDept(dept) && role === 'TELECALLER';
+
+        case 'sales.meeting.mutate': 
+            return isSalesDept(dept) && role === 'EXECUTIVE';
+
+        case 'sales.crm.mutate': 
+            return isSalesDept(dept) && role === 'CRM';
+
+        // default: return false;
+        case 'jobfms.writer.view':
+            return dept === 'Job Writer' || dept === 'Admin';
+
+        case 'jobfms.coordinator.view':
+            return dept === 'Process Coordinator';
+
+        case 'jobfms.designer.view':
+            return dept === 'Designer';
+
+        case 'jobfms.crm.view':
+            return dept === 'CRM';
+
+        default:
+            return false;
+    }         
+
+    // JOB FMS Permissions
+    // 🔹 🔵 NEW: Job FMS Permissions
+    // switch (perm) {
+        
+    // }
 
 }

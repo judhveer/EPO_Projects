@@ -1,33 +1,38 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import ProtectedRoute from './components/ProtectedRoute.jsx';
-import { Gate } from './components/Permission.jsx';
-import AppShell from './components/AppShell.jsx';
+import React, { useCallback, useEffect, useState } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
+import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import { Gate } from "./components/Permission.jsx";
+import AppShell from "./components/AppShell.jsx";
 
-import Layout from './components/salesPipeline/Layout.jsx';
-import Dashboard from './pages/salesPipeline/Dashboard.jsx';
-import LeadDetail from './pages/salesPipeline/LeadDetail.jsx';
-import ResearchForm from './pages/salesPipeline/forms/ResearchForm.jsx';
-import ApprovalForm from './pages/salesPipeline/forms/ApprovalForm.jsx';
-import TelecallForm from './pages/salesPipeline/forms/TelecallForm.jsx';
-import MeetingForm from './pages/salesPipeline/forms/MeetingForm.jsx';
-import CrmForm from './pages/salesPipeline/forms/CrmForm.jsx';
-import ExportLeads from './components/salesPipeline/ExportLeads.jsx';
-import CoordinatorDashboard from './components/salesPipeline/CoordinatorDashboard.jsx';
+import Layout from "./components/salesPipeline/Layout.jsx";
+import Dashboard from "./pages/salesPipeline/Dashboard.jsx";
+import LeadDetail from "./pages/salesPipeline/LeadDetail.jsx";
+import ResearchForm from "./pages/salesPipeline/forms/ResearchForm.jsx";
+import ApprovalForm from "./pages/salesPipeline/forms/ApprovalForm.jsx";
+import TelecallForm from "./pages/salesPipeline/forms/TelecallForm.jsx";
+import MeetingForm from "./pages/salesPipeline/forms/MeetingForm.jsx";
+import CrmForm from "./pages/salesPipeline/forms/CrmForm.jsx";
+import ExportLeads from "./components/salesPipeline/ExportLeads.jsx";
+import CoordinatorDashboard from "./components/salesPipeline/CoordinatorDashboard.jsx";
 
 // Attendance
-import AttendanceDashboard from './components/attendance/AttendanceDashboard';
-// TaskBot 
-import TaskDashboard from './components/taskBot/TaskDashboard';
+import AttendanceDashboard from "./components/attendance/AttendanceDashboard";
+// TaskBot
+import TaskDashboard from "./components/taskBot/TaskDashboard";
 
-import Login from './pages/Login.jsx';
-import Home from './pages/Home.jsx';
-import CreateUser from './pages/CreateUser.jsx';
+import Login from "./pages/Login.jsx";
+import Home from "./pages/Home.jsx";
+import CreateUser from "./pages/CreateUser.jsx";
 
 // ✅ Public DISC test
-import DiscTest from './pages/discPage/DiscTest.jsx';
+import DiscTest from "./pages/discPage/DiscTest.jsx";
 
-
+// Job FMS
+import JobFmsLayout from "./components/jobFms/Layout.jsx";
+import JobWriterDashboard from "./pages/jobFms/JobWriterDashboard.jsx";
+import ProcessCoordinatorDashboard from "./pages/jobFms/ProcessCoordinatorDashboard.jsx";
+import DesignerDashboard from "./pages/jobFms/DesignerDashboard.jsx";
+import CrmDashboard from "./pages/jobFms/CrmDashboard.jsx";
 
 /**
  * Simple auth hook.
@@ -35,14 +40,14 @@ import DiscTest from './pages/discPage/DiscTest.jsx';
  * - If you have a different auth mechanism (Redux/context/cookie), replace the check inside `checkAuth`.
  */
 
-
 function useAuth() {
   const [isAuthed, setIsAuthed] = useState(false);
 
   const checkAuth = useCallback(() => {
     // adapt this to your real auth storage: token, user object, etc.
-    const token = localStorage.getItem('authToken') || localStorage.getItem('token');
-    const user = localStorage.getItem('user'); // optional
+    const token =
+      localStorage.getItem("authToken") || localStorage.getItem("token");
+    const user = localStorage.getItem("user"); // optional
     setIsAuthed(Boolean(token || user));
   }, []);
 
@@ -51,10 +56,11 @@ function useAuth() {
 
     // listen to storage events so login/logout in another tab updates this tab
     const onStorage = (e) => {
-      if (e.key === 'authToken' || e.key === 'token' || e.key === 'user') checkAuth();
+      if (e.key === "authToken" || e.key === "token" || e.key === "user")
+        checkAuth();
     };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, [checkAuth]);
 
   return { isAuthed, checkAuth };
@@ -65,7 +71,6 @@ export default function App() {
 
   return (
     <Routes>
-
       {/* ✅ PUBLIC ROUTES */}
       <Route path="/disc-test" element={<DiscTest />} />
 
@@ -78,7 +83,13 @@ export default function App() {
       {/* root: send to appropriate landing based on auth */}
       <Route
         path="/"
-        element={isAuthed ? <Navigate to="/home" replace /> : <Navigate to="/login" replace />}
+        element={
+          isAuthed ? (
+            <Navigate to="/home" replace />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
       />
 
       {/* Protected routes */}
@@ -92,7 +103,10 @@ export default function App() {
           <Route
             path="/task"
             element={
-              <Gate perm="ea.dashboard.view" fallback={<div className='p-6'>Not Authorized</div>}>
+              <Gate
+                perm="ea.dashboard.view"
+                fallback={<div className="p-6">Not Authorized</div>}
+              >
                 <TaskDashboard />
               </Gate>
             }
@@ -102,7 +116,10 @@ export default function App() {
           <Route
             path="/create-user"
             element={
-              <Gate perm="attendance.view" fallback={<div className='p-6'>Not Authorized</div>}>
+              <Gate
+                perm="attendance.view"
+                fallback={<div className="p-6">Not Authorized</div>}
+              >
                 <CreateUser />
               </Gate>
             }
@@ -115,7 +132,10 @@ export default function App() {
             <Route
               path="dashboard"
               element={
-                <Gate perm="sales.dashboard.view" fallback={<div className='p-6'>Not Authorized</div>}>
+                <Gate
+                  perm="sales.dashboard.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
                   <Dashboard />
                 </Gate>
               }
@@ -126,7 +146,10 @@ export default function App() {
             <Route
               path="forms/research"
               element={
-                <Gate perm="sales.research.view" fallback={<div className='p-6'>Not Authorized</div>}>
+                <Gate
+                  perm="sales.research.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
                   <ResearchForm />
                 </Gate>
               }
@@ -135,7 +158,10 @@ export default function App() {
             <Route
               path="forms/approval"
               element={
-                <Gate perm="sales.approval.view" fallback={<div className='p-6'>Not Authorized</div>}>
+                <Gate
+                  perm="sales.approval.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
                   <ApprovalForm />
                 </Gate>
               }
@@ -144,7 +170,10 @@ export default function App() {
             <Route
               path="forms/telecall"
               element={
-                <Gate perm="sales.telecall.view" fallback={<div className='p-6'>Not Authorized</div>}>
+                <Gate
+                  perm="sales.telecall.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
                   <TelecallForm />
                 </Gate>
               }
@@ -153,7 +182,10 @@ export default function App() {
             <Route
               path="forms/meeting"
               element={
-                <Gate perm="sales.meeting.view" fallback={<div className='p-6'>Not Authorized</div>}>
+                <Gate
+                  perm="sales.meeting.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
                   <MeetingForm />
                 </Gate>
               }
@@ -162,7 +194,10 @@ export default function App() {
             <Route
               path="forms/crm"
               element={
-                <Gate perm="sales.crm.view" fallback={<div className='p-6'>Not Authorized</div>}>
+                <Gate
+                  perm="sales.crm.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
                   <CrmForm />
                 </Gate>
               }
@@ -171,12 +206,64 @@ export default function App() {
             <Route path="export-leads" element={<ExportLeads />} />
             <Route path="coordinator" element={<CoordinatorDashboard />} />
           </Route>
+
+          {/* ---------------- JOB FMS MODULE ---------------- */}
+          <Route path="/job-fms" element={<JobFmsLayout />}>
+            <Route
+              path="writer"
+              element={
+                <Gate
+                  perm="jobfms.writer.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
+                  <JobWriterDashboard />
+                </Gate>
+              }
+            />
+            <Route
+              path="coordinator"
+              element={
+                <Gate
+                  perm="jobfms.coordinator.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
+                  <ProcessCoordinatorDashboard />
+                </Gate>
+              }
+            />
+            <Route
+              path="designer"
+              element={
+                <Gate
+                  perm="jobfms.designer.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
+                  <DesignerDashboard />
+                </Gate>
+              }
+            />
+            <Route
+              path="crm"
+              element={
+                <Gate
+                  perm="jobfms.crm.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
+                  <CrmDashboard />
+                </Gate>
+              }
+            />
+          </Route>
+          
+          {/* --------------- END JOB FMS MODULE --------------- */}
         </Route>
       </Route>
 
       {/* wildcard: if unmatched route under protected area, send to home */}
-      <Route path="*" element={<Navigate to={isAuthed ? "/home" : "/login"} replace />} />
+      <Route
+        path="*"
+        element={<Navigate to={isAuthed ? "/home" : "/login"} replace />}
+      />
     </Routes>
   );
 }
-

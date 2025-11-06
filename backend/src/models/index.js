@@ -21,6 +21,22 @@ import TaskModel from './telegramTaskbotModels/Task.model.js'
 
 import DiscResult from './discReport/DiscResult.model.js'
 
+
+// jobFMS Models
+import JobCardModel from './jobFmsModels/JobCard.model.js';
+import JobItemModel from './jobFmsModels/JobItem.model.js';
+import JobAssignmentModel from './jobFmsModels/JobAssignment.model.js';
+import ClientApprovalModel from './jobFmsModels/ClientApproval.model.js';
+import ProductionRecordModel from './jobFmsModels/ProductionRecord.model.js';
+import FileAttachmentModel from './jobFmsModels/FileAttachment.model.js';
+import NotificationModel from './jobFmsModels/Notification.model.js';
+import StageTrackingModel from './jobFmsModels/StageTracking.model.js';
+import ActivityLogModel from './jobFmsModels/ActivityLog.model.js';
+import associateJobFmsModels from './jobFmsModels/associations.js';
+
+
+
+
 // SalesPipeline Models
 const Lead = LeadModel(sequelize);
 const ResearchEntry = ResearchEntryModel(sequelize);
@@ -40,6 +56,37 @@ const Doer = DoerModel(sequelize);
 const Task = TaskModel(sequelize);
 
 const Disc = DiscResult(sequelize); 
+
+
+
+
+
+// Job FMS Models
+const JobCard = JobCardModel(sequelize);
+const JobItem = JobItemModel(sequelize);
+const JobAssignment = JobAssignmentModel(sequelize);
+const ClientApproval = ClientApprovalModel(sequelize);
+const ProductionRecord = ProductionRecordModel(sequelize);
+const FileAttachment = FileAttachmentModel(sequelize);
+const Notification = NotificationModel(sequelize);
+const StageTracking = StageTrackingModel(sequelize);
+const ActivityLog = ActivityLogModel(sequelize);
+
+associateJobFmsModels({
+  User,
+  JobCard,
+  JobItem,
+  JobAssignment,
+  ClientApproval,
+  ProductionRecord,
+  FileAttachment,
+  Notification,
+  StageTracking,
+  ActivityLog,
+});
+
+
+
 
 // Associations (ticketId attribute)
 Lead.hasMany(ResearchEntry, {
@@ -94,5 +141,16 @@ export default {
     TelegramUser,
     Doer,
     Task,
-    Disc
+    Disc,
+
+    // Job FMS Models
+    JobCard,
+    JobItem,
+    JobAssignment,
+    ClientApproval,
+    ProductionRecord,
+    FileAttachment,
+    Notification,
+    StageTracking,
+    ActivityLog,
 };

@@ -50,3 +50,4 @@ export function can(user, perm) {
       return false;
   }
 }
+
