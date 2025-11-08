@@ -11,12 +11,15 @@ const {
   JobAssignment,
   ProductionRecord,
   ActivityLog,
+  ClientDetails,
+  EnquiryForItems
 } = models;
 
 /**
  * CREATE JOB CARD + JOB ITEMS (in a single transaction)
  */
 export const createJobCard = async (req, res) => {
+    console.log("createJobCard called...");
   const t = await JobCard.sequelize.transaction();
   try {
     const {
@@ -45,14 +48,31 @@ export const createJobCard = async (req, res) => {
       job_items = [], // ✅ default empty array
     } = req.body;
 
-    if(!client_type || !order_source || !client_name || !order_type || !order_handled_by || !execution_location || !delivery_location || !delivery_date || !proof_date || !task_priority || !total_amount || !advance_payment || !mode_of_payment || !job_items || !contact_number || !payment_status){
-        return res.status(400).json({
-          message: "All fields are required",
-        });
+    if (
+      !client_type ||
+      !order_source ||
+      !client_name ||
+      !order_type ||
+      !order_handled_by ||
+      !execution_location ||
+      !delivery_location ||
+      !delivery_date ||
+      !proof_date ||
+      !task_priority ||
+      !total_amount ||
+      !advance_payment ||
+      !mode_of_payment ||
+      !job_items ||
+      !contact_number ||
+      !payment_status
+    ) {
+      return res.status(400).json({
+        message: "All fields are required",
+      });
     }
-    
-    if(delivery_location === "Delivery Address"){
-      if(!delivery_address){
+
+    if (delivery_location === "Delivery Address") {
+      if (!delivery_address) {
         return res.status(400).json({
           message: "Delivery Address is required.",
         });
@@ -84,6 +104,7 @@ export const createJobCard = async (req, res) => {
         payment_status,
         order_received_by,
         no_of_files,
+        stage_name: "created",
       },
       { transaction: t }
     );
@@ -116,16 +137,15 @@ export const createJobCard = async (req, res) => {
       { transaction: t }
     );
 
-
     // 4. Create StageTracking entry
     await advanceStage({
-        job_no,
-        new_stage: "created",
-        performed_by_id: req.user?.id || null,
-        started_at: new Date(),
-        remarks: "Job created successfully",
-        transaction: t,
-      });
+      job_no,
+      new_stage: "created",
+      performed_by_id: req.user?.id || null,
+      started_at: new Date(),
+      remarks: "Job created successfully",
+      transaction: t,
+    });
 
     //  Commit transaction before sending email
     await t.commit();
@@ -213,7 +233,6 @@ export const createJobCard = async (req, res) => {
         console.error("❌ Failed to send client email:", err.message);
       }
     }
-    
   } catch (error) {
     console.error("❌ Error creating JobCard:", error);
     await t.rollback();
@@ -228,6 +247,7 @@ export const createJobCard = async (req, res) => {
  * GET ALL JOB CARDS (with pagination & filters)
  */
 export const getAllJobCards = async (req, res) => {
+  console.log("getAllJobCards called...");
   try {
     const { status, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
@@ -269,7 +289,8 @@ export const getAllJobCards = async (req, res) => {
  */
 export const getJobCardByJobNo = async (req, res) => {
   try {
-    const { job_no } = req.paramas;
+    console.log("getJobCardByJobNo called...");
+    const job_no  = req.params.id;
 
     if (!job_no) {
       return res.status(400).json({
@@ -308,13 +329,16 @@ export const getJobCardByJobNo = async (req, res) => {
  * UPDATE JOB CARD
  */
 export const updateJobCard = async (req, res) => {
+  console.log("updateJobCard called...");
   const t = await JobCard.sequelize.transaction();
   try {
-    const { job_no } = req.paramas;
+    console.log("");
+    const { id } = req.params;
+    const job_no = id;
     const { job_items = [], ...updates } = req.body;
 
     const jobCard = await JobCard.findByPk(job_no, {
-      include: [{model: JobItem, as: "items"}],
+      include: [{ model: JobItem, as: "items" }],
       transaction: t,
     });
     if (!jobCard) {
@@ -324,15 +348,17 @@ export const updateJobCard = async (req, res) => {
       });
     }
 
-    await jobCard.update(updates, { transaction: t} );
+    await jobCard.update(updates, { transaction: t });
 
     // Handle JobItems changes
     const existingItems = jobCard.items.map((i) => i.id);
 
-    const updatedItemIds = job_items.filter((i) => i.id).map((i) => i.id); 
+    const updatedItemIds = job_items.filter((i) => i.id).map((i) => i.id);
 
     // 1️ Delete items that are removed
-    const itemsToDelete = existingItems.filter((id) => !updatedItemIds.includes(id));
+    const itemsToDelete = existingItems.filter(
+      (id) => !updatedItemIds.includes(id)
+    );
     if (itemsToDelete.length > 0) {
       await JobItem.destroy({
         where: { id: itemsToDelete },
@@ -353,7 +379,6 @@ export const updateJobCard = async (req, res) => {
       const newItemData = newItems.map((i) => ({ ...i, job_no }));
       await JobItem.bulkCreate(newItemData, { transaction: t });
     }
-
 
     // Log activity
     await ActivityLog.create(
@@ -390,12 +415,13 @@ export const updateJobCard = async (req, res) => {
  * DELETE JOB CARD
  */
 export const deleteJobCard = async (req, res) => {
+  console.log("deleteJobCard called...");
   try {
-    const { job_no } = req.query;
+    const job_no = req.params.id;
 
     if (!job_no) {
-      return res.status(400).json({ 
-        message: "Job number required" 
+      return res.status(400).json({
+        message: "Job number required",
       });
     }
 
@@ -406,13 +432,28 @@ export const deleteJobCard = async (req, res) => {
       });
     }
 
-    await jobCard.destroy(); // Cascade deletes all JobItems
-
     await ActivityLog.create({
       job_no,
       action: "JobCard Deleted",
       performed_by_id: req.user?.id || null,
     });
+
+    const clientDetails = await ClientDetails.findOne({
+      where: {
+        client_name: jobCard.client_name,
+      },
+    });
+
+    await jobCard.destroy(); // Cascade deletes all JobItems
+
+    if (clientDetails.total_jobs > 0) {
+      clientDetails.total_jobs--;
+
+      if (clientDetails.total_jobs <= 3) {
+        clientDetails.client_relation = "NBD";
+      }
+    }
+    await clientDetails.save();
 
     return res.json({
       message: "JobCard deleted successfully",
@@ -424,4 +465,14 @@ export const deleteJobCard = async (req, res) => {
       error: error.message,
     });
   }
+};
+
+
+
+export const getEnquiryForItems = async (req, res) => {
+  console.log("getEnquiryForItems called...");
+  const enquiryForItems = await EnquiryForItems.findAll({
+    where: {}
+  });
+  return res.json(enquiryForItems);
 };

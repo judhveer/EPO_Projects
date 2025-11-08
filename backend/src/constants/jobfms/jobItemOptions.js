@@ -6,6 +6,8 @@ export const JOB_ITEM_OPTION_TEMPLATES = {
     color_scheme: 'Black and White', // or Multi-color
     cover_pages: 0,
     inside_pages: 0,
+    cover_color: '',
+    inside_color: '',
     cover_paper_gsm: '',
     inside_paper_gsm: '',
     binding_types: [
@@ -18,6 +20,8 @@ export const JOB_ITEM_OPTION_TEMPLATES = {
     color_scheme: 'Black and White',
     cover_pages: 0,
     inside_pages: 0,
+    cover_color: '',
+    inside_color: '',
     cover_paper_gsm: '',
     inside_paper_gsm: '',
     binding_types: [],
@@ -25,11 +29,9 @@ export const JOB_ITEM_OPTION_TEMPLATES = {
 
   WideFormat: {
     binding_types: [],
-    size: '',
   },
 
   Other: {
     binding_types: [],
-    size: '',
   },
 };

@@ -34,6 +34,7 @@ import StageTrackingModel from './jobFmsModels/StageTracking.model.js';
 import ActivityLogModel from './jobFmsModels/ActivityLog.model.js';
 import associateJobFmsModels from './jobFmsModels/associations.js';
 import ClientDetailsModel from "./jobFmsModels/ClientDetails.js";
+import EnquiryForItemsModel from "./jobFmsModels/EnquiryForItems.model.js";
 
 
 
@@ -73,6 +74,7 @@ const Notification = NotificationModel(sequelize);
 const StageTracking = StageTrackingModel(sequelize);
 const ActivityLog = ActivityLogModel(sequelize);
 const ClientDetails = ClientDetailsModel(sequelize);
+const EnquiryForItems = EnquiryForItemsModel(sequelize);
 
 associateJobFmsModels({
   User,
@@ -85,7 +87,8 @@ associateJobFmsModels({
   Notification,
   StageTracking,
   ActivityLog,
-  ClientDetails
+  ClientDetails,
+  EnquiryForItems
 });
 
 
@@ -156,5 +159,6 @@ export default {
     Notification,
     StageTracking,
     ActivityLog,
-    ClientDetails
+    ClientDetails,
+    EnquiryForItems
 };

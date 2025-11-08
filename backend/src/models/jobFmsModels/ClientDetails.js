@@ -19,15 +19,6 @@ export default (sequelize) => {
             type: DataTypes.ENUM("Govt", "Pvt", "Institution", "Other"),
             allowNull: false,
         },
-        order_type: {
-            type: DataTypes.ENUM(
-                "Work Order",
-                "Bulk Order",
-                "Project Based Order",
-                "Job Order"
-            ),
-            allowNull: false,
-        },
         address: {
             type: DataTypes.TEXT,
             allowNull: false,

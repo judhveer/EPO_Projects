@@ -8,7 +8,12 @@ import Input from "../../components/salesPipeline/Input.jsx";
 import Select from "../../components/salesPipeline/Select.jsx";
 import Button from "../../components/salesPipeline/Button.jsx";
 
-export default function JobCardForm({ onCreated }) {
+export default function JobCardForm({
+  onCreated,
+  onUpdated,
+  existingJob,
+  isEditMode,
+}) {
   const [form, setForm] = useState({
     client_type: "",
     order_source: "",
@@ -41,6 +46,10 @@ export default function JobCardForm({ onCreated }) {
   const [users, setUsers] = useState([]);
   const [crmUsers, setCrmUsers] = useState([]);
 
+  const [enquiryItems, setEnquiryItems] = useState([]);
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
+
   const [ok, setOk] = useState(false);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
@@ -62,9 +71,46 @@ export default function JobCardForm({ onCreated }) {
   }, []);
 
   useEffect(() => {
-  const el = document.querySelector(".active-suggestion");
-  if (el) el.scrollIntoView({ block: "nearest" });
-}, [activeIndex]);
+    async function loadEnquiryItems() {
+      try {
+        const { data } = await api.get("/api/fms/jobcards/enquiry/items");
+        setEnquiryItems(data || []);
+      } catch (err) {
+        console.error("Failed to load enquiry items:", err);
+      }
+    }
+    loadEnquiryItems();
+  }, []);
+
+  useEffect(() => {
+    const el = document.querySelector(".active-suggestion");
+    if (el) el.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
+
+  useEffect(() => {
+    if (existingJob) {
+      const formatDateTimeLocal = (isoString) => {
+        if (!isoString) return "";
+        const date = new Date(isoString);
+        const offset = date.getTimezoneOffset();
+        const localDate = new Date(date.getTime() - offset * 60000);
+        return localDate.toISOString().slice(0, 16);
+      };
+
+      const formatDateOnly = (isoString) => {
+        if (!isoString) return "";
+        const date = new Date(isoString);
+        return date.toISOString().slice(0, 10);
+      };
+
+      setForm({
+        ...existingJob,
+        delivery_date: formatDateTimeLocal(existingJob.delivery_date),
+        proof_date: formatDateOnly(existingJob.proof_date),
+        job_items: existingJob.items || [],
+      });
+    }
+  }, [existingJob]);
 
   const searchClients = debounce(async (query) => {
     if (!query) return setClientSuggestions([]);
@@ -117,37 +163,57 @@ export default function JobCardForm({ onCreated }) {
     setLoading(true);
 
     try {
-      const { data } = await createJobCard(form);
-      setOk(true);
-      setForm({
-        client_type: "",
-        order_source: "",
-        client_name: "",
-        order_type: "",
-        address: "",
-        contact_number: "",
-        email_id: "",
-        order_handled_by: "",
-        execution_location: "",
-        delivery_location: "",
-        delivery_address: "",
-        delivery_date: "",
-        proof_date: "",
-        task_priority: "",
-        instructions: "",
-        unit_rate: "",
-        total_amount: "",
-        advance_payment: "",
-        mode_of_payment: "",
-        payment_status: "",
-        no_of_files: "",
-        order_received_by: "",
-        job_items: [],
-      });
-      onCreated?.(data);
+      if (isEditMode && existingJob?.job_no) {
+        await api.put(`/api/fms/jobcards/${existingJob.job_no}`, form);
+        setSuccessMsg("✅ Job Card updated successfully!");
+        setShowSuccessPopup(true);
+        setOk(true);
+
+        // ⏳ Wait 2 seconds before closing modal (after popup)
+        setTimeout(() => {
+          setShowSuccessPopup(false);
+          onUpdated?.(); // Now close the modal AFTER showing popup
+        }, 2000);
+      } else {
+        const { data } = await createJobCard(form);
+        setSuccessMsg("✅ Job Card created successfully!");
+        setShowSuccessPopup(true);
+        setOk(true);
+        onCreated?.(data);
+
+        // 🧹 Reset form after creation only
+        setForm({
+          client_type: "",
+          order_source: "",
+          client_name: "",
+          order_type: "",
+          address: "",
+          contact_number: "",
+          email_id: "",
+          order_handled_by: "",
+          execution_location: "",
+          delivery_location: "",
+          delivery_address: "",
+          delivery_date: "",
+          proof_date: "",
+          task_priority: "",
+          instructions: "",
+          unit_rate: "",
+          total_amount: "",
+          advance_payment: "",
+          mode_of_payment: "",
+          payment_status: "",
+          no_of_files: "",
+          order_received_by: "",
+          job_items: [],
+        });
+      }
+
+      // 🕒 Auto-hide popup after 2 seconds
+      setTimeout(() => setShowSuccessPopup(false), 2000);
     } catch (error) {
       console.error(error);
-      setErr(error.response?.data?.message || "Failed to create Job Card");
+      setErr(error.response?.data?.message || "Failed to save Job Card");
     } finally {
       setLoading(false);
     }
@@ -198,7 +264,7 @@ export default function JobCardForm({ onCreated }) {
           ...f,
           client_name: selectedName,
           client_type: data.client_type,
-          order_type: data.order_type,
+          // order_type: data.order_type,
           address: data.address || "",
           contact_number: data.contact_number || "",
           email_id: data.email_id || "",
@@ -253,10 +319,15 @@ export default function JobCardForm({ onCreated }) {
   // cover color and inside color
 
   return (
-    <FormCard title="🧾 Job Card Entry">
-      {ok && (
-        <div className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">
-          ✅ Job Card created successfully!
+    <FormCard title="Job Card Entry">
+      {showSuccessPopup && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm">
+          <div className="bg-white shadow-2xl rounded-xl px-8 py-6 border border-green-200 animate-fade-in text-center">
+            <h3 className="text-2xl font-semibold text-green-700 mb-2">
+              🎉 Success!
+            </h3>
+            <p className="text-slate-600 text-sm">{successMsg}</p>
+          </div>
         </div>
       )}
       {err && (
@@ -293,7 +364,7 @@ export default function JobCardForm({ onCreated }) {
                           ...f,
                           client_name: name,
                           client_type: data.client_type,
-                          order_type: data.order_type,
+                          // order_type: data.order_type,
                           address: data.address || "",
                           contact_number: data.contact_number || "",
                           email_id: data.email_id || "",
@@ -303,8 +374,9 @@ export default function JobCardForm({ onCreated }) {
                       }
                     }}
                     className={`px-3 py-2 cursor-pointer text-sm transition-colors ${
-                      i === activeIndex ? "active-suggestion bg-blue-400 text-blue-700" : ""
-
+                      i === activeIndex
+                        ? "active-suggestion bg-blue-400 text-blue-700"
+                        : ""
                     }`}
                   >
                     {highlightMatch(name, form.client_name)}
@@ -328,6 +400,35 @@ export default function JobCardForm({ onCreated }) {
             <option>Institution</option>
             <option>Other</option>
           </Select>
+        </Field>
+
+        <Field label="Email ID">
+          <Input
+            name="email_id"
+            type="email"
+            value={form.email_id}
+            onChange={onChange}
+          />
+        </Field>
+
+        <Field label="Contact Number" required>
+          <Input
+            name="contact_number"
+            type="tel"
+            value={form.contact_number}
+            onChange={onChange}
+            required
+          />
+        </Field>
+
+        <Field label="Address" required>
+          <textarea
+            name="address"
+            value={form.address}
+            onChange={onChange}
+            className="border border-slate-300 rounded px-3 py-2 w-full text-sm h-[2.3rem]"
+            required
+          />
         </Field>
 
         <Field label="Order Source" required>
@@ -359,35 +460,6 @@ export default function JobCardForm({ onCreated }) {
             <option>Project Based Order</option>
             <option>Job Order</option>
           </Select>
-        </Field>
-
-        <Field label="Email ID">
-          <Input
-            name="email_id"
-            type="email"
-            value={form.email_id}
-            onChange={onChange}
-          />
-        </Field>
-
-        <Field label="Contact Number" required>
-          <Input
-            name="contact_number"
-            type="tel"
-            value={form.contact_number}
-            onChange={onChange}
-            required
-          />
-        </Field>
-
-        <Field label="Address" required>
-          <textarea
-            name="address"
-            value={form.address}
-            onChange={onChange}
-            className="border border-slate-300 rounded px-3 py-2 w-full text-sm h-[2.3rem]"
-            required
-          />
         </Field>
 
         <Field label="Order Received By" required>
@@ -608,13 +680,23 @@ export default function JobCardForm({ onCreated }) {
                   </Field>
 
                   <Field label="Enquiry For" required>
-                    <Input
-                      value={item.enquiry_for || ""}
-                      onChange={(e) =>
-                        handleItemChange(index, "enquiry_for", e.target.value)
-                      }
-                      required
-                    />
+                    <div className="relative">
+                      <input
+                        list={`enquiry-for-list-${index}`}
+                        value={item.enquiry_for || ""}
+                        onChange={(e) =>
+                          handleItemChange(index, "enquiry_for", e.target.value)
+                        }
+                        placeholder="Type or select..."
+                        className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
+                        required
+                      />
+                      <datalist id={`enquiry-for-list-${index}`}>
+                        {enquiryItems.map((opt) => (
+                          <option key={opt.id} value={opt.item} />
+                        ))}
+                      </datalist>
+                    </div>
                   </Field>
 
                   {/* Common Fields */}
@@ -631,12 +713,13 @@ export default function JobCardForm({ onCreated }) {
 
                   <Field label="Unit Of Measurment" required>
                     <Select
-                      value={item.uom || ""}
+                      value={item.uom}
                       onChange={(e) =>
                         handleItemChange(index, "uom", e.target.value)
                       }
                       required
                     >
+                      <option value="">Select</option>
                       <option>Pc</option>
                       <option>Nos</option>
                       <option>Copies</option>
@@ -674,19 +757,17 @@ export default function JobCardForm({ onCreated }) {
                         </Select>
                       </Field>
 
-                      <Field label="Color Scheme" required>
-                        <Select
-                          value={item.options?.color_scheme || ""}
+                      <Field label="Inside Pages" required>
+                        <Input
+                          type="number"
+                          value={item.options?.inside_pages || ""}
                           onChange={(e) =>
                             handleItemChange(index, "options", {
                               ...item.options,
-                              color_scheme: e.target.value,
+                              inside_pages: e.target.value,
                             })
                           }
-                        >
-                          <option>Black and White</option>
-                          <option>Multi-color</option>
-                        </Select>
+                        />
                       </Field>
 
                       <Field label="Cover Pages" required>
@@ -726,17 +807,43 @@ export default function JobCardForm({ onCreated }) {
                         />
                       </Field>
 
-                      <Field label="Inside Pages" required>
+                      <Field label="Cover Paper GSM" required>
                         <Input
-                          type="number"
-                          value={item.options?.inside_pages || ""}
+                          value={item.options?.cover_paper_gsm || ""}
                           onChange={(e) =>
                             handleItemChange(index, "options", {
                               ...item.options,
-                              inside_pages: e.target.value,
+                              cover_paper_gsm: e.target.value,
                             })
                           }
                         />
+                      </Field>
+
+                      <Field label="Inside Paper GSM" required>
+                        <Input
+                          value={item.options?.inside_paper_gsm || ""}
+                          onChange={(e) =>
+                            handleItemChange(index, "options", {
+                              ...item.options,
+                              inside_paper_gsm: e.target.value,
+                            })
+                          }
+                        />
+                      </Field>
+
+                      <Field label="Color Scheme" required>
+                        <Select
+                          value={item.options?.color_scheme || ""}
+                          onChange={(e) =>
+                            handleItemChange(index, "options", {
+                              ...item.options,
+                              color_scheme: e.target.value,
+                            })
+                          }
+                        >
+                          <option>Black and White</option>
+                          <option>Multi-color</option>
+                        </Select>
                       </Field>
 
                       <Field label="Type of Binding" required>
@@ -844,7 +951,13 @@ export default function JobCardForm({ onCreated }) {
         {/* ---------------- SUBMIT ---------------- */}
         <div className="md:col-span-3 mt-6 mx-auto ">
           <Button type="submit" disabled={loading}>
-            {loading ? "Creating..." : "Create Job Card"}
+            {loading
+              ? isEditMode
+                ? "Saving..."
+                : "Creating..."
+              : isEditMode
+              ? "Save Changes"
+              : "Create Job Card"}
           </Button>
         </div>
       </form>

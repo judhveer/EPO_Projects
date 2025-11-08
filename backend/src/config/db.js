@@ -4,15 +4,15 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 
-const caPath = process.env.DB_CERT;
+// const caPath = process.env.DB_CERT;
 const dialectOptions = {};
 
-if (fs.existsSync(caPath)) {
-  dialectOptions.ssl = {
-    ca: fs.readFileSync(caPath, 'utf8'),
-    rejectUnauthorized: true
-  };
-}
+// if (fs.existsSync(caPath)) {
+//   dialectOptions.ssl = {
+//     ca: fs.readFileSync(caPath, 'utf8'),
+//     rejectUnauthorized: true
+//   };
+// }
 
 export const sequelize = new Sequelize(
   process.env.DB_NAME,

@@ -32,6 +32,9 @@ export default (sequelize) => {
       },
       enquiry_for: {
         type: DataTypes.STRING,
+        set(value) {
+          this.setDataValue("enquiry_for", value ? value.toLowerCase() : null);
+        },
       },
       size: {
         type: DataTypes.STRING,
@@ -79,6 +82,20 @@ export default (sequelize) => {
     if (!item.options || Object.keys(item.options).length === 0) {
       const template = JOB_ITEM_OPTION_TEMPLATES[item.category] || {};
       item.options = { ...template };
+    }
+  });
+
+  JobItem.addHook("afterCreate", async (jobItems) => {
+    const { EnquiryForItems } = sequelize.models;
+
+    let enquiryItem = await EnquiryForItems.findOne({
+      where: { item: jobItems.enquiry_for },
+    });
+
+    if(!enquiryItem){
+      await EnquiryForItems.create({
+        item: jobItems.enquiry_for,
+      });
     }
   });
 

@@ -162,7 +162,6 @@ export default (sequelize) => {
         {
           client_name: job.client_name,
           client_type: job.client_type,
-          order_type: job.order_type,
           address: job.address,
           contact_number: job.contact_number,
           email_id: job.email_id,
@@ -173,7 +172,6 @@ export default (sequelize) => {
     } else {
       client.set({
         client_type: job.client_type,
-        order_type: job.order_type,
         address: job.address,
         contact_number: job.contact_number,
         email_id: job.email_id,
