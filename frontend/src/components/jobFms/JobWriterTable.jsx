@@ -58,7 +58,7 @@ export default function JobWriterTable({ refresh }) {
                 <td className="p-2 border font-medium text-blue-600">
                   {job.job_no}
                 </td>
-                <td className="p-2 border">{job.party_name}</td>
+                <td className="p-2 border">{job.client_name}</td>
                 <td className="p-2 border">{job.client_type}</td>
                 <td className="p-2 border">{job.order_type}</td>
                 <td className="p-2 border">{job.task_priority}</td>

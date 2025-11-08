@@ -59,6 +59,11 @@ import discRoutes from "./routes/discResult/discRoutes.js"
 
 // jobFms Routes
 import jobCardRoutes from "./routes/jobFmsRoutes/jobCard.routes.js";
+import clientRoutes from "./routes/jobFmsRoutes/clientDetails.routes.js"
+import userRoutes from "./routes/jobFmsRoutes/users.routes.js";
+
+
+
 
 
 
@@ -72,6 +77,7 @@ const app = express();
 app.use(helmet());
 
 app.use(cors({
+  // https://management.easternpanoramaoffset.com
   origin: 'https://management.easternpanoramaoffset.com', // change to frontend URL in production
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -158,6 +164,13 @@ app.use("/api/fms/jobcards",
   jobCardRoutes
 );
 
+app.use("/api/clients", 
+  authenticate,
+  clientRoutes);
+
+app.use("/api/users", 
+  authenticate,
+  userRoutes);
 
 // error handling middlewares
 app.use(notFound);
@@ -181,6 +194,7 @@ export async function init() {
   try {
     // assertEnv();
     await models.sequelize.authenticate();
+
     await models.sequelize.sync({ alter: false }); // dev only
     console.log("DB sync successful");
 

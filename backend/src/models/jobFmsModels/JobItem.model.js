@@ -58,7 +58,6 @@ export default (sequelize) => {
           "binding_types": ["Cutting", "Lamination", "Folding"]
         },
         "WideFormat": {
-          "type_of_print": "Flex Machine",
           "binding_types": ["Lamination", "Pasting"],
           "size": "A3"
         },

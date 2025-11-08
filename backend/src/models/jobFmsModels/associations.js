@@ -10,6 +10,7 @@ export default function associateJobFmsModels(models) {
     Notification,
     StageTracking,
     ActivityLog,
+    ClientDetails
   } = models;
 
   // 🔗 JobCard ↔ JobItem

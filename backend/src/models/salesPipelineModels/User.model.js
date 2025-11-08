@@ -1,7 +1,7 @@
 import { DataTypes } from 'sequelize';
 import bcrypt from 'bcryptjs';
 
-export const DEPARTMENTS = ["Accounts", "Admin", "CRM", "Designer", "EA", "Foundation", "HR", "MIS", "Office Assistant", "Process Coordinator", "Receptionist", "Sales dept", "Tender Executive", ["OWNER"]];
+export const DEPARTMENTS = ["Job Writer", "Accounts", "Admin", "CRM", "Designer", "EA", "Foundation", "HR", "MIS", "Office Assistant", "Process Coordinator", "Receptionist", "Sales dept", "Tender Executive", ["OWNER"]];
 
 export const ROLES = [
   "BOSS", "ADMIN", "STAFF",
@@ -61,7 +61,6 @@ export default (sequelize) => {
       type: DataTypes.STRING(64),
       allowNull: false,
       validate: { isIn: [DEPARTMENTS] },
-      defaultValue: 'Admin'
     },
     // NEW — password hash (kept out of default queries)
     passwordHash: {

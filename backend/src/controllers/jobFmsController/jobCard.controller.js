@@ -22,7 +22,7 @@ export const createJobCard = async (req, res) => {
     const {
       client_type,
       order_source,
-      party_name,
+      client_name,
       order_type,
       address,
       contact_number,
@@ -39,12 +39,13 @@ export const createJobCard = async (req, res) => {
       total_amount,
       advance_payment,
       mode_of_payment,
+      payment_status,
       order_received_by,
       no_of_files,
       job_items = [], // ✅ default empty array
     } = req.body;
 
-    if(!client_type || !order_source || !party_name || !order_type || !order_handled_by || !execution_location || !delivery_location || !delivery_date || !proof_date || !task_priority || !total_amount || !advance_payment || !mode_of_payment || !job_items || !contact_number){
+    if(!client_type || !order_source || !client_name || !order_type || !order_handled_by || !execution_location || !delivery_location || !delivery_date || !proof_date || !task_priority || !total_amount || !advance_payment || !mode_of_payment || !job_items || !contact_number || !payment_status){
         return res.status(400).json({
           message: "All fields are required",
         });
@@ -63,7 +64,7 @@ export const createJobCard = async (req, res) => {
       {
         client_type,
         order_source,
-        party_name,
+        client_name,
         order_type,
         address,
         contact_number,
@@ -80,6 +81,7 @@ export const createJobCard = async (req, res) => {
         total_amount,
         advance_payment,
         mode_of_payment,
+        payment_status,
         order_received_by,
         no_of_files,
       },
@@ -128,12 +130,17 @@ export const createJobCard = async (req, res) => {
     //  Commit transaction before sending email
     await t.commit();
 
+    res.status(201).json({
+      message: "JobCard created successfully",
+      jobCard,
+    });
+
     // Send Email to Client (if email_id exists)
     if (email_id) {
       const emailHTML = `
       <h2>Welcome to EPO – Order Confirmation & Contact Details</h2>
 
-      <p>Hello <strong>${party_name}</strong>,</p>
+      <p>Hello <strong>${client_name}</strong>,</p>
 
       <p>Greetings from <strong>Eastern Panorama Offset!</strong></p>
 
@@ -143,7 +150,6 @@ export const createJobCard = async (req, res) => {
       <ul>
         <li><strong>Job No:</strong> ${jobCard.job_no}</li>
         <li><strong>Assigned CRM:</strong> ${order_handled_by}</li>
-        <li><strong>Corresponding Email ID:</strong> ${email_id}</li>
         <li><strong>Order Value:</strong> ₹${total_amount || 0}</li>
         <li><strong>Order Specifications:</strong> ${instructions || "N/A"}</li>
       </ul>
@@ -207,11 +213,7 @@ export const createJobCard = async (req, res) => {
         console.error("❌ Failed to send client email:", err.message);
       }
     }
-
-    return res.status(201).json({
-      message: "JobCard created successfully",
-      jobCard,
-    });
+    
   } catch (error) {
     console.error("❌ Error creating JobCard:", error);
     await t.rollback();
@@ -244,7 +246,7 @@ export const getAllJobCards = async (req, res) => {
       ],
       limit: parseInt(limit),
       offset,
-      order: [["creation_date", "DESC"]],
+      order: [["created_at", "DESC"]],
     });
 
     res.json({

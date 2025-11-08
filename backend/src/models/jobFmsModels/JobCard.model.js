@@ -6,14 +6,9 @@ export default (sequelize) => {
     {
       job_no: {
         type: DataTypes.BIGINT.UNSIGNED,
-        primaryKey: true, 
+        primaryKey: true,
         allowNull: true,
         autoIncrement: false,
-      },
-      creation_date: {
-        type: DataTypes.DATE,
-        allowNull: false,
-        defaultValue: DataTypes.NOW,
       },
       client_type: {
         type: DataTypes.ENUM("Govt", "Pvt", "Institution", "Other"),
@@ -29,9 +24,12 @@ export default (sequelize) => {
         ),
         allowNull: false,
       },
-      party_name: {
-        type: DataTypes.TEXT,
+      client_name: {
+        type: DataTypes.STRING,
         allowNull: false,
+        set(value) {
+          this.setDataValue("client_name", value ? value.toUpperCase() : null);
+        },
       },
       order_type: {
         type: DataTypes.ENUM(
@@ -50,13 +48,16 @@ export default (sequelize) => {
       },
       email_id: {
         type: DataTypes.STRING,
+        validate: {
+          isEmail: true,
+        },
       },
       order_received_by: {
-          type: DataTypes.ENUM('Anisha', 'Alvin', 'Kiran', 'Boss', 'Titu', 'Saphiiaibet', 'Fanny', 'Other'),
-          allowNull: false,
+        type: DataTypes.STRING,
+        allowNull: false,
       },
       order_handled_by: {
-        type: DataTypes.ENUM("Fanny", "Saphiiaibet"),
+        type: DataTypes.STRING,
         allowNull: false,
       },
       execution_location: {
@@ -98,7 +99,10 @@ export default (sequelize) => {
         type: DataTypes.DECIMAL(10, 2),
       },
       mode_of_payment: {
-        type: DataTypes.ENUM("Cashmemo", "Bill", "Other"),
+        type: DataTypes.ENUM("GST BILL", "PI", "UPI", "OTHER"),
+      },
+      payment_status: {
+        type: DataTypes.ENUM("Paid", "Half Paid", "Un-paid"),
       },
       status: {
         type: DataTypes.ENUM(
@@ -114,7 +118,7 @@ export default (sequelize) => {
           "completed",
           "cancelled"
         ),
-        default: "created",
+        defaultValue: "created",
       },
       current_stage: {
         type: DataTypes.STRING,
@@ -124,7 +128,7 @@ export default (sequelize) => {
       },
       no_of_files: {
         type: DataTypes.INTEGER,
-      }
+      },
     },
     {
       tableName: "jobfms_job_cards",
@@ -132,22 +136,61 @@ export default (sequelize) => {
     }
   );
 
-
   // Auto-generation
-JobCard.addHook('beforeCreate', async (job) => {
-  if (!job.job_no) {
-    const latest = await JobCard.findOne({
-      order: [['job_no', 'DESC']],
-    });
-    const nextNo = latest ? Number(latest.job_no) + 1 : 1;
-    job.job_no = nextNo;
-  }
-});
+  JobCard.addHook("beforeCreate", async (job) => {
+    if (!job.job_no) {
+      const latest = await JobCard.findOne({
+        order: [["job_no", "DESC"]],
+      });
+      const nextNo = latest ? Number(latest.job_no) + 1 : 1;
+      job.job_no = nextNo;
+    }
+  });
 
+  // Automatically create/update client record when a JobCard is created
+  JobCard.addHook("afterCreate", async (job, options) => {
+    const { ClientDetails } = sequelize.models;
+    const transaction = options.transaction;
+
+    let client = await ClientDetails.findOne({
+      where: { client_name: job.client_name },
+      transaction,
+    });
+
+    if (!client) {
+      await ClientDetails.create(
+        {
+          client_name: job.client_name,
+          client_type: job.client_type,
+          order_type: job.order_type,
+          address: job.address,
+          contact_number: job.contact_number,
+          email_id: job.email_id,
+          total_jobs: 1,
+        },
+        { transaction }
+      );
+    } else {
+      client.set({
+        client_type: job.client_type,
+        order_type: job.order_type,
+        address: job.address,
+        contact_number: job.contact_number,
+        email_id: job.email_id,
+        total_jobs: client.total_jobs + 1,
+      });
+      await client.save({ transaction });
+    }
+  });
+
+  // Association via client_name
+  JobCard.associate = (models) => {
+    JobCard.belongsTo(models.ClientDetails, {
+      foreignKey: "client_name",
+      targetKey: "client_name",
+      as: "client",
+    });
+  };
 
   return JobCard;
 };
-
-
-
-

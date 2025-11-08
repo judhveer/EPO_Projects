@@ -24,7 +24,6 @@ export const JOB_ITEM_OPTION_TEMPLATES = {
   },
 
   WideFormat: {
-    type_of_print: '', // e.g. Wide-Format, Digital Machine, Flex Machine, HMT
     binding_types: [],
     size: '',
   },

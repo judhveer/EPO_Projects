@@ -5,7 +5,7 @@ import PasswordField, { checkPassword } from '../components/forms/PasswordField'
 
 const DEPARTMENTS = [
   'Accounts', 'Admin', 'CRM', 'Designer', 'EA', 'Foundation', 'HR', 'MIS',
-  'Office Assistant', 'Process Coordinator', 'Receptionist', 'Sales dept', 'Tender Executive'
+  'Office Assistant', 'Process Coordinator', 'Receptionist', 'Sales dept', 'Tender Executive', 'Job Writer'
 ];
 
 // Full catalog (frontend); we'll filter based on department.

@@ -50,7 +50,7 @@ export default function CommonDashboard() {
             jobs.map((j) => (
               <tr key={j.job_no} className="hover:bg-blue-50">
                 <td className="p-2 border">{j.job_no}</td>
-                <td className="p-2 border">{j.party_name}</td>
+                <td className="p-2 border">{j.client_name}</td>
                 <td className="p-2 border">{j.client_type}</td>
                 <td className="p-2 border">{j.order_type}</td>
                 <td className="p-2 border">{j.task_priority}</td>
