@@ -80,7 +80,7 @@ app.use(cors({
   // https://management.easternpanoramaoffset.com
   origin: 'https://management.easternpanoramaoffset.com', // change to frontend URL in production
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json());

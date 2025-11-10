@@ -12,14 +12,14 @@ const {
   ProductionRecord,
   ActivityLog,
   ClientDetails,
-  EnquiryForItems
+  EnquiryForItems,
 } = models;
 
 /**
  * CREATE JOB CARD + JOB ITEMS (in a single transaction)
  */
 export const createJobCard = async (req, res) => {
-    console.log("createJobCard called...");
+  console.log("createJobCard called...");
   const t = await JobCard.sequelize.transaction();
   try {
     const {
@@ -249,7 +249,7 @@ export const createJobCard = async (req, res) => {
 export const getAllJobCards = async (req, res) => {
   console.log("getAllJobCards called...");
   try {
-    const { status, page = 1, limit = 20 } = req.query;
+    const { status, page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
 
     const whereClause = {};
@@ -290,7 +290,7 @@ export const getAllJobCards = async (req, res) => {
 export const getJobCardByJobNo = async (req, res) => {
   try {
     console.log("getJobCardByJobNo called...");
-    const job_no  = req.params.id;
+    const { job_no } = req.params;
 
     if (!job_no) {
       return res.status(400).json({
@@ -332,9 +332,7 @@ export const updateJobCard = async (req, res) => {
   console.log("updateJobCard called...");
   const t = await JobCard.sequelize.transaction();
   try {
-    console.log("");
-    const { id } = req.params;
-    const job_no = id;
+    const { job_no } = req.params;
     const { job_items = [], ...updates } = req.body;
 
     const jobCard = await JobCard.findByPk(job_no, {
@@ -417,7 +415,7 @@ export const updateJobCard = async (req, res) => {
 export const deleteJobCard = async (req, res) => {
   console.log("deleteJobCard called...");
   try {
-    const job_no = req.params.id;
+    const { job_no } = req.params;
 
     if (!job_no) {
       return res.status(400).json({
@@ -467,12 +465,48 @@ export const deleteJobCard = async (req, res) => {
   }
 };
 
+/**
+ * CANCEL JOB
+ */
 
+export const cancelJobCard = async (req, res) => {
+  try {
+    const { job_no } = req.params;
+    if (!job_no) {
+      return res.status(400).json({
+        message: "Job number required",
+      });
+    }
+
+    const job = await JobCard.findByPk(job_no);
+
+    if (!job) {
+      return res.status(400).json({
+        message: "Job not found",
+      });
+    }
+
+    job.current_stage = "cancelled";
+    job.status = "cancelled";
+
+    await job.save();
+
+    return res.status(200).json({
+      message: "Successfully cancelled the job",
+    });
+  } catch (error) {
+    console.error("Error cancelling job: ", error);
+    return res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
 
 export const getEnquiryForItems = async (req, res) => {
   console.log("getEnquiryForItems called...");
   const enquiryForItems = await EnquiryForItems.findAll({
-    where: {}
+    where: {},
   });
   return res.json(enquiryForItems);
 };

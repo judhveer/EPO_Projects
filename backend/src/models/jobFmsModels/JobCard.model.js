@@ -10,8 +10,24 @@ export default (sequelize) => {
         allowNull: true,
         autoIncrement: false,
       },
+      client_name: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        set(value) {
+          this.setDataValue("client_name", value ? value.toUpperCase() : null);
+        },
+      },
       client_type: {
         type: DataTypes.ENUM("Govt", "Pvt", "Institution", "Other"),
+        allowNull: false,
+      },
+      order_type: {
+        type: DataTypes.ENUM(
+          "Work Order",
+          "Bulk Order",
+          "Project Based Order",
+          "Job Order"
+        ),
         allowNull: false,
       },
       order_source: {
@@ -21,22 +37,6 @@ export default (sequelize) => {
           "ClientReference",
           "WalkIn",
           "Call"
-        ),
-        allowNull: false,
-      },
-      client_name: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        set(value) {
-          this.setDataValue("client_name", value ? value.toUpperCase() : null);
-        },
-      },
-      order_type: {
-        type: DataTypes.ENUM(
-          "Work Order",
-          "Bulk Order",
-          "Project Based Order",
-          "Job Order"
         ),
         allowNull: false,
       },
@@ -64,6 +64,10 @@ export default (sequelize) => {
         type: DataTypes.ENUM("In-Bound", "Out-Bound"),
         allowNull: false,
       },
+      delivery_date: {
+        type: DataTypes.DATE,
+        allowNull: false,
+      },
       delivery_location: {
         type: DataTypes.ENUM(
           "EPO to Customer",
@@ -74,10 +78,6 @@ export default (sequelize) => {
       },
       delivery_address: {
         type: DataTypes.TEXT,
-      },
-      delivery_date: {
-        type: DataTypes.DATE,
-        allowNull: false,
       },
       proof_date: {
         type: DataTypes.DATE,
@@ -122,6 +122,10 @@ export default (sequelize) => {
       },
       current_stage: {
         type: DataTypes.STRING,
+
+        //  enum: ["pending", "in-progress", "completed", "cancelled"],
+  // default: "pending",
+
       },
       job_completion_deadline: {
         type: DataTypes.DATE,

@@ -11,6 +11,8 @@ export default function JobWriterTable({ refresh }) {
   const [showModal, setShowModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null); // store job to delete
   const [deleting, setDeleting] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(null); // store job to delete
+  const [cancelling, setCancelling] = useState(false);
 
   // ✅ Fetch jobs
   const fetchJobs = async () => {
@@ -37,11 +39,14 @@ export default function JobWriterTable({ refresh }) {
 
         // Close delete confirmation (if open)
         if (confirmDelete) setConfirmDelete(null);
+
+        // Close cancel confirmation (if open)
+        if (confirmCancel) setConfirmCancel(null);
       }
     };
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
-  }, [showModal, confirmDelete]);
+  }, [showModal, confirmDelete, confirmCancel]);
 
   const handleEditClick = (job) => {
     setSelectedJob(job);
@@ -66,19 +71,20 @@ export default function JobWriterTable({ refresh }) {
     );
 
   return (
-    <div className="p-4">
+    <div className="">
       <h2 className="text-2xl font-bold text-blue-700 mb-4">
         📋 Job Writer Dashboard
       </h2>
 
       {/* ✅ Table */}
       <div className="relative overflow-auto border rounded-lg shadow max-h-[80vh]">
-        <table className="min-w-[2000px] w-full text-sm border-collapse border border-gray-300">
+        <table className="min-w-[3000px] max-w-[4000px] text-sm border-collapse border border-gray-300">
           <thead className="bg-blue-600 text-white sticky top-0 z-30">
             <tr>
               <th className="border p-2 sticky left-0 bg-blue-700 z-40">
                 Job No
               </th>
+              <th className="border "> Job Created On</th>
               <th className="border p-2">Client Name</th>
               <th className="border p-2">Client Type</th>
               <th className="border p-2">Order Type</th>
@@ -86,13 +92,25 @@ export default function JobWriterTable({ refresh }) {
               <th className="border p-2">Address</th>
               <th className="border p-2">Contact</th>
               <th className="border p-2">Email</th>
+              <th className="border p-2">Order Handled By</th>
+              <th className="border p-2">Execution Location</th>
               <th className="border p-2">Delivery Date</th>
+              <th className="border p-2">Delivery Location</th>
+              <th className="border p-2">Proof Date</th>
               <th className="border p-2">Priority</th>
+              <th className="border p-2">Instructions</th>
+              <th className="border p-2">No of Files</th>
+              <th className="border p-2">Unit Rate</th>
               <th className="border p-2">Total Amount</th>
               <th className="border p-2">Advance</th>
+              <th className="border p-2">Mode of Payment</th>
               <th className="border p-2">Payment Status</th>
+              <th className="border p-2">Current Stage</th>
+              <th className="border p-2">Job Completion Deadline</th>
               <th className="border p-2">Items</th>
-              <th className="border p-2">Actions</th>
+              <th className="border p-2 sticky right-0 bg-blue-700 z-40">
+                Actions
+              </th>
             </tr>
           </thead>
 
@@ -103,6 +121,9 @@ export default function JobWriterTable({ refresh }) {
                   <td className="border border-r-4 border-gray-400 p-2 sticky left-0 bg-white z-20">
                     {job.job_no}
                   </td>
+                  <td className="border p-2">
+                    {new Date(job.createdAt).toLocaleString()}
+                  </td>
                   <td className="border p-2">{job.client_name}</td>
                   <td className="border p-2">{job.client_type}</td>
                   <td className="border p-2">{job.order_type}</td>
@@ -110,30 +131,73 @@ export default function JobWriterTable({ refresh }) {
                   <td className="border p-2">{job.address}</td>
                   <td className="border p-2">{job.contact_number}</td>
                   <td className="border p-2">{job.email_id}</td>
+                  <td className="border p-2">{job.order_handled_by}</td>
+                  <td className="border p-2">{job.execution_location}</td>
                   <td className="border p-2">
-                    {new Date(job.delivery_date).toLocaleDateString()}
+                    {new Date(job.delivery_date).toLocaleString()}
+                  </td>
+                  <td className="border p-2">{job.delivery_location}</td>
+                  <td className="border p-2">
+                    {new Date(job.proof_date).toLocaleDateString()}
                   </td>
                   <td className="border p-2">{job.task_priority}</td>
+                  <td className="border p-2">{job.instructions}</td>
+                  <td className="border p-2">{job.no_of_files}</td>
+                  <td className="border p-2">{job.unit_rate}</td>
                   <td className="border p-2">{job.total_amount}</td>
                   <td className="border p-2">{job.advance_payment}</td>
+                  <td className="border p-2">{job.mode_of_payment}</td>
                   <td className="border p-2">{job.payment_status}</td>
+                  <td className="border p-2">{job.current_stage}</td>
+                  <td className="border p-2">
+                    {new Date(job.job_completion_deadline).toLocaleString()}
+                  </td>
                   <td className="border p-2 text-gray-500 text-xs italic">
                     {job.items?.length || 0} items
                   </td>
-                  <td className="border p-2 text-center space-x-2">
-                    <Button
-                      className="bg-blue-600 hover:bg-blue-700 text-sm"
-                      onClick={() => handleEditClick(job)}
+                  <td className="border p-2 text-center space-x-2 sticky right-0 bg-white z-20">
+                    <span
+                      className={`px-3 py-1 rounded text-sm 
+      ${
+        job.status === "cancelled"
+          ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+          : "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
+      }
+    `}
+                      onClick={() =>
+                        job.status !== "cancelled" && handleEditClick(job)
+                      }
                     >
-                      ✏️ Edit
-                    </Button>
-                    <Button
-                      className="bg-red-600 hover:bg-red-700 text-sm"
-                      onClick={() => setConfirmDelete(job)}
+                      Edit
+                    </span>{" "}
+                    <span
+                      className={`px-3 py-1 rounded text-sm
+      ${
+        job.status === "cancelled"
+          ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+          : "bg-red-600 text-white hover:bg-red-700 cursor-pointer "
+      }
+    `}
+                      onClick={() =>
+                        job.status !== "cancelled" && setConfirmDelete(job)
+                      }
                     >
                       Delete
-                    </Button>{" "}
-                    s
+                    </span>{" "}
+                    <span
+                      className={`px-3 py-1 rounded text-sm cursor-pointer 
+      ${
+        job.status === "cancelled"
+          ? "bg-gray-400 text-white cursor-not-allowed"
+          : "bg-gray-300 text-black hover:bg-gray-700 hover:text-white"
+      }
+    `}
+                      onClick={() =>
+                        job.status !== "cancelled" && setConfirmCancel(job)
+                      }
+                    >
+                      {job.status === "cancelled" ? "Cancelled" : "Cancel"}
+                    </span>{" "}
                   </td>
                 </tr>
               ))
@@ -207,7 +271,7 @@ export default function JobWriterTable({ refresh }) {
               className="bg-white rounded-2xl shadow-2xl w-[90%] max-w-md p-6 text-center"
             >
               <h3 className="text-xl font-semibold text-red-600 mb-2">
-                ⚠️ Confirm Deletion
+                Confirm Deletion
               </h3>
               <p className="text-slate-600 mb-4">
                 Are you sure you want to delete{" "}
@@ -220,13 +284,13 @@ export default function JobWriterTable({ refresh }) {
 
               <div className="flex justify-center gap-3">
                 <Button
-                  className="bg-gray-500 hover:bg-gray-600"
+                  className="bg-gray-500 hover:bg-gray-600 cursor-pointer"
                   onClick={() => setConfirmDelete(null)}
                 >
-                  ❌ Cancel
+                  Cancel
                 </Button>
                 <Button
-                  className="bg-red-600 hover:bg-red-700"
+                  className="bg-red-600 hover:bg-red-700 cursor-pointer"
                   onClick={async () => {
                     setDeleting(true);
                     try {
@@ -244,7 +308,69 @@ export default function JobWriterTable({ refresh }) {
                   }}
                   disabled={deleting}
                 >
-                  {deleting ? "Deleting..." : "🗑 Delete"}
+                  {deleting ? "Deleting..." : "Delete"}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {confirmCancel && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 180, damping: 20 }}
+              className="bg-white rounded-2xl shadow-2xl w-[90%] max-w-md p-6 text-center"
+            >
+              <h3 className="text-xl font-semibold text-red-600 mb-2">
+                Confirm Cancel
+              </h3>
+              <p className="text-slate-600 mb-4">
+                Are you sure you want to Canel{" "}
+                <span className="font-semibold text-blue-700">
+                  Job #{confirmCancel.job_no}
+                </span>
+                ?<br />
+                This action cannot be undone.
+              </p>
+
+              <div className="flex justify-center gap-3">
+                <Button
+                  className="bg-gray-500 hover:bg-gray-600 cursor-pointer"
+                  onClick={() => setConfirmCancel(null)}
+                >
+                  No
+                </Button>
+                <Button
+                  className="bg-red-600 hover:bg-red-700 cursor-pointer"
+                  onClick={async () => {
+                    setCancelling(true);
+                    try {
+                      await api.patch(
+                        `/api/fms/jobcards/${confirmCancel.job_no}/cancel`
+                      );
+                      setConfirmCancel(null);
+                      fetchJobs();
+                    } catch (err) {
+                      console.error("Failed to cancel job:", err);
+                      alert("Error cancelling job");
+                    } finally {
+                      setCancelling(false);
+                    }
+                  }}
+                  disabled={cancelling}
+                >
+                  {cancelling ? "Cancelling..." : "Yes. Cancel it!"}
                 </Button>
               </div>
             </motion.div>
