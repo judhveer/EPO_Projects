@@ -5,8 +5,6 @@ import JobCardForm from "../jobFms/JobCardForm.jsx"; // 👈 Import your form co
 import { motion, AnimatePresence } from "framer-motion";
 import { createPortal } from "react-dom";
 
-
-
 export default function JobWriterTable({ refresh }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -19,30 +17,28 @@ export default function JobWriterTable({ refresh }) {
   const [openActionDropdown, setOpenActionDropdown] = useState(null);
 
   useEffect(() => {
-  if (!openActionDropdown) return;
+    if (!openActionDropdown) return;
 
-  const handleClickOutside = (e) => {
-    // Close if clicking outside of any dropdown or button
-    if (!e.target.closest(".action-dropdown")) {
+    const handleClickOutside = (e) => {
+      // Close if clicking outside of any dropdown or button
+      if (!e.target.closest(".action-dropdown")) {
+        setOpenActionDropdown(null);
+      }
+    };
+
+    const handleScroll = () => {
+      // Close on scroll (for any scrollable parent)
       setOpenActionDropdown(null);
-    }
-  };
+    };
 
-  const handleScroll = () => {
-    // Close on scroll (for any scrollable parent)
-    setOpenActionDropdown(null);
-  };
+    window.addEventListener("click", handleClickOutside);
+    window.addEventListener("scroll", handleScroll, true); // true = capture phase (detects scrolls inside nested containers)
 
-  window.addEventListener("click", handleClickOutside);
-  window.addEventListener("scroll", handleScroll, true); // true = capture phase (detects scrolls inside nested containers)
-
-  return () => {
-    window.removeEventListener("click", handleClickOutside);
-    window.removeEventListener("scroll", handleScroll, true);
-  };
-}, [openActionDropdown]);
-
-
+    return () => {
+      window.removeEventListener("click", handleClickOutside);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [openActionDropdown]);
 
   const [showItemsPanel, setShowItemsPanel] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
@@ -393,41 +389,27 @@ export default function JobWriterTable({ refresh }) {
           <tbody>
             {paginatedJobs.length > 0 ? (
               paginatedJobs.map((job, index) => (
-               <tr
-  key={job.job_no}
-  className={`border-b transition-all duration-200 ${
-    index % 2 === 0 ? "bg-white" : "bg-slate-300"
-  } hover:bg-blue-500 hover:text-white`}
->
-
-
+                <tr
+                  key={job.job_no}
+                  className={`border-b transition-all duration-200 ${
+                    index % 2 === 0 ? "bg-white" : "bg-slate-300"
+                  } hover:bg-blue-500 hover:text-white`}
+                >
                   <td className="border p-2 sticky left-0 bg-white z-20 text-center font-bold text-blue-700">
                     {job.job_no}
                   </td>
                   <td className="border p-2">
                     {new Date(job.createdAt).toLocaleString()}
                   </td>
-                  <td className="border p-2">
-                    {job.client_name}
-                  </td>
-                  <td className="border p-2">
-                    {job.client_type}
-                  </td>
+                  <td className="border p-2">{job.client_name}</td>
+                  <td className="border p-2">{job.client_type}</td>
                   <td className="border p-2 ">{job.order_type}</td>
-                  <td className="border p-2 ">
-                    {job.order_source}
-                  </td>
+                  <td className="border p-2 ">{job.order_source}</td>
                   <td className="border p-2 ">{job.address}</td>
-                  <td className="border p-2">
-                    {job.contact_number}
-                  </td>
+                  <td className="border p-2">{job.contact_number}</td>
                   <td className="border p-2">{job.email_id}</td>
-                  <td className="border p-2">
-                    {job.order_handled_by}
-                  </td>
-                  <td className="border p-2">
-                    {job.execution_location}
-                  </td>
+                  <td className="border p-2">{job.order_handled_by}</td>
+                  <td className="border p-2">{job.execution_location}</td>
                   <td className="border p-2 font-semibold text-blue-600 hover:text-white">
                     {new Date(job.delivery_date).toLocaleString()}
                   </td>
@@ -453,22 +435,14 @@ export default function JobWriterTable({ refresh }) {
                       {job.task_priority}
                     </span>
                   </td>
-                  <td className="border p-2">
-                    {job.instructions}
-                  </td>
-                  <td className="border p-2">
-                    {job.no_of_files}
-                  </td>
+                  <td className="border p-2">{job.instructions}</td>
+                  <td className="border p-2">{job.no_of_files}</td>
                   <td className="border p-2">{job.unit_rate}</td>
                   <td className="border p-2 font-semibold text-blue-700 hover:text-white">
                     {job.total_amount}
                   </td>
-                  <td className="border p-2">
-                    {job.advance_payment}
-                  </td>
-                  <td className="border p-2">
-                    {job.mode_of_payment}
-                  </td>
+                  <td className="border p-2">{job.advance_payment}</td>
+                  <td className="border p-2">{job.mode_of_payment}</td>
                   <td className="border p-2">
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-semibold ${
@@ -513,85 +487,82 @@ export default function JobWriterTable({ refresh }) {
                     )}
                   </td>
 
-<td className="border p-2 sticky right-0 bg-white z-10 text-center relative action-dropdown">
-  <div className="relative inline-block text-left action-dropdown">
-    {/* Main button */}
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        const rect = e.currentTarget.getBoundingClientRect();
-        setOpenActionDropdown(
-          openActionDropdown &&
-          openActionDropdown.job_no === job.job_no
-            ? null
-            : { job_no: job.job_no, rect }
-        );
-      }}
-      className={`px-3 py-1 rounded-md text-xs font-semibold shadow-sm transition-all ${
-        job.status === "cancelled"
-          ? "bg-gray-400 text-white cursor-not-allowed"
-          : "bg-blue-600 text-white hover:bg-blue-700"
-      }`}
-      disabled={job.status === "cancelled"}
-    >
-      {job.status === "cancelled" ? "Cancelled" : "Active ▾"}
-    </button>
-  </div>
+                  <td className="border p-2 sticky right-0 bg-white z-10 text-center relative action-dropdown">
+                    <div className="relative inline-block text-left action-dropdown">
+                      {/* Main button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setOpenActionDropdown(
+                            openActionDropdown &&
+                              openActionDropdown.job_no === job.job_no
+                              ? null
+                              : { job_no: job.job_no, rect }
+                          );
+                        }}
+                        className={`px-3 py-1 rounded-md text-xs font-semibold shadow-sm transition-all ${
+                          job.status === "cancelled"
+                            ? "bg-gray-400 text-white cursor-not-allowed"
+                            : "bg-blue-600 text-white hover:bg-blue-700"
+                        }`}
+                        disabled={job.status === "cancelled"}
+                      >
+                        {job.status === "cancelled" ? "Cancelled" : "Active ▾"}
+                      </button>
+                    </div>
 
-  {/* Portal dropdown to body */}
-  {openActionDropdown?.job_no === job.job_no &&
-    job.status !== "cancelled" &&
-    createPortal(
-      <AnimatePresence>
-        <motion.div
-          key={job.job_no}
-          initial={{ opacity: 0, y: 10, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -10, scale: 0.95 }}
-          transition={{ duration: 0.2 }}
-          className="fixed bg-white border border-gray-200 rounded-xl shadow-2xl z-[99999] w-36 overflow-hidden action-dropdown"
-          style={{
-            top: `${openActionDropdown.rect.bottom}px`,
-            left: `${openActionDropdown.rect.right - 200}px`,
-          }}
-        >
-          <button
-            onClick={() => {
-              setOpenActionDropdown(null);
-              handleEditClick(job);
-            }}
-            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-100 hover:text-blue-700 transition-all flex items-center gap-2"
-          >
-            ✏️ Edit
-          </button>
+                    {/* Portal dropdown to body */}
+                    {openActionDropdown?.job_no === job.job_no &&
+                      job.status !== "cancelled" &&
+                      createPortal(
+                        <AnimatePresence>
+                          <motion.div
+                            key={job.job_no}
+                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                            transition={{ duration: 0.2 }}
+                            className="fixed bg-white border border-gray-200 rounded-xl shadow-2xl z-[99999] w-36 overflow-hidden action-dropdown"
+                            style={{
+                              top: `${openActionDropdown.rect.bottom}px`,
+                              left: `${openActionDropdown.rect.right - 200}px`,
+                            }}
+                          >
+                            <button
+                              onClick={() => {
+                                setOpenActionDropdown(null);
+                                handleEditClick(job);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-100 hover:text-blue-700 transition-all flex items-center gap-2"
+                            >
+                              ✏️ Edit
+                            </button>
 
-          <button
-            onClick={() => {
-              setOpenActionDropdown(null);
-              setConfirmDelete(job);
-            }}
-            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-red-100 hover:text-red-700 transition-all flex items-center gap-2"
-          >
-            🗑️ Delete
-          </button>
+                            <button
+                              onClick={() => {
+                                setOpenActionDropdown(null);
+                                setConfirmDelete(job);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-red-100 hover:text-red-700 transition-all flex items-center gap-2"
+                            >
+                              🗑️ Delete
+                            </button>
 
-          <button
-            onClick={() => {
-              setOpenActionDropdown(null);
-              setConfirmCancel(job);
-            }}
-            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-yellow-100 hover:text-yellow-700 transition-all flex items-center gap-2"
-          >
-            🚫 Cancel
-          </button>
-        </motion.div>
-      </AnimatePresence>,
-      document.body
-    )}
-</td>
-
-
-
+                            <button
+                              onClick={() => {
+                                setOpenActionDropdown(null);
+                                setConfirmCancel(job);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-yellow-100 hover:text-yellow-700 transition-all flex items-center gap-2"
+                            >
+                              🚫 Cancel
+                            </button>
+                          </motion.div>
+                        </AnimatePresence>,
+                        document.body
+                      )}
+                  </td>
                 </tr>
               ))
             ) : (
