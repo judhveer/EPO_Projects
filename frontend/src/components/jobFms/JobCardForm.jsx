@@ -831,7 +831,7 @@ export default function JobCardForm({
                         />
                       </Field>
 
-                      <Field label="Color Scheme" required>
+                      {/* <Field label="Color Scheme" required>
                         <Select
                           value={item.options?.color_scheme || ""}
                           onChange={(e) =>
@@ -844,7 +844,7 @@ export default function JobCardForm({
                           <option>Black and White</option>
                           <option>Multi-color</option>
                         </Select>
-                      </Field>
+                      </Field> */}
 
                       <Field label="Type of Binding" required>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-1">

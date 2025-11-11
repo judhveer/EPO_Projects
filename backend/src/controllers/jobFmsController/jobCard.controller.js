@@ -444,14 +444,16 @@ export const deleteJobCard = async (req, res) => {
 
     await jobCard.destroy(); // Cascade deletes all JobItems
 
-    if (clientDetails.total_jobs > 0) {
-      clientDetails.total_jobs--;
+    if (clientDetails) {
+      if (clientDetails.total_jobs > 0) {
+        clientDetails.total_jobs--;
 
-      if (clientDetails.total_jobs <= 3) {
-        clientDetails.client_relation = "NBD";
+        if (clientDetails.total_jobs <= 3) {
+          clientDetails.client_relation = "NBD";
+        }
       }
+      await clientDetails.save();
     }
-    await clientDetails.save();
 
     return res.json({
       message: "JobCard deleted successfully",
