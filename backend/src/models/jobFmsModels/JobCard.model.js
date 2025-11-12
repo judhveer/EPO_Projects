@@ -121,8 +121,9 @@ export default (sequelize) => {
         defaultValue: "created",
       },
       current_stage: {
-        type: DataTypes.ENUM("PENDING", "COMPLETED", "CANCELLED", "IN-PROGRESS"),
-        default: "PENDING",
+        type: DataTypes.STRING(),
+        // type: DataTypes.ENUM("PENDING", "COMPLETED", "CANCELLED", "IN-PROGRESS"),
+        // default: "PENDING",
         //  enum: ["pending", "in-progress", "completed", "cancelled"],
   // default: "pending",
 

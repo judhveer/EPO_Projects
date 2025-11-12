@@ -13,7 +13,30 @@ const {
   ActivityLog,
   ClientDetails,
   EnquiryForItems,
+  User,
 } = models;
+
+
+
+
+
+
+// ✅ Helper: Safe email sender
+async function sendMailSafe({ to, subject, html }) {
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to,
+      subject,
+      html,
+    });
+    console.log(`📧 Email sent successfully to ${to}`);
+  } catch (err) {
+    console.error(`❌ Failed to send email to ${to}:`, err.message);
+  }
+}
+
+
 
 /**
  * CREATE JOB CARD + JOB ITEMS (in a single transaction)
@@ -104,7 +127,8 @@ export const createJobCard = async (req, res) => {
         payment_status,
         order_received_by,
         no_of_files,
-        stage_name: "created",
+        status: "coordinator_review",
+        stage_name: "coordinator_review",
       },
       { transaction: t }
     );
@@ -140,10 +164,10 @@ export const createJobCard = async (req, res) => {
     // 4. Create StageTracking entry
     await advanceStage({
       job_no,
-      new_stage: "created",
+      new_stage: "coordinator_review",
       performed_by_id: req.user?.id || null,
       started_at: new Date(),
-      remarks: "Job created successfully",
+      remarks: "Job sent for coordinator review",
       transaction: t,
     });
 
@@ -219,20 +243,106 @@ export const createJobCard = async (req, res) => {
       (Eastern Panorama Offset)</p>
       `;
 
-      const mailOptions = {
-        from: process.env.EMAIL_USER,
+      await sendMailSafe({
         to: email_id,
         subject: `Welcome to EPO - Order Confirmation | Job No: ${jobCard.job_no}`,
         html: emailHTML,
-      };
+      })
 
-      try {
-        await transporter.sendMail(mailOptions);
-        console.log(`✅ Order confirmation email sent to: ${email_id}`);
-      } catch (err) {
-        console.error("❌ Failed to send client email:", err.message);
-      }
+      // const mailOptions = {
+      //   from: process.env.EMAIL_USER,
+      //   to: email_id,
+      //   subject: `Welcome to EPO - Order Confirmation | Job No: ${jobCard.job_no}`,
+      //   html: emailHTML,
+      // };
+
+      // try {
+      //   await transporter.sendMail(mailOptions);
+      //   console.log(`✅ Order confirmation email sent to: ${email_id}`);
+      // } catch (err) {
+      //   console.error("❌ Failed to send client email:", err.message);
+      // }
     }
+
+    // 2️⃣ Notify the assigned CRM
+    const crmUser = await User.findOne({
+      where: { username: order_handled_by, department: "CRM" },
+    });
+
+    if (crmUser?.email) {
+      const crmEmailHTML = `
+      <div style="font-family:Arial, sans-serif; color:#333;">
+        <h2 style="color:#0a4da2;">📋 New Job Assigned to You</h2>
+        <p>Hello <strong>${crmUser.username}</strong>,</p>
+        <p>A new JobCard has been assigned under your responsibility.</p>
+        <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; width:100%; font-size:14px;">
+          <tr><th align="left">Job No</th><td>${job_no}</td></tr>
+          <tr><th align="left">Client</th><td>${client_name}</td></tr>
+          <tr><th align="left">Order Type</th><td>${order_type}</td></tr>
+          <tr><th align="left">Order Source</th><td>${order_source}</td></tr>
+          <tr><th align="left">Execution Location</th><td>${execution_location}</td></tr>
+          <tr><th align="left">Delivery Date</th><td>${new Date(delivery_date).toLocaleString()}</td></tr>
+          <tr><th align="left">Priority</th><td>${task_priority}</td></tr>
+          <tr><th align="left">Total Amount</th><td>₹${total_amount}</td></tr>
+        </table>
+        <br/>
+        <p style="color:#555;">Please log into the EPO FMS dashboard to review the details and coordinate with the Process Coordinator.</p>
+        <hr style="border:none; border-top:1px solid #ccc; margin:20px 0;" />
+        <p style="font-size:13px; color:#888;">-- Automated Notification | Eastern Panorama Offset</p>
+      </div>
+      `;
+
+      await sendMailSafe({
+        to: crmUser.email,
+        subject: `New Job Assigned | Job No: ${job_no}`,
+        html: crmEmailHTML,
+      });
+    }
+
+     // 3️⃣ Notify all Process Coordinators
+    const coordinators = await User.findAll({
+      where: { department: "Process Coordinator" },
+    });
+
+    const coordinatorEmails = coordinators.map((u) => u.email).filter(Boolean);
+
+    if(coordinatorEmails.length > 0){
+      const coordinatorEmailHTML = `
+      <div style="font-family:Arial, sans-serif; color:#333;">
+        <h2 style="color:#0a4da2;">🆕 New JobCard Created - Review Required</h2>
+        <p>Hello Process Coordinator Team,</p>
+        <p>A new job card has been created and requires your review in the FMS dashboard.</p>
+
+        <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; width:100%; font-size:14px;">
+          <tr><th align="left">Job No</th><td>${job_no}</td></tr>
+          <tr><th align="left">Client</th><td>${client_name}</td></tr>
+          <tr><th align="left">Order Type</th><td>${order_type}</td></tr>
+          <tr><th align="left">Order Handled By (CRM)</th><td>${order_handled_by}</td></tr>
+          <tr><th align="left">Execution Location</th><td>${execution_location}</td></tr>
+          <tr><th align="left">Delivery Date</th><td>${new Date(delivery_date).toLocaleString()}</td></tr>
+          <tr><th align="left">Priority</th><td>${task_priority}</td></tr>
+          <tr><th align="left">Total Amount</th><td>₹${total_amount}</td></tr>
+        </table>
+
+        <br/>
+        <p style="color:#555;">Please log into the EPO FMS dashboard to start the coordination and approval process.</p>
+
+        <hr style="border:none; border-top:1px solid #ccc; margin:20px 0;" />
+        <p style="font-size:13px; color:#888;">-- Automated Notification | Eastern Panorama Offset</p>
+      </div>
+      `;
+
+
+      await sendMailSafe({
+        to: coordinatorEmails.join(","),
+        subject: `New JobCard - Coordinator Review | Job No: ${job_no}`,
+        html: coordinatorEmailHTML,
+      });
+    }
+
+
+
+
   } catch (error) {
     console.error("❌ Error creating JobCard:", error);
     await t.rollback();
@@ -392,13 +502,24 @@ export const updateJobCard = async (req, res) => {
     await t.commit();
 
     const updatedJobCard = await JobCard.findByPk(job_no, {
-      include: [{ model: JobItem, as: "items" }],
+      include: [
+        { model: JobItem, as: "items" },
+        { model: JobAssignment, as: "assignments"}
+      ],
     });
 
     res.json({
       message: "JobCard and items updated successfully",
       updatedJobCard,
     });
+
+    // 🔔 Notify CRM + Coordinators + Designer
+    await sendJobNotificationEmail({
+      job: updatedJobCard,
+      subject: `JobCard Updated | Job No: ${job_no}`,
+      actionType: "Updated",
+    });
+
   } catch (error) {
     await t.rollback();
     console.error("Error updating JobCard:", error);
@@ -423,7 +544,11 @@ export const deleteJobCard = async (req, res) => {
       });
     }
 
-    const jobCard = await JobCard.findByPk(job_no);
+    const jobCard = await JobCard.findByPk(job_no, {
+      include: [
+        { model: JobAssignment, as: "assignments" },
+      ]
+    });
     if (!jobCard) {
       return res.status(404).json({
         message: "JobCard not found",
@@ -442,7 +567,7 @@ export const deleteJobCard = async (req, res) => {
       },
     });
 
-    await jobCard.destroy(); // Cascade deletes all JobItems
+
 
     if (clientDetails) {
       if (clientDetails.total_jobs > 0) {
@@ -455,9 +580,19 @@ export const deleteJobCard = async (req, res) => {
       await clientDetails.save();
     }
 
-    return res.json({
+    res.json({
       message: "JobCard deleted successfully",
     });
+
+    // 🔔 Notify CRM + Coordinators
+    await sendJobNotificationEmail({
+      job: jobCard,
+      subject: `❌ JobCard Deleted | Job No: ${job_no}`,
+      actionType: "deleted",
+    });
+
+    await jobCard.destroy(); // Cascade deletes all JobItems
+
   } catch (error) {
     console.error("Error deleting JobCard:", error);
     res.status(500).json({
@@ -480,7 +615,13 @@ export const cancelJobCard = async (req, res) => {
       });
     }
 
-    const job = await JobCard.findByPk(job_no);
+    const job = await JobCard.findByPk(job_no, {
+      include: [
+        { model: JobAssignment, as: "assignments" },
+      ]
+    });
+
+    console.log("job: ", job);
 
     if (!job) {
       return res.status(400).json({
@@ -493,9 +634,17 @@ export const cancelJobCard = async (req, res) => {
 
     await job.save();
 
-    return res.status(200).json({
+    res.status(200).json({
       message: "Successfully cancelled the job",
     });
+
+    // 🔔 Notify CRM + Coordinators + Designer
+    await sendJobNotificationEmail({
+      job,
+      subject: `🚫 JobCard Cancelled | Job No: ${job_no}`,
+      actionType: "cancelled",
+    });
+
   } catch (error) {
     console.error("Error cancelling job: ", error);
     return res.status(500).json({
@@ -512,3 +661,86 @@ export const getEnquiryForItems = async (req, res) => {
   });
   return res.json(enquiryForItems);
 };
+
+
+
+
+
+
+
+
+
+
+
+
+// =====================================================
+// ✉️ Helper: Sends notification mail to CRM, Coordinators, Designer
+// =====================================================
+async function sendJobNotificationEmail({ job, subject, actionType }) {
+  try {
+    const { job_no, client_name, order_type, order_handled_by, execution_location, delivery_date, task_priority } = job;
+
+    // Fetch CRM
+    const crmUser = await User.findOne({ where: { username: order_handled_by, department: "CRM" } });
+
+    // Fetch all Process Coordinators
+    const coordinators = await User.findAll({ where: { department: "Process Coordinator" } });
+
+    // Fetch Designer (optional)
+    const designer = job.assignments.length > 0 ? await User.findOne({ where: { id: job?.assignments?.designer_id, department: "Designer" } }): null;
+
+    const recipients = [
+      ...(crmUser?.email ? [crmUser.email] : []),
+      ...coordinators.map((u) => u.email).filter(Boolean),
+      ...(designer?.email ? [designer.email] : []),
+    ];
+
+    if (recipients.length === 0) {
+      console.warn("⚠️ No recipients found for job notification.");
+      return;
+    }
+
+    const actionLabel = (actionType === "cancelled") ? "Cancelled" :
+    (actionType === "deleted") ? "Deleted" : "Updated";
+    const color = (actionType === "cancelled") ? "#ff4444" : (actionType === "deleted") ? "#b71c1c" : "#0000FF";
+
+    const emailHTML = `
+      <div style="font-family:Arial, sans-serif; color:#333;">
+        <h2 style="color:${color};">⚠️ JobCard ${actionLabel}</h2>
+        <p>This is to inform you that the following job has been <strong>${actionLabel.toUpperCase()}</strong> by the Job Writer.</p>
+
+        <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; width:100%; font-size:14px;">
+          <tr><th align="left">Job No</th><td>${job_no}</td></tr>
+          <tr><th align="left">Client</th><td>${client_name}</td></tr>
+          <tr><th align="left">Order Type</th><td>${order_type}</td></tr>
+          <tr><th align="left">Handled By (CRM)</th><td>${order_handled_by}</td></tr>
+          <tr><th align="left">Execution Location</th><td>${execution_location}</td></tr>
+          <tr><th align="left">Delivery Date</th><td>${new Date(delivery_date).toLocaleString()}</td></tr>
+          <tr><th align="left">Priority</th><td>${task_priority}</td></tr>
+          <tr><th align="left">Action Performed By</th><td>${job.updatedBy || "Job Writer"}</td></tr>
+          <tr><th align="left">Status</th><td style="color:${color}; font-weight:bold;">${actionLabel}</td></tr>
+        </table>
+
+        <br/>
+        <p style="color:#555;">
+          Please update related records or notify relevant departments if needed.<br/>
+          This action is logged in the system for tracking purposes.
+        </p>
+
+        <hr style="border:none; border-top:1px solid #ccc; margin:20px 0;" />
+        <p style="font-size:13px; color:#888;">-- Automated Notification | Eastern Panorama Offset</p>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: recipients.join(","),
+      subject,
+      html: emailHTML,
+    });
+
+    console.log(`📧 ${actionLabel} notification sent to:`, recipients);
+  } catch (err) {
+    console.error("❌ Failed to send job notification email:", err.message);
+  }
+}
