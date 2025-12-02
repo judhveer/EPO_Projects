@@ -1,3 +1,4 @@
+// models/JobItem.js
 import { DataTypes } from "sequelize";
 import { JOB_ITEM_OPTION_TEMPLATES } from "../../constants/jobfms/jobItemOptions.js";
 
@@ -18,8 +19,15 @@ export default (sequelize) => {
           model: "jobfms_job_cards",
           key: "job_no",
         },
-        onDelete: "CASCADE", // ✅ auto-remove items if job deleted
+        onDelete: "CASCADE",
       },
+
+      // Link to ItemMaster (e.g., poster, leaflet)
+      // item_master_id: {
+      //   type: DataTypes.BIGINT.UNSIGNED,
+      //   allowNull: true,
+      // },
+
       // Category selected
       category: {
         type: DataTypes.ENUM(
@@ -45,6 +53,29 @@ export default (sequelize) => {
       quantity: {
         type: DataTypes.INTEGER,
       },
+
+      // NEW: Selected paper and size ids used for costing & printing
+      // selected_paper_id: {
+      //   type: DataTypes.BIGINT.UNSIGNED,
+      //   allowNull: true,
+      // },
+
+      // selected_size_id: {
+      //   type: DataTypes.BIGINT.UNSIGNED,
+      //   allowNull: true,
+      // },
+
+      // // Press / color options used in RateMaster lookup
+      // press_type: {
+      //   type: DataTypes.ENUM("offset", "digital"),
+      //   allowNull: true,
+      // },
+
+      // color_type: {
+      //   type: DataTypes.ENUM("single", "multi"),
+      //   allowNull: true,
+      // },
+
       // JSON field for storing all dynamic options based on category
       options: {
         type: DataTypes.JSON,
@@ -70,6 +101,22 @@ export default (sequelize) => {
       }
       `,
       },
+
+      // NEW: Calculated prices and breakdown (filled server-side)
+      // unit_price: {
+      //   type: DataTypes.DECIMAL(12, 2),
+      //   defaultValue: 0,
+      // },
+
+      // line_total: {
+      //   type: DataTypes.DECIMAL(12, 2),
+      //   defaultValue: 0,
+      // },
+
+      // calculation_meta: {
+      //   type: DataTypes.JSON,
+      //   allowNull: true,
+      // },
     },
     {
       tableName: "jobfms_job_items",
@@ -77,7 +124,7 @@ export default (sequelize) => {
     }
   );
 
-  // ✅ Auto-fill options template if not provided
+  // Auto-fill options template if not provided
   JobItem.addHook("beforeCreate", (item) => {
     if (!item.options || Object.keys(item.options).length === 0) {
       const template = JOB_ITEM_OPTION_TEMPLATES[item.category] || {};
@@ -85,19 +132,38 @@ export default (sequelize) => {
     }
   });
 
-  JobItem.addHook("afterCreate", async (jobItems) => {
-    const { EnquiryForItems } = sequelize.models;
+  // JobItem.addHook("afterCreate", async (jobItems) => {
+  //   const { EnquiryForItems } = sequelize.models;
 
-    let enquiryItem = await EnquiryForItems.findOne({
-      where: { item: jobItems.enquiry_for },
+  //   let enquiryItem = await EnquiryForItems.findOne({
+  //     where: { item: jobItems.enquiry_for },
+  //   });
+
+  //   if (!enquiryItem) {
+  //     await EnquiryForItems.create({
+  //       item: jobItems.enquiry_for,
+  //     });
+  //   }
+  // });
+
+  JobItem.associate = (models) => {
+    JobItem.belongsTo(models.JobCard, {
+      as: "jobCard",
+      foreignKey: "job_no",
     });
-
-    if(!enquiryItem){
-      await EnquiryForItems.create({
-        item: jobItems.enquiry_for,
-      });
-    }
-  });
+    JobItem.belongsTo(models.ItemMaster, {
+      as: "itemMaster",
+      foreignKey: "item_master_id",
+    });
+    JobItem.belongsTo(models.PaperMaster, {
+      as: "selectedPaper",
+      foreignKey: "selected_paper_id",
+    });
+    JobItem.belongsTo(models.SizeMaster, {
+      as: "selectedSize",
+      foreignKey: "selected_size_id",
+    });
+  };
 
   return JobItem;
 };

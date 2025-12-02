@@ -12,8 +12,8 @@ const {
   ProductionRecord,
   ActivityLog,
   ClientDetails,
-  EnquiryForItems,
   User,
+  ItemMaster
 } = models;
 
 
@@ -656,11 +656,31 @@ export const cancelJobCard = async (req, res) => {
 
 export const getEnquiryForItems = async (req, res) => {
   console.log("getEnquiryForItems called...");
-  const enquiryForItems = await EnquiryForItems.findAll({
-    where: {},
-  });
-  return res.json(enquiryForItems);
+    try {
+    const { category } = req.query;
+
+    let where = {};
+    if (category) {
+      where.category = category;
+    }
+
+    const items = await ItemMaster.findAll({ where });
+
+    return res.json(items);
+  } catch (err) {
+    console.error("Failed to fetch enquiry items:", err);
+    res.status(500).json({ message: "Failed to load enquiry items" });
+  }
+
 };
+
+
+
+
+
+
+
+
 
 
 

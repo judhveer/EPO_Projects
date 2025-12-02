@@ -33,8 +33,20 @@ import NotificationModel from './jobFmsModels/Notification.model.js';
 import StageTrackingModel from './jobFmsModels/StageTracking.model.js';
 import ActivityLogModel from './jobFmsModels/ActivityLog.model.js';
 import associateJobFmsModels from './jobFmsModels/associations.js';
-import ClientDetailsModel from "./jobFmsModels/ClientDetails.js";
-import EnquiryForItemsModel from "./jobFmsModels/EnquiryForItems.model.js";
+import ClientDetailsModel from "./jobFmsModels/ClientDetails.model.js";
+
+
+
+// jobFMS job card accounts models:
+import ItemMasterModel from './jobFmsModels/AccountsJobItems/ItemMaster.model.js';
+import PaperMasterModel from './jobFmsModels/AccountsJobItems/PaperMaster.model.js';
+import UPSMasterModel from './jobFmsModels/AccountsJobItems/UPSMaster.model.js';
+import BindingMasterModel from './jobFmsModels/AccountsJobItems/BindingMaster.model.js';
+import RateMasterModel from './jobFmsModels/AccountsJobItems/RateMaster.model.js';
+import PaperCalculationMasterModel from './jobFmsModels/AccountsJobItems/PaperCalculationMaster.model.js';
+import QuotationModel from './jobFmsModels/AccountsJobItems/Quotation.model.js';
+import JobCostingModel from './jobFmsModels/AccountsJobItems/JobCosting.model.js';
+
 
 
 
@@ -74,7 +86,18 @@ const Notification = NotificationModel(sequelize);
 const StageTracking = StageTrackingModel(sequelize);
 const ActivityLog = ActivityLogModel(sequelize);
 const ClientDetails = ClientDetailsModel(sequelize);
-const EnquiryForItems = EnquiryForItemsModel(sequelize);
+
+
+// Job FMS job card accounts Models:
+const ItemMaster = ItemMasterModel(sequelize);
+const PaperMaster = PaperMasterModel(sequelize);
+const UPSMaster = UPSMasterModel(sequelize);
+const BindingMaster = BindingMasterModel(sequelize);
+const RateMaster = RateMasterModel(sequelize);
+const PaperCalculationMaster = PaperCalculationMasterModel(sequelize);
+const Quotation = QuotationModel(sequelize);
+const JobCosting = JobCostingModel(sequelize);
+
 
 associateJobFmsModels({
   User,
@@ -88,7 +111,16 @@ associateJobFmsModels({
   StageTracking,
   ActivityLog,
   ClientDetails,
-  EnquiryForItems
+
+  // NEW MODELS
+  ItemMaster,
+  PaperMaster,
+  UPSMaster,
+  BindingMaster,
+  RateMaster,
+  PaperCalculationMaster,
+  Quotation,
+  JobCosting
 });
 
 
@@ -160,5 +192,13 @@ export default {
     StageTracking,
     ActivityLog,
     ClientDetails,
-    EnquiryForItems
+
+     ItemMaster,
+  PaperMaster,
+  UPSMaster,
+  BindingMaster,
+  RateMaster,
+  PaperCalculationMaster,
+  Quotation,
+  JobCosting
 };

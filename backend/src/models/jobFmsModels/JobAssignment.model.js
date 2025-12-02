@@ -33,14 +33,20 @@ export default (sequelize) => {
       estimated_completion_time: {
         type: DataTypes.DATE,
       },
-      started_at: {
+      // NEW: Designer timing fields
+      designer_start_time: {
         type: DataTypes.DATE,
+        allowNull: true,
       },
-      completed_at: {
+
+      designer_end_time: {
         type: DataTypes.DATE,
+        allowNull: true,
       },
-      actual_duration: {
+
+      designer_duration_minutes: {
         type: DataTypes.INTEGER,
+        defaultValue: 0,
       },
       status: {
         type: DataTypes.ENUM(
@@ -60,6 +66,23 @@ export default (sequelize) => {
       underscored: true,
     }
   );
+
+  JobAssignment.associate = (models) => {
+    JobAssignment.belongsTo(models.JobCard, {
+      as: "jobCard",
+      foreignKey: "job_no",
+    });
+
+    JobAssignment.belongsTo(models.User, {
+      as: "designer",
+      foreignKey: "designer_id",
+    });
+
+    JobAssignment.belongsTo(models.User, {
+      as: "assignedBy",
+      foreignKey: "assigned_by_id",
+    });
+  };
 
   return JobAssignment;
 };

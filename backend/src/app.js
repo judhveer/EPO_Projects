@@ -78,6 +78,7 @@ app.use(helmet());
 
 app.use(cors({
   // https://management.easternpanoramaoffset.com
+  // http://localhost:5173
   origin: 'https://management.easternpanoramaoffset.com', // change to frontend URL in production
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

@@ -134,6 +134,23 @@ export default (sequelize) => {
       no_of_files: {
         type: DataTypes.INTEGER,
       },
+
+
+      // NEW: Quotation / costing fields
+      quotation_subtotal: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      quotation_final_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+      },
+
+      profit_margin_percent: {
+        type: DataTypes.FLOAT,
+        defaultValue: 0,
+      },
     },
     {
       tableName: "jobfms_job_cards",
@@ -187,12 +204,35 @@ export default (sequelize) => {
   });
 
   // Association via client_name
-  JobCard.associate = (models) => {
+   JobCard.associate = (models) => {
     JobCard.belongsTo(models.ClientDetails, {
       foreignKey: "client_name",
       targetKey: "client_name",
       as: "client",
     });
+
+    JobCard.hasMany(models.JobItem, {
+      as: "items",
+      foreignKey: "job_no",
+      onDelete: "CASCADE",
+    });
+
+    JobCard.hasMany(models.JobAssignment, {
+      as: "assignments",
+      foreignKey: "job_no",
+      onDelete: "CASCADE",
+    });
+
+    JobCard.hasOne(models.Quotation, {
+      as: "quotation",
+      foreignKey: "job_no",
+    });
+
+    JobCard.hasOne(models.JobCosting, {
+      as: "costing",
+      foreignKey: "job_card_id",
+    });
+    
   };
 
   return JobCard;
