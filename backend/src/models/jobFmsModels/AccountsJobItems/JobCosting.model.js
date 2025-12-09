@@ -11,9 +11,9 @@ export default (sequelize) => {
         primaryKey: true,
       },
       job_card_id: {
-  type: DataTypes.BIGINT.UNSIGNED,
-  allowNull: false,
-},
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: false,
+      },
       paper_cost: {
         type: DataTypes.FLOAT,
         defaultValue: 0,

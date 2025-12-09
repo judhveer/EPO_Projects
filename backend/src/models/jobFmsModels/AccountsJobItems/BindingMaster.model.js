@@ -10,33 +10,37 @@ export default (sequelize) => {
         autoIncrement: true,
         primaryKey: true,
       },
-      category: {
-        type: DataTypes.ENUM('Single Sheet','Multiple Sheet','Wide Format','Other'),
-        allowNull: false
+      binding_name: {
+        type: DataTypes.STRING,
+        allowNull: false,
       },
 
-      // Link to item master (optional)
-      // item_master_id: {
-      //   type: DataTypes.BIGINT.UNSIGNED,
-      //   allowNull: true,
-      // },
-
-      // item_id: {
-      //   type: DataTypes.BIGINT.UNSIGNED,
-      //   allowNull: true,
-      // },
-
-      binding_type: {
-        type: DataTypes.STRING, // staple, hardbound, center stitch, etc.
-      },
       rate_per_unit: {
         type: DataTypes.FLOAT,
+        allowNull: true,
       },
-      cover_paper_id: {
-        type: DataTypes.BIGINT.UNSIGNED,
+
+      category: {
+        type: DataTypes.ENUM(
+          "Single Sheet",
+          "Multiple Sheet",
+          "Wide Format",
+          "Other",
+          "Color Scheme",
+          "Designing"
+        ),
+        allowNull: false,
       },
-      inner_paper_id: {
-        type: DataTypes.BIGINT.UNSIGNED,
+
+      description: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+
+      unit: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        // values: per_page, per_hour, per_copy, per_100_pages, flat
       },
     },
     {
@@ -44,14 +48,6 @@ export default (sequelize) => {
       underscored: true,
     }
   );
-
-  BindingMaster.associate = (models) => {
-    BindingMaster.belongsTo(models.ItemMaster, {
-      foreignKey: "item_master_id",
-      as: "itemMaster",
-      targetKey: "id",
-    });
-  };
 
   return BindingMaster;
 };

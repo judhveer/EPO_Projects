@@ -1,6 +1,5 @@
 // models/JobItem.js
 import { DataTypes } from "sequelize";
-import { JOB_ITEM_OPTION_TEMPLATES } from "../../constants/jobfms/jobItemOptions.js";
 
 export default (sequelize) => {
   const JobItem = sequelize.define(
@@ -21,19 +20,12 @@ export default (sequelize) => {
         },
         onDelete: "CASCADE",
       },
-
-      // Link to ItemMaster (e.g., poster, leaflet)
-      // item_master_id: {
-      //   type: DataTypes.BIGINT.UNSIGNED,
-      //   allowNull: true,
-      // },
-
       // Category selected
       category: {
         type: DataTypes.ENUM(
-          "SingleSheet",
-          "MultipleSheet",
-          "WideFormat",
+          "Single Sheet",
+          "Multiple Sheet",
+          "Wide Format",
           "Other"
         ),
         allowNull: false,
@@ -44,79 +36,75 @@ export default (sequelize) => {
           this.setDataValue("enquiry_for", value ? value.toLowerCase() : null);
         },
       },
+
+      // Link to PaperMaster (e.g., Art Paper, Maplitho)
+      // NEW: Selected paper and size ids used for costing & printing
+      selected_paper_id: {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: false,
+      },
+      inside_pages: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      color_scheme: {
+        type: DataTypes.ENUM("Black and White", "Multicolor"),
+        allowNull: false,
+      },
+      selected_cover_paper_id: {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: true,
+      },
+      cover_pages: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        validate: {
+          isIn: [[2, 4]],
+        },
+      },
+      cover_color_scheme: {
+        type: DataTypes.ENUM("Black and White", "Multicolor"),
+        allowNull: true,
+      },
+      sides: {
+        type: DataTypes.ENUM("Single Side", "Both Side"),
+        allowNull: true,
+      },
       size: {
         type: DataTypes.STRING,
-      },
-      uom: {
-        type: DataTypes.ENUM("Pc", "Nos", "Copies", "Books", "Sheets"),
       },
       quantity: {
         type: DataTypes.INTEGER,
       },
+      uom: {
+        type: DataTypes.ENUM("Pc", "Nos", "Copies", "Books", "Sheets"),
+      },
 
-      // NEW: Selected paper and size ids used for costing & printing
-      // selected_paper_id: {
-      //   type: DataTypes.BIGINT.UNSIGNED,
-      //   allowNull: true,
-      // },
+      press_type: {
+        type: DataTypes.ENUM("offset", "digital"),
+        allowNull: true,
+      },
 
-      // selected_size_id: {
-      //   type: DataTypes.BIGINT.UNSIGNED,
-      //   allowNull: true,
-      // },
-
-      // // Press / color options used in RateMaster lookup
-      // press_type: {
-      //   type: DataTypes.ENUM("offset", "digital"),
-      //   allowNull: true,
-      // },
-
-      // color_type: {
-      //   type: DataTypes.ENUM("single", "multi"),
-      //   allowNull: true,
-      // },
-
-      // JSON field for storing all dynamic options based on category
-      options: {
+      binding_types: {
         type: DataTypes.JSON,
-        comment: `
-      Store category-specific options here. Example:
-      {
-        "SingleSheet": {
-          "sides": "Both Side",
-          "color_scheme": "Multi-color",
-          "cover_pages": 2,
-          "inside_pages": 10,
-          "cover_paper_gsm": 300,
-          "inside_paper_gsm": 120,
-          "binding_types": ["Cutting", "Lamination", "Folding"]
-        },
-        "WideFormat": {
-          "binding_types": ["Lamination", "Pasting"],
-          "size": "A3"
-        },
-        "Other": {
-          "binding_types": ["Pasting", "Cutting"]
-        }
-      }
-      `,
+        allowNull: true,
       },
 
       // NEW: Calculated prices and breakdown (filled server-side)
-      // unit_price: {
-      //   type: DataTypes.DECIMAL(12, 2),
-      //   defaultValue: 0,
-      // },
-
-      // line_total: {
-      //   type: DataTypes.DECIMAL(12, 2),
-      //   defaultValue: 0,
-      // },
-
-      // calculation_meta: {
-      //   type: DataTypes.JSON,
-      //   allowNull: true,
-      // },
+      unit_rate: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+        set(value) {
+          this.setDataValue("unit_rate", parseFloat(value));
+        },
+      },
+      item_total: {
+        type: DataTypes.DECIMAL(12, 2),
+        defaultValue: 0,
+        set(value) {
+          this.setDataValue("item_total", parseFloat(value));
+        },
+      },
     },
     {
       tableName: "jobfms_job_items",
@@ -124,27 +112,23 @@ export default (sequelize) => {
     }
   );
 
-  // Auto-fill options template if not provided
-  JobItem.addHook("beforeCreate", (item) => {
-    if (!item.options || Object.keys(item.options).length === 0) {
-      const template = JOB_ITEM_OPTION_TEMPLATES[item.category] || {};
-      item.options = { ...template };
+  JobItem.addHook("afterCreate", async (jobItems) => {
+    const { ItemMaster } = sequelize.models;
+
+    let enquiryItem = await ItemMaster.findOne({
+      where: {
+        item_name: jobItems.enquiry_for,
+        category: jobItems.category,
+      },
+    });
+
+    if (!enquiryItem) {
+      await ItemMaster.create({
+        item_name: jobItems.enquiry_for,
+        category: jobItems.category,
+      });
     }
   });
-
-  // JobItem.addHook("afterCreate", async (jobItems) => {
-  //   const { EnquiryForItems } = sequelize.models;
-
-  //   let enquiryItem = await EnquiryForItems.findOne({
-  //     where: { item: jobItems.enquiry_for },
-  //   });
-
-  //   if (!enquiryItem) {
-  //     await EnquiryForItems.create({
-  //       item: jobItems.enquiry_for,
-  //     });
-  //   }
-  // });
 
   JobItem.associate = (models) => {
     JobItem.belongsTo(models.JobCard, {
@@ -159,9 +143,9 @@ export default (sequelize) => {
       as: "selectedPaper",
       foreignKey: "selected_paper_id",
     });
-    JobItem.belongsTo(models.SizeMaster, {
-      as: "selectedSize",
-      foreignKey: "selected_size_id",
+    JobItem.belongsTo(models.PaperMaster, {
+      as: "selectedCoverPaper", // Cover paper
+      foreignKey: "selected_cover_paper_id",
     });
   };
 

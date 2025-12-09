@@ -10,9 +10,7 @@ export default function JobWriterTable({ refresh }) {
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState(null); // 👈 For modal
   const [showModal, setShowModal] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(null); // store job to delete
-  const [deleting, setDeleting] = useState(false);
-  const [confirmCancel, setConfirmCancel] = useState(null); // store job to delete
+  const [confirmCancel, setConfirmCancel] = useState(null); // store job to cancel
   const [cancelling, setCancelling] = useState(false);
   const [openActionDropdown, setOpenActionDropdown] = useState(null);
 
@@ -141,17 +139,13 @@ export default function JobWriterTable({ refresh }) {
       if (e.key === "Escape") {
         // Close edit modal (if open)
         if (showModal) handleCloseModal();
-
-        // Close delete confirmation (if open)
-        if (confirmDelete) setConfirmDelete(null);
-
         // Close cancel confirmation (if open)
         if (confirmCancel) setConfirmCancel(null);
       }
     };
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
-  }, [showModal, confirmDelete, confirmCancel]);
+  }, [showModal, confirmCancel]);
 
   const handleEditClick = (job) => {
     setSelectedJob(job);
@@ -372,7 +366,6 @@ export default function JobWriterTable({ refresh }) {
               <th className="border p-2">Priority</th>
               <th className="border p-2">Instructions</th>
               <th className="border p-2">No of Files</th>
-              <th className="border p-2">Unit Rate</th>
               <th className="border p-2">Total Amount</th>
               <th className="border p-2">Advance</th>
               <th className="border p-2">Mode of Payment</th>
@@ -437,7 +430,6 @@ export default function JobWriterTable({ refresh }) {
                   </td>
                   <td className="border p-2">{job.instructions}</td>
                   <td className="border p-2">{job.no_of_files}</td>
-                  <td className="border p-2">{job.unit_rate}</td>
                   <td className="border p-2 font-semibold text-blue-700 hover:text-white">
                     {job.total_amount}
                   </td>
@@ -542,16 +534,6 @@ export default function JobWriterTable({ refresh }) {
                             <button
                               onClick={() => {
                                 setOpenActionDropdown(null);
-                                setConfirmDelete(job);
-                              }}
-                              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-red-100 hover:text-red-700 transition-all flex items-center gap-2"
-                            >
-                              🗑️ Delete
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                setOpenActionDropdown(null);
                                 setConfirmCancel(job);
                               }}
                               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-yellow-100 hover:text-yellow-700 transition-all flex items-center gap-2"
@@ -649,69 +631,6 @@ export default function JobWriterTable({ refresh }) {
                   onUpdated={handleJobUpdated}
                   isEditMode
                 />
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 🧾 Delete Confirmation Modal */}
-      <AnimatePresence>
-        {confirmDelete && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 180, damping: 20 }}
-              className="bg-white rounded-2xl shadow-2xl w-[90%] max-w-md p-6 text-center"
-            >
-              <h3 className="text-xl font-semibold text-red-600 mb-2">
-                Confirm Deletion
-              </h3>
-              <p className="text-slate-600 mb-4">
-                Are you sure you want to delete{" "}
-                <span className="font-semibold text-blue-700">
-                  Job #{confirmDelete.job_no}
-                </span>
-                ?<br />
-                This action cannot be undone.
-              </p>
-
-              <div className="flex justify-center gap-3">
-                <Button
-                  className="bg-gray-500 hover:bg-gray-600 cursor-pointer"
-                  onClick={() => setConfirmDelete(null)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  className="bg-red-600 hover:bg-red-700 cursor-pointer"
-                  onClick={async () => {
-                    setDeleting(true);
-                    try {
-                      await api.delete(
-                        `/api/fms/jobcards/${confirmDelete.job_no}`
-                      );
-                      setConfirmDelete(null);
-                      fetchJobs();
-                    } catch (err) {
-                      console.error("Failed to delete job:", err);
-                      alert("Error deleting job");
-                    } finally {
-                      setDeleting(false);
-                    }
-                  }}
-                  disabled={deleting}
-                >
-                  {deleting ? "Deleting..." : "Delete"}
-                </Button>
               </div>
             </motion.div>
           </motion.div>

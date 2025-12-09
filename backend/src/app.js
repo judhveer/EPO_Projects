@@ -27,8 +27,6 @@ import meetingRoutes from './routes/salesPipeline/meetingRoutes.js';
 import crmRoutes from './routes/salesPipeline/crmRoutes.js';
 import leadRoutes from './routes/salesPipeline/leadRoutes.js';
 import coordinatorRoutes from './routes/salesPipeline/coordinatorRoutes.js';
-import notFound from './middlewares/salesPipeline/notFound.js';
-import errorHandler from './middlewares/salesPipeline/error.js';
 
 
 
@@ -63,10 +61,13 @@ import clientRoutes from "./routes/jobFmsRoutes/clientDetails.routes.js"
 import userRoutes from "./routes/jobFmsRoutes/users.routes.js";
 
 
+import itemMasterRoutes from "./routes/jobFmsRoutes/itemMaster.routes.js";
 
 
 
 
+import notFound from './middlewares/salesPipeline/notFound.js';
+import errorHandler from './middlewares/salesPipeline/error.js';
 
 dotenv.config();
 
@@ -143,8 +144,8 @@ app.use('/api/sales/coordinator', authenticate, coordinatorRoutes);
 
 // Attendance route define
 app.use('/api/attendance',
-  // authenticate,
-  // requirePermission('attendance.view'),
+  authenticate,
+  requirePermission('attendance.view'),
   attendanceRoutes
 );
 
@@ -173,6 +174,13 @@ app.use("/api/users",
   authenticate,
   userRoutes);
 
+app.use("/api/fms/items", 
+  authenticate,
+  itemMasterRoutes
+);
+
+
+
 // error handling middlewares
 app.use(notFound);
 app.use(errorHandler);
@@ -184,12 +192,6 @@ let attendanceBotRunning = false;
 let taskBotRunning = false;
 
 
-// function assertEnv() {
-//   const a = process.env.TELEGRAM_TOKEN;
-//   const t = process.env.BOT_TOKEN;
-//   if (!a || !t) throw new Error("Missing ATTENDANCE_BOT_TOKEN or TASK_BOT_TOKEN");
-//   if (a === t) throw new Error("Both bots share the same token — use separate tokens or merge handlers into one bot.");
-// }
 
 export async function init() {
   try {

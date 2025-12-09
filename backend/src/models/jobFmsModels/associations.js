@@ -18,8 +18,7 @@ export default function associateJobFmsModels(models) {
     BindingMaster,
     RateMaster,
     PaperMaster,
-    UPSMaster,
-    PaperCalculationMaster,
+    SizeMaster
   } = models;
 
   // 🔗 JobCard ↔ JobItem
@@ -42,6 +41,11 @@ export default function associateJobFmsModels(models) {
   JobItem.belongsTo(PaperMaster, {
     as: "selectedPaper",
     foreignKey: "selected_paper_id",
+  });
+    // (selected cover paper)
+  JobItem.belongsTo(PaperMaster, {
+    as: "selectedCoverPaper",
+    foreignKey: "selected_cover_paper_id",
   });
 
 // 🔗 JobCard ↔ JobAssignment
@@ -123,21 +127,4 @@ export default function associateJobFmsModels(models) {
     RateMaster.belongsTo(PaperMaster, { as: "paper", foreignKey: "paper_id" });
   }
 
-  // 🔗 BindingMaster ↔ ItemMaster
-  if (BindingMaster) {
-    BindingMaster.belongsTo(ItemMaster, { as: "itemMaster", foreignKey: "item_master_id" });
-  }
-
-
-  // 🔗 PaperMaster ↔ PaperCalculationMaster
-  if (PaperMaster && PaperCalculationMaster) {
-    PaperMaster.hasMany(PaperCalculationMaster, { as: "calculations", foreignKey: "paper_id" });
-    PaperCalculationMaster.belongsTo(PaperMaster, { as: "paper", foreignKey: "paper_id" });
-  }
-
-
- // 🔗 UPSMaster ↔ PaperMaster
-  if (UPSMaster) {
-    UPSMaster.belongsTo(PaperMaster, { as: "paper", foreignKey: "paper_id" });
-  }
 }

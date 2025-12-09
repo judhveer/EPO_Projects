@@ -57,10 +57,6 @@ export default (sequelize) => {
       foreignKey: "item_id",
       as: "item",
     });
-    RateMaster.belongsTo(models.SizeMaster, {
-      foreignKey: "size_id",
-      as: "size",
-    });
   };
 
   return RateMaster;

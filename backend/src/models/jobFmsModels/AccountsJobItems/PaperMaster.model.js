@@ -54,12 +54,5 @@ export default (sequelize) => {
     }
   );
 
-  PaperMaster.associate = (models) => {
-    PaperMaster.hasMany(models.PaperCalculationMaster, {
-      foreignKey: "paper_id",
-      as: "calculations",
-    });
-  };
-
   return PaperMaster;
 };

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { createJobCard } from "../../lib/jobFmsApi";
 import api from "../../lib/api.js";
 import debounce from "lodash.debounce";
@@ -30,7 +30,6 @@ export default function JobCardForm({
     proof_date: "",
     task_priority: "",
     instructions: "",
-    unit_rate: "",
     total_amount: "",
     advance_payment: "",
     mode_of_payment: "",
@@ -46,7 +45,6 @@ export default function JobCardForm({
   const [users, setUsers] = useState([]);
   const [crmUsers, setCrmUsers] = useState([]);
 
-  const [enquiryItems, setEnquiryItems] = useState([]);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
 
@@ -71,45 +69,80 @@ export default function JobCardForm({
   }, []);
 
   useEffect(() => {
-    async function loadEnquiryItems() {
-      try {
-        const { data } = await api.get("/api/fms/jobcards/enquiry/items");
-        setEnquiryItems(data || []);
-      } catch (err) {
-        console.error("Failed to load enquiry items:", err);
-      }
-    }
-    loadEnquiryItems();
-  }, []);
-
-  useEffect(() => {
     const el = document.querySelector(".active-suggestion");
     if (el) el.scrollIntoView({ block: "nearest" });
   }, [activeIndex]);
 
   useEffect(() => {
-    if (existingJob) {
-      const formatDateTimeLocal = (isoString) => {
-        if (!isoString) return "";
-        const date = new Date(isoString);
-        const offset = date.getTimezoneOffset();
-        const localDate = new Date(date.getTime() - offset * 60000);
-        return localDate.toISOString().slice(0, 16);
-      };
+    if (!existingJob) return;
 
-      const formatDateOnly = (isoString) => {
-        if (!isoString) return "";
-        const date = new Date(isoString);
-        return date.toISOString().slice(0, 10);
-      };
+    const formatDateTimeLocal = (isoString) => {
+      if (!isoString) return "";
+      const date = new Date(isoString);
+      const offset = date.getTimezoneOffset();
+      const localDate = new Date(date.getTime() - offset * 60000);
+      return localDate.toISOString().slice(0, 16);
+    };
 
-      setForm({
-        ...existingJob,
-        delivery_date: formatDateTimeLocal(existingJob.delivery_date),
-        proof_date: formatDateOnly(existingJob.proof_date),
-        job_items: existingJob.items || [],
-      });
-    }
+    const formatDateOnly = (isoString) => {
+      if (!isoString) return "";
+      const date = new Date(isoString);
+      return date.toISOString().slice(0, 10);
+    };
+
+    // Build job_items properly using DB values
+    const mappedItems = existingJob.items.map((item, index) => {
+      return {
+        ...item,
+        enquiry_for: item.enquiry_for,
+        // Rebuild paper fields from selectedPaper
+        paper_type: item.selectedPaper?.paper_name || "",
+        paper_gsm: item.selectedPaper?.gsm || "",
+
+        // Rebuild cover fields if available
+        cover_paper_type: item.selectedCoverPaper?.paper_name || "",
+        cover_paper_gsm: item.selectedCoverPaper?.gsm || "",
+
+        // Ensure binding_types is an array
+        binding_types: Array.isArray(item.binding_types)
+          ? item.binding_types
+          : [],
+
+        // Client-side fields needed for dropdowns
+        available_items: [],
+        available_papers: [],
+        available_gsm: [],
+        available_gsm_cover: [],
+        available_bindings: [],
+      };
+    });
+
+    setForm({
+      ...existingJob,
+      delivery_date: formatDateTimeLocal(existingJob.delivery_date),
+      proof_date: formatDateOnly(existingJob.proof_date),
+      job_items: mappedItems,
+    });
+
+    // NOW LOAD DROPDOWN OPTIONS FOR EACH ITEM
+    mappedItems.forEach((item, index) => {
+      if (item.category) {
+        // loadCategoryItems(index, item.category);
+        loadCategoryBindings(index, item.category);
+      }
+
+      if (item.enquiry_for) {
+        loadItemPapers(index, item.enquiry_for);
+      }
+
+      if (item.paper_type) {
+        loadItemPapersGsm(index, item.paper_type, "inside");
+      }
+
+      if (item.cover_paper_type) {
+        loadItemPapersGsm(index, item.cover_paper_type, "cover");
+      }
+    });
   }, [existingJob]);
 
   const searchClients = debounce(async (query) => {
@@ -131,21 +164,182 @@ export default function JobCardForm({
     }
   };
 
-  const handleItemChange = (index, field, value) => {
+  const loadCategoryItems = async (index, category) => {
+    try {
+      const { data } = await api.get(
+        `/api/fms/items/by-category?category=${category}`
+      );
+
+      setForm((prev) => {
+        const items = [...prev.job_items];
+        items[index].available_items = data; // store category items
+        items[index].enquiry_for = ""; // reset enquiry
+        items[index].paper_type = "";
+        items[index].paper_gsm = "";
+        items[index].available_gsm = [];
+        items[index].available_gsm_cover = [];
+        items[index].cover_paper_type = "";
+        items[index].cover_paper_gsm = "";
+        items[index].cover_color_scheme = "";
+        return { ...prev, job_items: items };
+      });
+    } catch (err) {
+      console.error("Failed to load category items", err);
+    }
+  };
+
+  const loadCategoryBindings = async (index, category) => {
+    try {
+      const { data } = await api.get(
+        `/api/fms/items/bindings?category=${category}`
+      );
+
+      setForm((prev) => {
+        const items = [...prev.job_items];
+        items[index].available_bindings = data; // store category items
+        return { ...prev, job_items: items };
+      });
+    } catch (err) {
+      console.error("Failed to load category items", err);
+    }
+  };
+
+  const loadItemPapers = async (index, itemName) => {
+    try {
+      const { data } = await api.get(`/api/fms/items/paper-types`);
+
+      setForm((prev) => {
+        const items = [...prev.job_items];
+        items[index].available_papers = data;
+        return { ...prev, job_items: items };
+      });
+    } catch (err) {
+      console.error("Failed to load papers:", err);
+    }
+  };
+
+  const loadItemPapersGsm = async (index, paperName, type = "inside") => {
+    try {
+      const { data } = await api.get(
+        `/api/fms/items/paper-types/gsm?paperName=${paperName}`
+      );
+
+      setForm((prev) => {
+        const items = [...prev.job_items];
+
+        if (type === "inside") {
+          items[index].available_gsm = data;
+        } else {
+          items[index].available_gsm_cover = data;
+        }
+
+        return { ...prev, job_items: items };
+      });
+    } catch (err) {
+      console.error("Failed to load paper gsm:", err);
+    }
+  };
+
+  const calculateItemBackend = async (index) => {
+    try {
+      const item = form.job_items[index];
+
+      // Clean the items before sending
+      const cleanedItems = cleanJobItems(form.job_items);
+      const cleanedItem = cleanJobItems([item])[0];
+
+      // Send all required fields to backend
+      const payload = {
+        item: cleanedItem,
+        all_items: cleanedItems, // send all items so backend can recalc total_amount
+      };
+
+      const { data } = await api.post(`/api/fms/items/calculate-item`, payload);
+      // Backend returns: { unit_rate, item_total, total_amount }
+      setForm((prev) => {
+        const updatedItems = [...prev.job_items];
+
+        updatedItems[index] = {
+          ...updatedItems[index],
+
+          // 🔥 Store unit & item total
+          unit_rate: data.totals.unit_rate,
+          item_total: data.totals.item_total,
+
+          // 🔥 Store inside best-sheet details
+          best_inside_sheet: data.inside.sheet_selected,
+          best_inside_dimensions: data.inside.sheet_dimensions,
+          best_inside_ups: data.inside.ups,
+
+          // 🔥 Store cover best-sheet details (may be null for Single Sheet)
+          best_cover_sheet: data.cover.sheet_selected,
+          best_cover_dimensions: data.cover.sheet_dimensions,
+          best_cover_ups: data.cover.ups,
+        };
+
+        return {
+          ...prev,
+          job_items: updatedItems,
+          total_amount: data.totals?.grand_total ?? prev.total_amount,
+        };
+      });
+    } catch (err) {
+      console.error("Item calculation failed:", err);
+    }
+  };
+
+  const loadSizes = async (index, search) => {
+    try {
+      const { data } = await api.get(`/api/fms/items/sizes?search=${search}`);
+
+      setForm((prev) => {
+        const items = [...prev.job_items];
+        items[index].available_sizes = data;
+        return { ...prev, job_items: items };
+      });
+    } catch (err) {
+      console.error("Failed to load sizes", err);
+    }
+  };
+
+  const handleItemChange = async (index, field, value) => {
     setForm((prev) => {
       const items = [...prev.job_items];
       items[index] = { ...items[index], [field]: value };
       return { ...prev, job_items: items };
     });
+    // If category changes → fetch items from backend
+    if (field === "category") {
+      loadCategoryItems(index, value);
+      loadCategoryBindings(index, value);
+    }
+
+    if (field === "enquiry_for") {
+      loadItemPapers(index, value);
+    }
+
+    if (field === "paper_type") {
+      loadItemPapersGsm(index, value);
+    }
+
+    if (field === "cover_paper_type") {
+      loadItemPapersGsm(index, value, "cover");
+    }
+
+    if (field === "size") {
+      loadSizes(index, value);
+    }
+
+    // 🔥 Run backend calculation ONLY when quantity is entered
+    if (field === "uom") {
+      await calculateItemBackend(index);
+    }
   };
 
   const addItem = () => {
     setForm((prev) => ({
       ...prev,
-      job_items: [
-        ...prev.job_items,
-        { category: "", enquiry_for: "", options: {} },
-      ],
+      job_items: [...prev.job_items, { category: "", enquiry_for: "" }],
     }));
   };
 
@@ -156,15 +350,34 @@ export default function JobCardForm({
     }));
   };
 
+  const cleanJobItems = (items) => {
+    return items.map((item) => {
+      const {
+        available_items,
+        available_papers,
+        available_gsm,
+        available_gsm_cover,
+        available_bindings,
+        ...cleaned
+      } = item;
+      return cleaned;
+    });
+  };
+
   async function onSubmit(e) {
     e.preventDefault();
     setOk(false);
     setErr("");
     setLoading(true);
 
+    const payload = {
+      ...form,
+      job_items: cleanJobItems(form.job_items),
+    };
+
     try {
       if (isEditMode && existingJob?.job_no) {
-        await api.put(`/api/fms/jobcards/${existingJob.job_no}`, form);
+        await api.put(`/api/fms/jobcards/${existingJob.job_no}`, payload);
         setSuccessMsg("✅ Job Card updated successfully!");
         setShowSuccessPopup(true);
         setOk(true);
@@ -175,7 +388,7 @@ export default function JobCardForm({
           onUpdated?.(); // Now close the modal AFTER showing popup
         }, 2000);
       } else {
-        const { data } = await createJobCard(form);
+        const { data } = await createJobCard(payload);
         setSuccessMsg("✅ Job Card created successfully!");
         setShowSuccessPopup(true);
         setOk(true);
@@ -198,7 +411,6 @@ export default function JobCardForm({
           proof_date: "",
           task_priority: "",
           instructions: "",
-          unit_rate: "",
           total_amount: "",
           advance_payment: "",
           mode_of_payment: "",
@@ -278,46 +490,6 @@ export default function JobCardForm({
     }
   };
 
-  const commonBindings = [
-    "Cutting",
-    "Trimming",
-    "Matt Lamination",
-    "Gloss Lamination",
-    "Creasing",
-    "Folding",
-    "Centre Pin",
-    "Side Pin",
-    "Gum Pasting",
-    "Hard-Bound",
-    "Spiral-Bound",
-    "Wiro-Bound",
-    "Perfect-Bound",
-    "Numbering",
-    "Interleaf",
-    "Perforation",
-    "Pad Binding",
-    "Loose bound",
-    "Tin Mounting",
-    "Top Pin",
-    "2 Folding",
-    "3 Folding",
-    "Stitching",
-    "Plotter Cutting",
-    "Installation",
-  ];
-
-  const wideBindings = [
-    "Cutting",
-    "Pasting",
-    "Lamination",
-    "Eyelid",
-    "Vinyl pasting",
-    "Installation",
-  ];
-  const otherBindings = ["Pasting", "Cutting", "Fixing", "Installation"];
-
-  // cover color and inside color
-
   return (
     <FormCard title="Job Card Entry">
       {showSuccessPopup && (
@@ -352,7 +524,7 @@ export default function JobCardForm({
               <ul className="absolute z-10 bg-white border border-slate-300 rounded-md shadow-md w-full max-h-40 overflow-y-auto">
                 {clientSuggestions.map((name, i) => (
                   <li
-                    key={i}
+                    key={name}
                     onClick={async () => {
                       setForm((f) => ({ ...f, client_name: name }));
                       setClientSuggestions([]);
@@ -549,13 +721,454 @@ export default function JobCardForm({
           </Select>
         </Field>
 
+        <Field label="Order Handled By" required>
+          <Select
+            name="order_handled_by"
+            value={form.order_handled_by}
+            onChange={onChange}
+            required
+          >
+            <option value="">Select</option>
+            {crmUsers.map((u) => (
+              <option key={u.id} value={u.username}>
+                {u.username}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field label="Instructions">
+          <textarea
+            name="instructions"
+            value={form.instructions}
+            onChange={onChange}
+            className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
+          />
+        </Field>
+
+        <Field label="No of Files" required>
+          <Input
+            type="number"
+            name="no_of_files"
+            value={form.no_of_files}
+            onChange={onChange}
+            required
+          />
+        </Field>
+
+        {/* ---------------- JOB ITEMS ---------------- */}
+        <div className="md:col-span-3 mt-6">
+          <h3 className="font-semibold text-blue-700 mb-3">📦 Job Items</h3>
+
+          {form.job_items.map((item, index) => {
+            const category = item.category;
+            return (
+              <FormCard key={index}>
+                <div className="flex flex-wrap items-center justify-between">
+                  <h4 className="font-semibold text-blue-700">
+                    📦 Item {index + 1}
+                  </h4>
+                  <Button
+                    type="button"
+                    className="bg-red-600 hover:bg-red-700 px-3 py-1 text-sm"
+                    onClick={() => removeItem(index)}
+                  >
+                    🗑 Remove
+                  </Button>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-3">
+                  <Field label="Category" required>
+                    <Select
+                      value={item.category}
+                      onChange={(e) =>
+                        handleItemChange(index, "category", e.target.value)
+                      }
+                    >
+                      <option value="">Select</option>
+                      <option>Single Sheet</option>
+                      <option>Multiple Sheet</option>
+                      <option>Wide Format</option>
+                      <option>Other</option>
+                    </Select>
+                  </Field>
+
+                  <Field label="Enquiry For" required>
+                    <div className="relative">
+                      <input
+                        list={`enquiry-for-list-${index}`}
+                        value={item.enquiry_for || ""}
+                        onChange={(e) =>
+                          handleItemChange(index, "enquiry_for", e.target.value)
+                        }
+                        placeholder="Select item..."
+                        className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
+                        required
+                      />
+
+                      <datalist id={`enquiry-for-list-${index}`}>
+                        {item.available_items?.map((opt) => (
+                          <option key={opt.id} value={opt.item_name} />
+                        ))}
+                      </datalist>
+                    </div>
+                  </Field>
+
+                  {item.enquiry_for && (
+                    <Field label="Paper Type" required>
+                      <Select
+                        value={item.paper_type || ""}
+                        onChange={(e) =>
+                          handleItemChange(index, "paper_type", e.target.value)
+                        }
+                        required
+                      >
+                        <option value="">Select Paper</option>
+
+                        {item.available_papers?.map((p) => (
+                          <option key={p.paper_name} value={p.paper_name}>
+                            {p.paper_name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  )}
+
+                  {item.paper_type && (
+                    <Field label="Paper GSM" required>
+                      <Select
+                        value={item.paper_gsm || ""}
+                        onChange={(e) =>
+                          handleItemChange(index, "paper_gsm", e.target.value)
+                        }
+                        required
+                      >
+                        <option value="">Select GSM</option>
+
+                        {item.available_gsm?.map((p) => (
+                          <option key={p.id} value={p.gsm}>
+                            {p.gsm}{" "}
+                            {p.size_category ? ` (${p.size_category})` : ""}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  )}
+
+                  {/* Category-specific options */}
+
+                  {category === "Multiple Sheet" && (
+                    <React.Fragment key={`multiple-${index}`}>
+                      <Field label="Inside Paper Color" required>
+                        <Select
+                          value={item.color_scheme || ""}
+                          onChange={(e) =>
+                            handleItemChange(
+                              index,
+                              "color_scheme",
+                              e.target.value
+                            )
+                          }
+                        >
+                          <option value="">Select</option>
+                          <option>Black and White</option>
+                          <option>Multicolor</option>
+                        </Select>
+                      </Field>
+
+                      <Field label="Inside Pages" required>
+                        <Input
+                          type="number"
+                          value={item.inside_pages || ""}
+                          onChange={(e) =>
+                            handleItemChange(
+                              index,
+                              "inside_pages",
+                              e.target.value
+                            )
+                          }
+                          placeholder="200"
+                          required
+                        />
+                      </Field>
+
+                      {/* COVER PAPER */}
+                      <Field label="Cover Paper Type" required>
+                        <Select
+                          value={item.cover_paper_type || ""}
+                          onChange={(e) =>
+                            handleItemChange(
+                              index,
+                              "cover_paper_type",
+                              e.target.value
+                            )
+                          }
+                          required
+                        >
+                          <option value="">Select Paper</option>
+                          {item.available_papers?.map((p) => (
+                            <option key={p.paper_name} value={p.paper_name}>
+                              {p.paper_name}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+
+                      {item.cover_paper_type && (
+                        <Field label="Cover Paper GSM" required>
+                          <Select
+                            value={item.cover_paper_gsm || ""}
+                            onChange={(e) =>
+                              handleItemChange(
+                                index,
+                                "cover_paper_gsm",
+                                e.target.value
+                              )
+                            }
+                            required
+                          >
+                            <option value="">Select GSM</option>
+                            {item.available_gsm_cover?.map((g) => (
+                              <option key={g.id} value={g.gsm}>
+                                {g.gsm}{" "}
+                                {g.size_category ? ` (${g.size_category})` : ""}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                      )}
+
+                      <Field label="Cover Paper Color" required>
+                        <Select
+                          value={item.cover_color_scheme || ""}
+                          onChange={(e) =>
+                            handleItemChange(
+                              index,
+                              "cover_color_scheme",
+                              e.target.value
+                            )
+                          }
+                        >
+                          <option value="">Select</option>
+                          <option>Black and White</option>
+                          <option>Multicolor</option>
+                        </Select>
+                      </Field>
+
+                      <Field label="Cover Pages" required>
+                        <Select
+                          value={item.cover_pages || ""}
+                          onChange={(e) =>
+                            handleItemChange(
+                              index,
+                              "cover_pages",
+                              e.target.value
+                            )
+                          }
+                        >
+                          <option value="">Select</option>
+                          <option>2</option>
+                          <option>4</option>
+                        </Select>
+                      </Field>
+                    </React.Fragment>
+                  )}
+
+                  <Field label="Size" required>
+                    <div className="relative">
+                      <input
+                        list={`size-list-${index}`}
+                        value={item.size || ""}
+                        onChange={(e) =>
+                          handleItemChange(index, "size", e.target.value)
+                        }
+                        placeholder="Select size or type custom..."
+                        className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
+                        required
+                      />
+
+                      <datalist id={`size-list-${index}`}>
+                        {item.available_sizes?.map((opt) => (
+                          <option key={opt.id} value={opt.name} />
+                        ))}
+                      </datalist>
+                    </div>
+
+                    {/* <Input
+                      value={item.size || ""}
+                      onChange={(e) =>
+                        handleItemChange(index, "size", e.target.value)
+                      }
+                      placeholder="12x24"
+                      required
+                    /> */}
+                  </Field>
+
+                  {(category === "Multiple Sheet" ||
+                    category === "Single Sheet") && (
+                    <Field label="Sides" required>
+                      <Select
+                        value={item.sides || ""}
+                        onChange={(e) =>
+                          handleItemChange(index, "sides", e.target.value)
+                        }
+                      >
+                        <option value="">Select</option>
+                        <option>Single Side</option>
+                        <option>Both Side</option>
+                      </Select>
+                    </Field>
+                  )}
+
+                  {item.available_bindings &&
+                    item.available_bindings.length > 0 && (
+                      <Field label="Type of Binding" required>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
+                          {item.available_bindings.map((b) => (
+                            <label
+                              key={b.binding_name}
+                              className="text-sm flex items-center gap-1"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={item.binding_types?.includes(
+                                  b.binding_name
+                                )}
+                                onChange={(e) => {
+                                  const prev = item.binding_types || [];
+                                  const updated = e.target.checked
+                                    ? [...prev, b.binding_name]
+                                    : prev.filter((x) => x !== b.binding_name);
+
+                                  handleItemChange(
+                                    index,
+                                    "binding_types",
+                                    updated
+                                  );
+                                }}
+                              />
+                              {b.binding_name}
+                              {/* {b.rate !== null && (
+                                <span className="text-xs text-gray-500">
+                                  ₹{b.rate_per_unit}
+                                </span>
+                              )} */}
+                            </label>
+                          ))}
+                        </div>
+                      </Field>
+                    )}
+
+                  {category !== "Multiple Sheet" && (
+                    <Field label="Color Scheme" required>
+                      <Select
+                        value={item.color_scheme || ""}
+                        onChange={(e) =>
+                          handleItemChange(
+                            index,
+                            "color_scheme",
+                            e.target.value
+                          )
+                        }
+                      >
+                        <option value="">Select</option>
+                        <option>Black and White</option>
+                        <option>Multicolor</option>
+                      </Select>
+                    </Field>
+                  )}
+
+                  {/* Common Fields */}
+                  <Field label="Quantity" required>
+                    <Input
+                      type="number"
+                      value={item.quantity || ""}
+                      onChange={(e) =>
+                        handleItemChange(index, "quantity", e.target.value)
+                      }
+                      required
+                    />
+                  </Field>
+
+                  <Field label="Unit Of Measurment" required>
+                    <Select
+                      value={item.uom}
+                      onChange={(e) =>
+                        handleItemChange(index, "uom", e.target.value)
+                      }
+                      required
+                    >
+                      <option value="">Select</option>
+                      <option>Pc</option>
+                      <option>Nos</option>
+                      <option>Copies</option>
+                      <option>Books</option>
+                      <option>Sheets</option>
+                    </Select>
+                  </Field>
+
+                  <Field label="Unit Rate" required>
+                    <Input
+                      value={item.unit_rate || ""}
+                      readOnly
+                      onChange={(e) =>
+                        handleItemChange(index, "unit_rate", e.target.value)
+                      }
+                    />
+                  </Field>
+
+                  <Field label="Item Total" required>
+                    <Input
+                      value={item.item_total || ""}
+                      onChange={(e) =>
+                        handleItemChange(index, "item_total", e.target.value)
+                      }
+                      readOnly
+                    />
+                  </Field>
+
+                  {/* ---------- Best Sheet Results (Inside + Cover) ---------- */}
+                  <div className="col-span-2">
+                    {item.best_inside_sheet && (
+                      <p className="text-xs text-green-700 mt-1">
+                        Inside Sheet: <b>{item.best_inside_sheet}</b> (
+                        {item.best_inside_dimensions}) — UPS:{" "}
+                        <b>{item.best_inside_ups}</b>
+                      </p>
+                    )}
+
+                    {item.category === "Multiple Sheet" &&
+                      item.best_cover_sheet && (
+                        <p className="text-xs text-blue-700 mt-1">
+                          Cover Sheet: <b>{item.best_cover_sheet}</b> (
+                          {item.best_cover_dimensions}) — UPS:{" "}
+                          <b>{item.best_cover_ups}</b>
+                        </p>
+                      )}
+                  </div>
+
+                  
+                </div>
+              </FormCard>
+            );
+          })}
+
+          <Button
+            type="button"
+            className="mt-3 bg-green-600 hover:bg-green-700"
+            onClick={addItem}
+          >
+            ➕ Add Job Item
+          </Button>
+        </div>
+
         <Field label="Total Amount">
           <Input
             type="number"
             name="total_amount"
             value={form.total_amount}
             onChange={onChange}
-            step="0.01"
+            readOnly
           />
         </Field>
 
@@ -595,358 +1208,6 @@ export default function JobCardForm({
             <option>Un-paid</option>
           </Select>
         </Field>
-
-        <Field label="Order Handled By" required>
-          <Select
-            name="order_handled_by"
-            value={form.order_handled_by}
-            onChange={onChange}
-            required
-          >
-            <option value="">Select</option>
-            {crmUsers.map((u) => (
-              <option key={u.id} value={u.username}>
-                {u.username}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <Field label="No of Files" required>
-          <Input
-            type="number"
-            name="no_of_files"
-            value={form.no_of_files}
-            onChange={onChange}
-            required
-          />
-        </Field>
-
-        <Field label="Unit Rate" required>
-          <Input
-            type="number"
-            name="unit_rate"
-            value={form.unit_rate}
-            onChange={onChange}
-            step="0.01"
-            required
-          />
-        </Field>
-
-        <Field label="Instructions">
-          <textarea
-            name="instructions"
-            value={form.instructions}
-            onChange={onChange}
-            className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
-          />
-        </Field>
-
-        {/* ---------------- JOB ITEMS ---------------- */}
-        <div className="md:col-span-3 mt-6">
-          <h3 className="font-semibold text-blue-700 mb-3">📦 Job Items</h3>
-
-          {form.job_items.map((item, index) => {
-            const category = item.category;
-            return (
-              <FormCard key={index}>
-                <div className="flex flex-wrap items-center justify-between">
-                  <h4 className="font-semibold text-blue-700">
-                    📦 Item {index + 1}
-                  </h4>
-                  <Button
-                    type="button"
-                    className="bg-red-600 hover:bg-red-700 px-3 py-1 text-sm"
-                    onClick={() => removeItem(index)}
-                  >
-                    🗑 Remove
-                  </Button>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-3">
-                  <Field label="Category" required>
-                    <Select
-                      value={item.category}
-                      onChange={(e) =>
-                        handleItemChange(index, "category", e.target.value)
-                      }
-                    >
-                      <option value="">Select</option>
-                      <option>SingleSheet</option>
-                      <option>MultipleSheet</option>
-                      <option>WideFormat</option>
-                      <option>Other</option>
-                    </Select>
-                  </Field>
-
-                  <Field label="Enquiry For" required>
-                    <div className="relative">
-                      <input
-                        list={`enquiry-for-list-${index}`}
-                        value={item.enquiry_for || ""}
-                        onChange={(e) =>
-                          handleItemChange(index, "enquiry_for", e.target.value)
-                        }
-                        placeholder="Type or select..."
-                        className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
-                        required
-                      />
-                      <datalist id={`enquiry-for-list-${index}`}>
-                        {enquiryItems.map((opt) => (
-                          <option key={opt.id} value={opt.item} />
-                        ))}
-                      </datalist>
-                    </div>
-                  </Field>
-
-                  {/* Common Fields */}
-                  <Field label="Quantity" required>
-                    <Input
-                      type="number"
-                      value={item.quantity || ""}
-                      onChange={(e) =>
-                        handleItemChange(index, "quantity", e.target.value)
-                      }
-                      required
-                    />
-                  </Field>
-
-                  <Field label="Unit Of Measurment" required>
-                    <Select
-                      value={item.uom}
-                      onChange={(e) =>
-                        handleItemChange(index, "uom", e.target.value)
-                      }
-                      required
-                    >
-                      <option value="">Select</option>
-                      <option>Pc</option>
-                      <option>Nos</option>
-                      <option>Copies</option>
-                      <option>Books</option>
-                      <option>Sheets</option>
-                    </Select>
-                  </Field>
-
-                  <Field label="Size" required>
-                    <Input
-                      value={item.size || ""}
-                      onChange={(e) =>
-                        handleItemChange(index, "size", e.target.value)
-                      }
-                      required
-                    />
-                  </Field>
-
-                  {/* Category-specific options */}
-                  {(category === "SingleSheet" ||
-                    category === "MultipleSheet") && (
-                    <>
-                      <Field label="Sides" required>
-                        <Select
-                          value={item.options?.sides || ""}
-                          onChange={(e) =>
-                            handleItemChange(index, "options", {
-                              ...item.options,
-                              sides: e.target.value,
-                            })
-                          }
-                        >
-                          <option>Single Side</option>
-                          <option>Both Side</option>
-                        </Select>
-                      </Field>
-
-                      <Field label="Inside Pages" required>
-                        <Input
-                          type="number"
-                          value={item.options?.inside_pages || ""}
-                          onChange={(e) =>
-                            handleItemChange(index, "options", {
-                              ...item.options,
-                              inside_pages: e.target.value,
-                            })
-                          }
-                        />
-                      </Field>
-
-                      <Field label="Cover Pages" required>
-                        <Input
-                          type="number"
-                          value={item.options?.cover_pages || ""}
-                          onChange={(e) =>
-                            handleItemChange(index, "options", {
-                              ...item.options,
-                              cover_pages: e.target.value,
-                            })
-                          }
-                        />
-                      </Field>
-
-                      <Field label="Cover Color" required>
-                        <Input
-                          value={item.options?.cover_color || ""}
-                          onChange={(e) =>
-                            handleItemChange(index, "options", {
-                              ...item.options,
-                              cover_color: e.target.value,
-                            })
-                          }
-                        />
-                      </Field>
-
-                      <Field label="Inside Color" required>
-                        <Input
-                          value={item.options?.inside_color || ""}
-                          onChange={(e) =>
-                            handleItemChange(index, "options", {
-                              ...item.options,
-                              inside_color: e.target.value,
-                            })
-                          }
-                        />
-                      </Field>
-
-                      <Field label="Cover Paper GSM" required>
-                        <Input
-                          value={item.options?.cover_paper_gsm || ""}
-                          onChange={(e) =>
-                            handleItemChange(index, "options", {
-                              ...item.options,
-                              cover_paper_gsm: e.target.value,
-                            })
-                          }
-                        />
-                      </Field>
-
-                      <Field label="Inside Paper GSM" required>
-                        <Input
-                          value={item.options?.inside_paper_gsm || ""}
-                          onChange={(e) =>
-                            handleItemChange(index, "options", {
-                              ...item.options,
-                              inside_paper_gsm: e.target.value,
-                            })
-                          }
-                        />
-                      </Field>
-
-                      {/* <Field label="Color Scheme" required>
-                        <Select
-                          value={item.options?.color_scheme || ""}
-                          onChange={(e) =>
-                            handleItemChange(index, "options", {
-                              ...item.options,
-                              color_scheme: e.target.value,
-                            })
-                          }
-                        >
-                          <option>Black and White</option>
-                          <option>Multi-color</option>
-                        </Select>
-                      </Field> */}
-
-                      <Field label="Type of Binding" required>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
-                          {commonBindings.map((b) => (
-                            <label key={b} className="text-sm">
-                              <input
-                                type="checkbox"
-                                checked={item.options?.binding_types?.includes(
-                                  b
-                                )}
-                                onChange={(e) => {
-                                  const prev =
-                                    item.options?.binding_types || [];
-                                  const updated = e.target.checked
-                                    ? [...prev, b]
-                                    : prev.filter((x) => x !== b);
-                                  handleItemChange(index, "options", {
-                                    ...item.options,
-                                    binding_types: updated,
-                                  });
-                                }}
-                                className="mr-1"
-                              />
-                              {b}
-                            </label>
-                          ))}
-                        </div>
-                      </Field>
-                    </>
-                  )}
-
-                  {category === "WideFormat" && (
-                    <>
-                      <Field label="Type of Binding" required>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
-                          {wideBindings.map((b) => (
-                            <label key={b} className="text-sm">
-                              <input
-                                type="checkbox"
-                                checked={item.options?.binding_types?.includes(
-                                  b
-                                )}
-                                onChange={(e) => {
-                                  const prev =
-                                    item.options?.binding_types || [];
-                                  const updated = e.target.checked
-                                    ? [...prev, b]
-                                    : prev.filter((x) => x !== b);
-                                  handleItemChange(index, "options", {
-                                    ...item.options,
-                                    binding_types: updated,
-                                  });
-                                }}
-                                className="mr-1"
-                              />
-                              {b}
-                            </label>
-                          ))}
-                        </div>
-                      </Field>
-                    </>
-                  )}
-
-                  {category === "Other" && (
-                    <Field label="Type of Binding" required>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
-                        {otherBindings.map((b) => (
-                          <label key={b} className="text-sm">
-                            <input
-                              type="checkbox"
-                              checked={item.options?.binding_types?.includes(b)}
-                              onChange={(e) => {
-                                const prev = item.options?.binding_types || [];
-                                const updated = e.target.checked
-                                  ? [...prev, b]
-                                  : prev.filter((x) => x !== b);
-                                handleItemChange(index, "options", {
-                                  ...item.options,
-                                  binding_types: updated,
-                                });
-                              }}
-                              className="mr-1"
-                            />
-                            {b}
-                          </label>
-                        ))}
-                      </div>
-                    </Field>
-                  )}
-                </div>
-              </FormCard>
-            );
-          })}
-
-          <Button
-            type="button"
-            className="mt-3 bg-green-600 hover:bg-green-700"
-            onClick={addItem}
-          >
-            ➕ Add Job Item
-          </Button>
-        </div>
 
         {/* ---------------- SUBMIT ---------------- */}
         <div className="md:col-span-3 mt-6 mx-auto ">

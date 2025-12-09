@@ -23,12 +23,16 @@ export default (sequelize) => {
       stage_name: {
         type: DataTypes.ENUM(
           "created",
+          "coordinator_review",
           "assigned_to_designer",
-          "design_started",
+          "design_in_progress",
           "sent_for_approval",
+          "awaiting_client_response",
+          "client_changes",
           "approved",
           "production",
-          "completed"
+          "completed",
+          "cancelled"
         ),
         allowNull: false,
       },
