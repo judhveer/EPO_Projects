@@ -41,6 +41,7 @@ import RateMasterModel from "./jobFmsModels/AccountsJobItems/RateMaster.model.js
 import QuotationModel from "./jobFmsModels/AccountsJobItems/Quotation.model.js";
 import JobCostingModel from "./jobFmsModels/AccountsJobItems/JobCosting.model.js";
 import SizeMasterModel from "./jobFmsModels/AccountsJobItems/SizeMaster.model.js";
+import JobDesignTimeModel from "./jobFmsModels/JobDesignTimeLog.js";
 
 // SalesPipeline Models
 const Lead = LeadModel(sequelize);
@@ -82,6 +83,7 @@ const RateMaster = RateMasterModel(sequelize);
 const Quotation = QuotationModel(sequelize);
 const JobCosting = JobCostingModel(sequelize);
 const SizeMaster = SizeMasterModel(sequelize);
+const JobDesignTime = JobDesignTimeModel(sequelize);
 
 associateJobFmsModels({
   User,
@@ -104,6 +106,7 @@ associateJobFmsModels({
   Quotation,
   JobCosting,
   SizeMaster,
+  JobDesignTime
 });
 
 // Associations (ticketId attribute)
@@ -179,4 +182,5 @@ export default {
   Quotation,
   JobCosting,
   SizeMaster,
+  JobDesignTime
 };

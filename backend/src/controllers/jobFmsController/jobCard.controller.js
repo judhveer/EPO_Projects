@@ -89,13 +89,15 @@ export const createJobCard = async (req, res) => {
       });
     }
 
+    console.log("job_items.length: ", job_items.length);
+
     if (!job_items || job_items.length === 0) {
       return res.status(400).json({
         message: "You have to entered at least one job item.",
       });
     }
 
-    if(no_of_files !== job_items.length){
+    if(Number(no_of_files) !== job_items.length){
       return res.status(400).json({
         message: "No of files should be same as job items.",
       });
@@ -118,7 +120,7 @@ export const createJobCard = async (req, res) => {
         order_type,
         address,
         contact_number,
-        email_id,
+        email_id: email_id === "" ? null : email_id,
         order_handled_by,
         execution_location,
         delivery_location,
@@ -127,12 +129,12 @@ export const createJobCard = async (req, res) => {
         proof_date,
         task_priority,
         instructions,
-        total_amount,
+        total_amount: Number(total_amount),
         advance_payment,
         mode_of_payment,
         payment_status,
         order_received_by,
-        no_of_files,
+        no_of_files: Number(no_of_files),
         status: "coordinator_review",
         stage_name: "coordinator_review",
       },
@@ -427,6 +429,7 @@ export const getAllJobCards = async (req, res) => {
         },
         { model: ClientApproval, as: "approval" },
         { model: ProductionRecord, as: "production" },
+        { model: JobAssignment, as: "assignments" },
       ],
       limit: parseInt(limit),
       offset,
@@ -772,8 +775,6 @@ export const cancelJobCard = async (req, res) => {
     const job = await JobCard.findByPk(job_no, {
       include: [{ model: JobAssignment, as: "assignments" }],
     });
-
-    console.log("job: ", job);
 
     if (!job) {
       return res.status(400).json({

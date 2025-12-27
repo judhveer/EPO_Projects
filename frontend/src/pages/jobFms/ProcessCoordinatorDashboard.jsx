@@ -1,4 +1,7 @@
 import React from "react";
+import ProcessCoordinatorTable from "../../components/jobFms/ProcessCoordinatorTable";
 export default function ProcessCoordinatorDashboard() {
-  return <div>🧑‍💼 Process Coordinator Dashboard - Coming soon</div>;
+  return <div>
+    <ProcessCoordinatorTable />
+  </div>;
 }

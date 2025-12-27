@@ -718,7 +718,7 @@ export default function JobWriterTable({ refresh }) {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", stiffness: 180, damping: 22 }}
-              className="fixed top-0 right-0 h-full w-[35%] bg-white shadow-2xl z-50 overflow-y-auto"
+              className="fixed top-0 right-0 h-full w-full sm:w-[35%] bg-white shadow-2xl z-50 overflow-y-auto"
             >
               {/* Header */}
               <div className="sticky top-0 bg-blue-600 text-white flex justify-between items-center p-4">
@@ -741,45 +741,175 @@ export default function JobWriterTable({ refresh }) {
                   selectedItems.map((item, index) => (
                     <div
                       key={item.id}
-                      className="border rounded-xl p-4 shadow-sm bg-slate-50"
+                      className="border rounded-xl p-4 shadow-sm bg-slate-50 space-y-4"
                     >
-                      <h4 className="font-semibold text-blue-700 mb-1">
-                        Item {index + 1}: {item.category}
-                      </h4>
+                      {/* HEADER */}
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                        <h4 className="font-semibold text-blue-700">
+                          Item {index + 1}: {item.category}
+                        </h4>
 
-                      <p className="text-gray-700 mb-2">
-                        <span className="font-medium">Enquiry For:</span>{" "}
-                        {item.enquiry_for || "—"} |{" "}
-                        <span className="font-medium">Size:</span>{" "}
-                        {item.size || "—"} |{" "}
-                        <span className="font-medium">Qty:</span>{" "}
-                        {item.quantity || 0} {item.uom || ""}
-                      </p>
+                        <span
+                          className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded max-w-full sm:max-w-[220px] truncate"
+                          title={item.enquiry_for}
+                        >
+                          {item.enquiry_for || "—"}
+                        </span>
+                      </div>
 
-                      {/* Category-specific options */}
-                      {item.options && (
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
-                          {Object.entries(
-                            item.options[item.category] || item.options
-                          )
-                            .filter(([_, val]) =>
-                              Array.isArray(val)
-                                ? val.length > 0
-                                : val !== null && val !== "" && val !== 0
-                            )
-                            .map(([key, val]) => (
-                              <div key={key} className="flex flex-col">
-                                <span className="font-medium capitalize">
-                                  {key.replaceAll("_", " ")}:
+                      {/* BASIC DETAILS */}
+                      <div className="space-y-2 text-gray-700 text-sm">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                          <span className="font-medium shrink-0">
+                            Client Size (Finished):
+                          </span>
+                          <span
+                            className="break-words sm:truncate"
+                            title={item.size}
+                          >
+                            {item.size || "—"}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                          <span className="font-medium shrink-0">
+                            Quantity:
+                          </span>
+                          <span>
+                            {item.quantity || 0} {item.uom || ""}
+                          </span>
+                        </div>
+
+                        {item.color_scheme && (
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                            <span className="font-medium shrink-0">
+                              Color Scheme:
+                            </span>
+                            <span>{item.color_scheme}</span>
+                          </div>
+                        )}
+
+                        {item.sides && (
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                            <span className="font-medium shrink-0">Sides:</span>
+                            <span>{item.sides}</span>
+                          </div>
+                        )}
+
+                        {/* COMMON BINDING */}
+                        {item.binding_types && (
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                            <span className="font-medium shrink-0">
+                              Binding:
+                            </span>
+                            <span
+                              className="break-words sm:truncate"
+                              title={
+                                Array.isArray(item.binding_types)
+                                  ? item.binding_types.join(", ")
+                                  : item.binding_types
+                              }
+                            >
+                              {Array.isArray(item.binding_types)
+                                ? item.binding_types.join(", ")
+                                : item.binding_types}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* PAPER DETAILS */}
+                      {item.selectedPaper && (
+                        <div className="border rounded-lg p-3 bg-white space-y-2">
+                          <h6 className="font-semibold text-gray-700">
+                            🧻 Paper Details
+                          </h6>
+
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                            <span className="font-medium shrink-0">
+                              Paper Type:
+                            </span>
+                            <span
+                              className="break-words sm:truncate"
+                              title={item.selectedPaper.paper_name}
+                            >
+                              {item.selectedPaper.paper_name}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                            <span className="font-medium shrink-0">GSM:</span>
+                            <span>{item.selectedPaper.gsm}</span>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                            <span className="font-medium shrink-0">
+                              Paper Size (Press):
+                            </span>
+                            <span
+                              className="break-words sm:truncate"
+                              title={item.selectedPaper.size_name}
+                            >
+                              {item.selectedPaper.size_name}
+                            </span>
+                          </div>
+
+                          {item.inside_pages && (
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                            <span className="font-medium shrink-0">
+                              Inside Pages:
+                            </span>
+                            <span>{item.inside_pages || "—"}</span>
+                          </div>
+                          )}
+
+                        </div>
+                      )}
+
+                      {/* MULTIPLE SHEET ONLY */}
+                      {item.category === "Multiple Sheet" && (
+                        <>
+                          {item.selectedCoverPaper && (
+                            <div className="border rounded-lg p-3 bg-slate-100 space-y-2">
+                              <h6 className="font-semibold text-gray-700">
+                                📘 Cover Paper Details
+                              </h6>
+
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                                <span className="font-medium shrink-0">
+                                  Cover Type:
                                 </span>
-                                <span className="text-gray-700">
-                                  {Array.isArray(val)
-                                    ? val.join(", ")
-                                    : val.toString()}
+                                <span
+                                  className="break-words sm:truncate"
+                                  title={item.selectedCoverPaper.paper_name}
+                                >
+                                  {item.selectedCoverPaper.paper_name}
                                 </span>
                               </div>
-                            ))}
-                        </div>
+
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                                <span className="font-medium shrink-0">
+                                  Cover GSM:
+                                </span>
+                                <span>{item.selectedCoverPaper.gsm}</span>
+                              </div>
+
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                                <span className="font-medium shrink-0">
+                                  Cover Pages:
+                                </span>
+                                <span>{item.cover_pages || "—"}</span>
+                              </div>
+
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                                <span className="font-medium shrink-0">
+                                  Cover Color:
+                                </span>
+                                <span>{item.cover_color_scheme || "—"}</span>
+                              </div>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   ))

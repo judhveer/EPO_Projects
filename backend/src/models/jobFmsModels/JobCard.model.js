@@ -48,6 +48,7 @@ export default (sequelize) => {
       },
       email_id: {
         type: DataTypes.STRING,
+        allowNull: true,
         validate: {
           isEmail: true,
         },
@@ -131,7 +132,10 @@ export default (sequelize) => {
       no_of_files: {
         type: DataTypes.INTEGER,
       },
-
+      assigned_designer: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
 
       // // NEW: Quotation / costing fields
       // quotation_subtotal: {

@@ -1,4 +1,8 @@
 import React from "react";
+import DesignerTable from "../../components/jobFms/DesignerTable";
+
 export default function DesignerDashboard() {
-  return <div>🧑‍💼 Designer Dashboard - Coming soon</div>;
+  return <div>
+    < DesignerTable />
+  </div>;
 }

@@ -44,7 +44,7 @@ export default (sequelize) => {
         allowNull: true,
       },
 
-      designer_duration_minutes: {
+      designer_duration_seconds: {
         type: DataTypes.INTEGER,
         defaultValue: 0,
       },
@@ -56,6 +56,15 @@ export default (sequelize) => {
           "returned_for_changes"
         ),
         defaultValue: "assigned",
+      },
+      is_paused: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+      },
+      instance: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1,
       },
       remarks: {
         type: DataTypes.TEXT,

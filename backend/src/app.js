@@ -62,7 +62,8 @@ import userRoutes from "./routes/jobFmsRoutes/users.routes.js";
 
 
 import itemMasterRoutes from "./routes/jobFmsRoutes/itemMaster.routes.js";
-
+import processCoordinatorRoutes from "./routes/jobFmsRoutes/processCoordinator.routes.js";
+import designerRoutes from "./routes/jobFmsRoutes/designer.routes.js";
 
 
 
@@ -102,6 +103,9 @@ const gateByMethod = (permView, permMutate = null) => [
     return requirePermission(perm)(req, res, next);
   }
 ];
+
+
+app.get('/health', (req, res) => res.json({ ok: true }));
 
 
 app.use('/api/auth', authRoutes);        // POST /api/auth/login, POST /api/auth/users, GET /api/auth/me
@@ -180,6 +184,19 @@ app.use("/api/fms/items",
 );
 
 
+app.use("/api/fms/process-coordinator",
+  authenticate,
+  // requirePermission('fms.process_coordinator.view'),
+  processCoordinatorRoutes
+);
+
+app.use("/api/fms/designers",
+  authenticate,
+  // requirePermission('fms.designers.view'),
+  designerRoutes
+);
+
+
 
 // error handling middlewares
 app.use(notFound);
@@ -227,8 +244,6 @@ export async function init() {
   return app;
 }
 
-
-app.get('/health', (req, res) => res.json({ ok: true }));
 
 
 // Stop safely
