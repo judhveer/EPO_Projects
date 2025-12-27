@@ -33,6 +33,7 @@ import JobWriterDashboard from "./pages/jobFms/JobWriterDashboard.jsx";
 import ProcessCoordinatorDashboard from "./pages/jobFms/ProcessCoordinatorDashboard.jsx";
 import DesignerDashboard from "./pages/jobFms/DesignerDashboard.jsx";
 import CrmDashboard from "./pages/jobFms/CrmDashboard.jsx";
+import CommonDashboard from "./pages/jobFms/CommonDashboard.jsx";
 
 /**
  * Simple auth hook.
@@ -209,6 +210,22 @@ export default function App() {
 
           {/* ---------------- JOB FMS MODULE ---------------- */}
           <Route path="/job-fms" element={<JobFmsLayout />}>
+
+            <Route index element={<Navigate to="common" replace />} />
+
+            <Route
+              path="common"
+              element={
+                <Gate
+                  perm="jobfms.commonDashboard.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
+                  <CommonDashboard />
+                </Gate>
+              }
+            />
+
+
             <Route
               path="writer"
               element={

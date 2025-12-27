@@ -60,7 +60,7 @@ export default function GlobalNav() {
           {showAttendance && link("/attendance", "Attendance")}
           {showEA && link("/task", "EA Dashboard")}
           {showSales && link("/sales", "Sales Dashboard")}
-          {showJobFms && link("/job-fms/writer", "Job FMS")}
+          {showJobFms && link("/job-fms", "Job FMS")}
           {(isBoss || isAdmin) && link("/create-user", "Create User")}
         </nav>
 
@@ -93,7 +93,7 @@ export default function GlobalNav() {
           {showAttendance && link("/attendance", "Attendance")}
           {showEA && link("/task", "EA Dashboard")}
           {showSales && link("/sales", "Sales Dashboard")}
-          {showJobFms && link("/job-fms/writer", "Job FMS")}
+          {showJobFms && link("/job-fms", "Job FMS")}
           {(isBoss || isAdmin) && link("/create-user", "Create User")}
         </div>
       </nav>

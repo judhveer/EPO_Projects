@@ -265,7 +265,7 @@ export default function Home() {
         )}
         {showJobFms && (
             <Card 
-                to="/job-fms/writer"
+                to="/job-fms"
                 title="Job FMS Dashboard"
                 desc="Manage job cards, design assignments & approvals."
             />
