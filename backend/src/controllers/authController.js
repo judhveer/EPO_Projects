@@ -2,6 +2,8 @@ import jwt from 'jsonwebtoken';
 import { validationResult } from 'express-validator';
 import { authConfig } from '../config/auth.js';
 import models from '../models/index.js';
+import { sendMail } from "../email/sendMail.js";
+import { userCreatedEmail } from "../utils/userCreatedEmail.js";
 
 const { User } = models;
 
@@ -140,12 +142,10 @@ export async function createUser(req, res) {
             passwordHash: password
         });
 
-
-
         user._password = password;
         await user.save();
 
-        return res.status(201).json({
+        res.status(201).json({
             message: 'User created successfully',
             status: true,
             data: {
@@ -156,6 +156,30 @@ export async function createUser(req, res) {
                 department: user.department,
             }
         });
+
+        /* ---------------- EMAIL SENDING ---------------- */
+        try {
+            const { subject, text, html } = userCreatedEmail({
+                username,
+                email,
+                password,
+                role,
+                department,
+                createdByName: req.user?.username || "Admin",
+            });
+
+            await sendMail({
+                to: email,
+                subject,
+                text,
+                html,
+            });
+        } catch (mailError) {
+            // IMPORTANT: do not fail user creation if mail fails
+            console.error("Email failed but user created:", mailError.message);
+        }
+        /* ------------------------------------------------ */
+
     }
     catch (error) {
         return res.status(500).json({
