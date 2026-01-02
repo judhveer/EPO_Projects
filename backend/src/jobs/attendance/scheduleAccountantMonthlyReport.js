@@ -2,7 +2,7 @@
 import cron  from 'node-cron';
 import { DateTime }  from 'luxon';
 import { generateAccountantMonthlyPDF }  from '../../reports/accountantMonthly.js';
-import { sendWeeklyAttendanceReport }  from '../../email/attendance/sendReport.js'; // your existing generic mailer
+import { sendAttendanceReport }  from '../../email/attendance/sendReport.js'; // your existing generic mailer
 import week  from '../../utils/attendance/week.js';
 const { ZONE } = week;
 
@@ -28,7 +28,7 @@ export function startAccountantMonthlyReportJob() {
         <p>— EPO Attendance System</p>
       `;
 
-      await sendWeeklyAttendanceReport({
+      await sendAttendanceReport({
         to: process.env.REPORT_TO_ACCOUNTS,
         subject, html, attachmentPath: outPath,
       });

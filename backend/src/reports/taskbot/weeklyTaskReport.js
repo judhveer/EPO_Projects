@@ -1,7 +1,7 @@
 import db from "../../models/index.js";
 import { Op } from "sequelize";
 import { generateAIReport } from "../../services/taskbot/aiSummarizer.js";
-import { sendMail } from "../../email/sendMail.js";
+import { sendMailForReports } from "../../email/sendMail.js";
 import bot from "../../controllers/taskbotController/bot.js";
 import dotenv from "dotenv";
 dotenv.config();
@@ -190,7 +190,7 @@ ${aiReport.summary}
     `;
 
     // ✉️ 10️⃣ Send Email Report
-    await sendMail({
+    await sendMailForReports({
       to: process.env.TASK_REPORT_EMAIL,
       subject: `📅 Weekly Task Report (Mon–Sun: ${periodText})`,
       text: telegramText.replace(/\*/g, ""),

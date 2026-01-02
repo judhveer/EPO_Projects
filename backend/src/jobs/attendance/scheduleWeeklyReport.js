@@ -2,7 +2,7 @@
 import cron  from 'node-cron';
 import { DateTime }  from 'luxon';
 import { generateWeeklyAttendancePDF }  from '../../reports/weeklyAttendance.js';
-import { sendWeeklyAttendanceReport }  from '../../email/attendance/sendReport.js'; 
+import { sendAttendanceReport }  from '../../email/attendance/sendReport.js'; 
 import week  from '../../utils/attendance/week.js';
 const { ZONE } = week;
 
@@ -33,7 +33,7 @@ export function startWeeklyReportJob() {
 
       console.log("generating Weekly Attendance step 12.......");
 
-      await sendWeeklyAttendanceReport({
+      await sendAttendanceReport({
         to: process.env.REPORT_TO,
         subject, html, attachmentPath: outPath,
       });

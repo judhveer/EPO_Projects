@@ -1,32 +1,41 @@
 import { Op, where } from "sequelize";
 import models from "../../models/index.js";
-const { JobCard, JobAssignment, StageTracking, ActivityLog, User, JobDesignTime, JobItem, PaperMaster, ItemMaster } = models;
-
-
+const {
+  JobCard,
+  JobAssignment,
+  StageTracking,
+  ActivityLog,
+  User,
+  JobDesignTime,
+  JobItem,
+  PaperMaster,
+  ItemMaster,
+} = models;
+import { advanceStage } from "../../utils/jobFms/stageTracking.js";
 
 // Get all jobs for Designers
 export const getAllJobsForDesginer = async (req, res) => {
   try {
     const jobCards = await JobCard.findAndCountAll({
       where: {
-        status: ["assigned_to_designer", "design_in_progress" ],
+        status: ["assigned_to_designer", "design_in_progress"],
       },
       include: [
         {
           model: JobAssignment,
           as: "assignments",
-          where: {  status: { [Op.in]: ["assigned", "in_progress"] } },
+          where: { status: { [Op.in]: ["assigned", "in_progress"] } },
           required: false,
         },
         {
-          model: JobItem, 
+          model: JobItem,
           as: "items",
           include: [
-            { model: PaperMaster, as: "selectedPaper" },   // <-- important
-            { model: PaperMaster, as: "selectedCoverPaper" },  
-            { model: ItemMaster, as: "itemMaster" }
-          ]
-        }
+            { model: PaperMaster, as: "selectedPaper" }, // <-- important
+            { model: PaperMaster, as: "selectedCoverPaper" },
+            { model: ItemMaster, as: "itemMaster" },
+          ],
+        },
       ],
       order: [["createdAt", "DESC"]],
     });
@@ -39,10 +48,7 @@ export const getAllJobsForDesginer = async (req, res) => {
     console.error("Error fetching jobs for Process Coordinator:", error);
     res.status(500).json({ message: "Internal server error" });
   }
-}
-
-
-
+};
 
 export const setEstimatedTime = async (req, res) => {
   console.log("setEstimatedTime called:");
@@ -50,40 +56,48 @@ export const setEstimatedTime = async (req, res) => {
     const { job_no, estimated_completion_time } = req.body;
 
     console.log("Estimated Completion Time:", estimated_completion_time);
-    
+
     if (!estimated_completion_time) {
-      return res.status(400).json({ 
-        error: "estimated_completion_time is required" 
+      return res.status(400).json({
+        error: "estimated_completion_time is required",
       });
     }
     const assignment = await JobAssignment.findOne({
-      where: { 
-        job_no, 
-        status: { [Op.in]: ["assigned", "in_progress"] }
+      where: {
+        job_no,
+        status: { [Op.in]: ["assigned", "in_progress"] },
       },
       order: [["created_at", "DESC"]],
     });
 
     console.log("Found Assignment:", assignment);
 
-    if (!assignment){
-      return res.status(404).json({ 
-        error: "No active assignment found" 
+    if (!assignment) {
+      return res.status(404).json({
+        error: "No active assignment found",
       });
     }
-    
+
     assignment.estimated_completion_time = estimated_completion_time;
-    await assignment.save();  
+    await assignment.save();
     console.log("Updated Assignment:", assignment);
-    res.json({ 
-      message: "Estimated time set successfully", 
-      assignment 
+
+    // Log Action
+    await ActivityLog.create({
+      job_no,
+      performed_by_id: req.user?.id,
+      action: "Set Estimated Time",
+      meta: { estimated_completion_time },
     });
 
+    res.json({
+      message: "Estimated time set successfully",
+      assignment,
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ 
-      error: "Failed to set estimated time" 
+    res.status(500).json({
+      error: "Failed to set estimated time",
     });
   }
 };
@@ -99,17 +113,19 @@ export const designerStartTask = async (req, res) => {
       where: { job_no, status: "assigned" },
     });
 
-    if (!assignment){
+    if (!assignment) {
       return res.status(404).json({ error: "No assignment found to start" });
     }
 
     assignment.status = "in_progress";
     assignment.designer_start_time = new Date();
 
-    await JobDesignTime.create({
-      assignment_id: assignment.id,
-      start_time: new Date(),
-    }, { transaction: t }
+    await JobDesignTime.create(
+      {
+        assignment_id: assignment.id,
+        start_time: new Date(),
+      },
+      { transaction: t }
     );
 
     await assignment.save({ transaction: t });
@@ -119,21 +135,23 @@ export const designerStartTask = async (req, res) => {
     job.current_stage = "design_in_progress";
     await job.save({ transaction: t });
 
-    await StageTracking.create(
-      {
-        job_no,
-        stage_name: "design_in_progress",
-        performed_by_id: assignment.designer_id,
-        started_at: new Date(),
-      },
-      { transaction: t }
-    );
+    // Track Stage
+    await advanceStage({
+      job_no,
+      new_stage: "design_in_progress",
+      performed_by_id: req.user?.id || null,
+      started_at: new Date(),
+      remarks: "( Designer ) Task started",
+      transaction: t,
+    });
 
+    // Log Action
     await ActivityLog.create(
       {
         job_no,
-        performed_by_id: assignment.designer_id,
+        performed_by_id: req.user?.id || null,
         action: "Designer Start Task",
+        meta: {assignment},
       },
       { transaction: t }
     );
@@ -141,7 +159,6 @@ export const designerStartTask = async (req, res) => {
     await t.commit();
 
     res.json({ message: "Task started", assignment });
-
   } catch (err) {
     await t.rollback();
     console.error(err);
@@ -158,9 +175,9 @@ export const designerPauseTask = async (req, res) => {
       where: { job_no, status: "in_progress" },
     });
 
-    if (!assignment){
-      return res.status(404).json({ 
-        error: "No active task found" 
+    if (!assignment) {
+      return res.status(404).json({
+        error: "No active task found",
       });
     }
 
@@ -173,30 +190,37 @@ export const designerPauseTask = async (req, res) => {
     });
 
     if (!jobDesignTimeLog) {
-      return res.status(404).json({ 
-        error: "No active design time log found" 
+      return res.status(404).json({
+        error: "No active design time log found",
       });
     }
-    
+
     jobDesignTimeLog.end_time = new Date();
     jobDesignTimeLog.duration_seconds = Math.round(
-      (new Date() - new Date(jobDesignTimeLog.start_time)) / 1000 
+      (new Date() - new Date(jobDesignTimeLog.start_time)) / 1000
     );
     assignment.designer_duration_seconds += jobDesignTimeLog.duration_seconds;
     assignment.is_paused = true;
     await assignment.save();
     await jobDesignTimeLog.save();
 
-    res.json({ 
-      message: "Task paused", 
-      jobDesignTimeLog 
+    await ActivityLog.create(
+      {
+        job_no,
+        performed_by_id: req.user?.id || null,
+        action: "Designer Pause Task",
+      },
+    );
+
+    res.json({
+      message: "Task paused",
+      jobDesignTimeLog,
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to pause task" });
   }
 };
-
 
 export const designerResumeTask = async (req, res) => {
   try {
@@ -206,9 +230,9 @@ export const designerResumeTask = async (req, res) => {
       where: { job_no, status: "in_progress" },
     });
 
-    if (!assignment){
-      return res.status(404).json({ 
-        error: "No active task found" 
+    if (!assignment) {
+      return res.status(404).json({
+        error: "No active task found",
       });
     }
 
@@ -220,13 +244,20 @@ export const designerResumeTask = async (req, res) => {
     assignment.is_paused = false;
     await assignment.save();
 
+    await ActivityLog.create(
+      {
+        job_no,
+        performed_by_id: req.user?.id || null,
+        action: "Designer Resume Task",
+      },
+    );
+
     res.json({ message: "Task resumed" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to resume task" });
   }
 };
-
 
 // Designer API to END TASK
 export const designerEndTask = async (req, res) => {
@@ -265,7 +296,7 @@ export const designerEndTask = async (req, res) => {
     const designLogs = await JobDesignTime.findAll({
       where: { assignment_id: assignment.id },
     });
-    
+
     let totalSeconds = calculateTotalSeconds(designLogs);
 
     assignment.status = "completed";
@@ -280,16 +311,15 @@ export const designerEndTask = async (req, res) => {
     job.status = "sent_for_approval";
     await job.save({ transaction: t });
 
-    // Stage Track
-    await StageTracking.create(
-      {
-        job_no,
-        stage_name: "sent_for_approval",
-        performed_by_id: assignment.designer_id,
-        started_at: endTime,
-      },
-      { transaction: t }
-    );
+     // Track Stage
+    await advanceStage({
+      job_no,
+      new_stage: "sent_for_approval",
+      performed_by_id: req.user?.id || null,
+      started_at: new Date(),
+      remarks: "( Designer -> CRM ) Task completed and CRM has to send for approval",
+      transaction: t,
+    });
 
     // Log
     await ActivityLog.create(
@@ -310,16 +340,12 @@ export const designerEndTask = async (req, res) => {
     await t.commit();
 
     res.json({ message: "Task completed", assignment });
-
   } catch (err) {
     await t.rollback();
     console.error(err);
     res.status(500).json({ error: "Failed to complete task" });
   }
 };
-
-
-
 
 const calculateTotalSeconds = (logs) => {
   let total = 0;

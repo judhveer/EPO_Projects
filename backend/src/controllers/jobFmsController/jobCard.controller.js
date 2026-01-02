@@ -1,7 +1,6 @@
 import models from "../../models/index.js";
-import transporter from "../../email/transporter.js";
-import { Sequelize } from "sequelize";
 import { advanceStage } from "../../utils/jobFms/stageTracking.js";
+import { sendMailForFMS } from '../../email/sendMail.js'; 
 
 const {
   JobCard,
@@ -17,20 +16,6 @@ const {
   PaperMaster,
 } = models;
 
-// ✅ Helper: Safe email sender
-async function sendMailSafe({ to, subject, html }) {
-  try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to,
-      subject,
-      html,
-    });
-    console.log(`📧 Email sent successfully to ${to}`);
-  } catch (err) {
-    console.error(`❌ Failed to send email to ${to}:`, err.message);
-  }
-}
 
 /**
  * CREATE JOB CARD + JOB ITEMS (in a single transaction)
@@ -97,7 +82,7 @@ export const createJobCard = async (req, res) => {
       });
     }
 
-    if(Number(no_of_files) !== job_items.length){
+    if (Number(no_of_files) !== job_items.length) {
       return res.status(400).json({
         message: "No of files should be same as job items.",
       });
@@ -146,13 +131,12 @@ export const createJobCard = async (req, res) => {
     // if job_items are provided, create them
     if (job_items && job_items.length > 0) {
       for (const item of job_items) {
-
         const item_master_id = await ItemMaster.findOne({
           where: {
             category: item.category,
-            item_name: item.enquiry_for
+            item_name: item.enquiry_for,
           },
-          attributes: ['id']
+          attributes: ["id"],
         });
 
         item.item_master_id = item_master_id.dataValues.id;
@@ -161,9 +145,9 @@ export const createJobCard = async (req, res) => {
           where: {
             paper_name: item.paper_type,
             gsm: Number(item.paper_gsm),
-            size_name: item.best_inside_sheet
+            size_name: item.best_inside_sheet,
           },
-          attributes: ['id']
+          attributes: ["id"],
         });
         item.selected_paper_id = selected_paper_id.dataValues.id;
 
@@ -171,15 +155,14 @@ export const createJobCard = async (req, res) => {
           item.cover_paper_type = null;
           item.cover_paper_gsm = null;
           item.cover_color_scheme = null;
-        }
-        else{
+        } else {
           const selected_cover_paper_id = await PaperMaster.findOne({
             where: {
               paper_name: item.cover_paper_type,
               gsm: Number(item.cover_paper_gsm),
-              size_name: item.best_cover_sheet
+              size_name: item.best_cover_sheet,
             },
-            attributes: ['id']
+            attributes: ["id"],
           });
           item.selected_cover_paper_id = selected_cover_paper_id.dataValues.id;
         }
@@ -192,7 +175,6 @@ export const createJobCard = async (req, res) => {
               : [],
             inside_pages: item.inside_pages ? Number(item.inside_pages) : null,
             cover_pages: item.cover_pages ? Number(item.cover_pages) : null,
-          
           },
           { transaction: t }
         );
@@ -216,7 +198,8 @@ export const createJobCard = async (req, res) => {
       new_stage: "coordinator_review",
       performed_by_id: req.user?.id || null,
       started_at: new Date(),
-      remarks: "Job sent for coordinator review",
+      remarks:
+        "(Job created -> Coordinator review) Job sent for coordinator review",
       transaction: t,
     });
 
@@ -231,13 +214,13 @@ export const createJobCard = async (req, res) => {
     // Send Email to Client (if email_id exists)
     if (email_id) {
       const emailHTML = `
-      <h2>Welcome to EPO – Order Confirmation & Contact Details</h2>
+      <h2>Welcome to EPO - Order Confirmation & Contact Details</h2>
 
       <p>Hello <strong>${client_name}</strong>,</p>
 
       <p>Greetings from <strong>Eastern Panorama Offset!</strong></p>
 
-      <p>We’re delighted to have you with us.<br/>
+      <p>We're delighted to have you with us.<br/>
       Please find your order details below:</p>
 
       <ul>
@@ -263,8 +246,8 @@ export const createJobCard = async (req, res) => {
       <td>Within 12 working hours</td>
       <td>
       Please contact your assigned CRMs:<br/>
-      1. Fanny – Ph: 8259831001, Email: crm@easternpanorama.in<br/>
-      2. Saphiiaibet – Ph: 8258947402, Email: crm2@easternpanorama.in
+      1. Fanny - Ph: 8259831001, Email: crm@easternpanorama.in<br/>
+      2. Saphiiaibet - Ph: 8258947402, Email: crm2@easternpanorama.in
       </td>
       </tr>
       <tr>
@@ -292,25 +275,11 @@ export const createJobCard = async (req, res) => {
       (Eastern Panorama Offset)</p>
       `;
 
-      await sendMailSafe({
+      await sendMailForFMS({
         to: email_id,
         subject: `Welcome to EPO - Order Confirmation | Job No: ${jobCard.job_no}`,
         html: emailHTML,
-      })
-
-      // const mailOptions = {
-      //   from: process.env.EMAIL_USER,
-      //   to: email_id,
-      //   subject: `Welcome to EPO - Order Confirmation | Job No: ${jobCard.job_no}`,
-      //   html: emailHTML,
-      // };
-
-      // try {
-      //   await transporter.sendMail(mailOptions);
-      //   console.log(`✅ Order confirmation email sent to: ${email_id}`);
-      // } catch (err) {
-      //   console.error("❌ Failed to send client email:", err.message);
-      // }
+      });
     }
 
     // 2️⃣ Notify the assigned CRM
@@ -343,7 +312,7 @@ export const createJobCard = async (req, res) => {
       </div>
       `;
 
-      await sendMailSafe({
+      await sendMailForFMS({
         to: crmUser.email,
         subject: `New Job Assigned | Job No: ${job_no}`,
         html: crmEmailHTML,
@@ -385,7 +354,7 @@ export const createJobCard = async (req, res) => {
       </div>
       `;
 
-      await sendMailSafe({
+      await sendMailForFMS({
         to: coordinatorEmails.join(","),
         subject: `New JobCard - Coordinator Review | Job No: ${job_no}`,
         html: coordinatorEmailHTML,
@@ -418,14 +387,14 @@ export const getAllJobCards = async (req, res) => {
     const jobCards = await JobCard.findAndCountAll({
       where: whereClause,
       include: [
-        { 
-          model: JobItem, 
+        {
+          model: JobItem,
           as: "items",
           include: [
-            { model: PaperMaster, as: "selectedPaper" },   // <-- important
-            { model: PaperMaster, as: "selectedCoverPaper" },  
-            { model: ItemMaster, as: "itemMaster" }
-          ]
+            { model: PaperMaster, as: "selectedPaper" }, // <-- important
+            { model: PaperMaster, as: "selectedCoverPaper" },
+            { model: ItemMaster, as: "itemMaster" },
+          ],
         },
         { model: ClientApproval, as: "approval" },
         { model: ProductionRecord, as: "production" },
@@ -467,13 +436,14 @@ export const getJobCardByJobNo = async (req, res) => {
 
     const jobCard = await JobCard.findByPk(job_no, {
       include: [
-        { model: JobItem, 
+        {
+          model: JobItem,
           as: "items",
           include: [
-            { model: PaperMaster, as: "selectedPaper" },   // <-- important
-            { model: PaperMaster, as: "selectedCoverPaper" },  
-            { model: ItemMaster, as: "itemMaster" }
-          ] 
+            { model: PaperMaster, as: "selectedPaper" }, // <-- important
+            { model: PaperMaster, as: "selectedCoverPaper" },
+            { model: ItemMaster, as: "itemMaster" },
+          ],
         },
         { model: FileAttachment, as: "attachments" },
         { model: ClientApproval, as: "approval" },
@@ -541,27 +511,28 @@ export const updateJobCard = async (req, res) => {
 
     // Update existing items
     for (const item of job_items) {
+      console.log("Processing item: ", item);
       if (item.id && existingItems.includes(item.id)) {
-
-
         const item_master_id = await ItemMaster.findOne({
           where: {
             category: item.category,
-            item_name: item.enquiry_for
+            item_name: item.enquiry_for,
           },
-          attributes: ['id']
+          attributes: ["id"],
         });
 
         item.item_master_id = item_master_id.dataValues.id;
 
+        console.log("here 1");
         const selected_paper_id = await PaperMaster.findOne({
           where: {
             paper_name: item.paper_type,
             gsm: Number(item.paper_gsm),
-            size_name: item.best_inside_sheet
+            size_name: item.best_inside_sheet,
           },
-          attributes: ['id']
+          attributes: ["id"],
         });
+        console.log("here 2");
         item.selected_paper_id = selected_paper_id.dataValues.id;
 
         // CLEAN FIELDS LIKE CREATE API
@@ -569,15 +540,14 @@ export const updateJobCard = async (req, res) => {
           item.cover_paper_type = null;
           item.cover_paper_gsm = null;
           item.cover_color_scheme = null;
-        }
-        else{
+        } else {
           const selected_cover_paper_id = await PaperMaster.findOne({
             where: {
               paper_name: item.cover_paper_type,
               gsm: Number(item.cover_paper_gsm),
-              size_name: item.best_cover_sheet
+              size_name: item.best_cover_sheet,
             },
-            attributes: ['id']
+            attributes: ["id"],
           });
           item.selected_cover_paper_id = selected_cover_paper_id.dataValues.id;
 
@@ -597,50 +567,48 @@ export const updateJobCard = async (req, res) => {
     const newItems = job_items.filter((i) => !i.id);
     if (newItems.length > 0) {
       const newItemData = await Promise.all(
-        newItems.map( async (i) => {
-
+        newItems.map(async (i) => {
           const item_master_id = await ItemMaster.findOne({
             where: {
               category: i.category,
-              item_name: i.enquiry_for
+              item_name: i.enquiry_for,
             },
-            attributes: ['id']
+            attributes: ["id"],
           });
 
           i.item_master_id = item_master_id.dataValues.id;
-
 
           const selected_paper_id = await PaperMaster.findOne({
             where: {
               paper_name: i.paper_type,
               gsm: Number(i.paper_gsm),
-              size_name: i.best_inside_sheet
+              size_name: i.best_inside_sheet,
             },
-            attributes: ['id']
+            attributes: ["id"],
           });
           console.log("selected_paper_id: ", selected_paper_id.dataValues.id);
 
           i.selected_paper_id = selected_paper_id.dataValues.id;
 
-
           if (i.category !== "Multiple Sheet") {
             i.cover_paper_type = null;
             i.cover_paper_gsm = null;
             i.cover_color_scheme = null;
-          }
-          else{
+          } else {
             const selected_cover_paper_id = await PaperMaster.findOne({
               where: {
                 paper_name: i.cover_paper_type,
                 gsm: Number(i.cover_paper_gsm),
-                size_name: i.best_cover_sheet
+                size_name: i.best_cover_sheet,
               },
-              attributes: ['id']
+              attributes: ["id"],
             });
             i.selected_cover_paper_id = selected_cover_paper_id.dataValues.id;
           }
 
-          i.binding_types = Array.isArray(i.binding_types) ? i.binding_types : [];
+          i.binding_types = Array.isArray(i.binding_types)
+            ? i.binding_types
+            : [];
           i.inside_pages = i.inside_pages ? Number(i.inside_pages) : null;
           i.cover_pages = i.cover_pages ? Number(i.cover_pages) : null;
 
@@ -692,77 +660,10 @@ export const updateJobCard = async (req, res) => {
   }
 };
 
-/**
- * DELETE JOB CARD
- */
-export const deleteJobCard = async (req, res) => {
-  console.log("deleteJobCard called...");
-  try {
-    const { job_no } = req.params;
-
-    if (!job_no) {
-      return res.status(400).json({
-        message: "Job number required",
-      });
-    }
-
-    const jobCard = await JobCard.findByPk(job_no, {
-      include: [{ model: JobAssignment, as: "assignments" }],
-    });
-    if (!jobCard) {
-      return res.status(404).json({
-        message: "JobCard not found",
-      });
-    }
-
-    await ActivityLog.create({
-      job_no,
-      action: "JobCard Deleted",
-      performed_by_id: req.user?.id || null,
-    });
-
-    const clientDetails = await ClientDetails.findOne({
-      where: {
-        client_name: jobCard.client_name,
-      },
-    });
-
-    if (clientDetails) {
-      if (clientDetails.total_jobs > 0) {
-        clientDetails.total_jobs--;
-
-        if (clientDetails.total_jobs <= 3) {
-          clientDetails.client_relation = "NBD";
-        }
-      }
-      await clientDetails.save();
-    }
-
-    res.json({
-      message: "JobCard deleted successfully",
-    });
-
-    // 🔔 Notify CRM + Coordinators
-    await sendJobNotificationEmail({
-      job: jobCard,
-      subject: `❌ JobCard Deleted | Job No: ${job_no}`,
-      actionType: "deleted",
-    });
-
-    await jobCard.destroy(); // Cascade deletes all JobItems
-  } catch (error) {
-    console.error("Error deleting JobCard:", error);
-    res.status(500).json({
-      message: "Internal server error",
-      error: error.message,
-    });
-  }
-};
 
 /**
  * CANCEL JOB
  */
-
 export const cancelJobCard = async (req, res) => {
   try {
     const { job_no } = req.params;
@@ -786,6 +687,15 @@ export const cancelJobCard = async (req, res) => {
     job.status = "cancelled";
 
     await job.save();
+
+    await advanceStage({
+      job_no,
+      new_stage: "cancelled",
+      performed_by_id: req.user?.id || null,
+      started_at: new Date(),
+      remarks: "(Job cancelled) Job has been cancelled by Job Writer",
+      transaction: t,
+    });
 
     res.status(200).json({
       message: "Successfully cancelled the job",
@@ -917,9 +827,8 @@ async function sendJobNotificationEmail({ job, subject, actionType }) {
       </div>
     `;
 
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: recipients.join(","),
+    await sendMailForFMS({
+      to: recipients,
       subject,
       html: emailHTML,
     });
@@ -929,3 +838,81 @@ async function sendJobNotificationEmail({ job, subject, actionType }) {
     console.error("❌ Failed to send job notification email:", err.message);
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * DELETE JOB CARD
+ */
+// export const deleteJobCard = async (req, res) => {
+//   console.log("deleteJobCard called...");
+//   try {
+//     const { job_no } = req.params;
+
+//     if (!job_no) {
+//       return res.status(400).json({
+//         message: "Job number required",
+//       });
+//     }
+
+//     const jobCard = await JobCard.findByPk(job_no, {
+//       include: [{ model: JobAssignment, as: "assignments" }],
+//     });
+//     if (!jobCard) {
+//       return res.status(404).json({
+//         message: "JobCard not found",
+//       });
+//     }
+
+//     await ActivityLog.create({
+//       job_no,
+//       action: "JobCard Deleted",
+//       performed_by_id: req.user?.id || null,
+//     });
+
+//     const clientDetails = await ClientDetails.findOne({
+//       where: {
+//         client_name: jobCard.client_name,
+//       },
+//     });
+
+//     if (clientDetails) {
+//       if (clientDetails.total_jobs > 0) {
+//         clientDetails.total_jobs--;
+
+//         if (clientDetails.total_jobs <= 3) {
+//           clientDetails.client_relation = "NBD";
+//         }
+//       }
+//       await clientDetails.save();
+//     }
+
+//     res.json({
+//       message: "JobCard deleted successfully",
+//     });
+
+//     // 🔔 Notify CRM + Coordinators
+//     await sendJobNotificationEmail({
+//       job: jobCard,
+//       subject: `❌ JobCard Deleted | Job No: ${job_no}`,
+//       actionType: "deleted",
+//     });
+
+//     await jobCard.destroy(); // Cascade deletes all JobItems
+//   } catch (error) {
+//     console.error("Error deleting JobCard:", error);
+//     res.status(500).json({
+//       message: "Internal server error",
+//       error: error.message,
+//     });
+//   }
+// };

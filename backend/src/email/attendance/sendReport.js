@@ -3,7 +3,7 @@ import path from 'path';
 import transporter from "../transporter.js";
 
 
-export async function sendWeeklyAttendanceReport({ to, subject, html, attachmentPath }) {
+export async function sendAttendanceReport({ to, subject, html, attachmentPath }) {
   console.log('sending Attendance report.......');
 
   // normalize recipients

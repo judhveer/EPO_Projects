@@ -1,13 +1,21 @@
 import { Op } from "sequelize";
 import models from "../../models/index.js";
 const { JobCard, JobAssignment, StageTracking, ActivityLog, User } = models;
+import { advanceStage } from "../../utils/jobFms/stageTracking.js";
+import { sendMailForFMS } from "../../email/sendMail.js";
+
+import {
+  designerAssignmentTemplate,
+  crmJobStageTemplate,
+} from "../../email/templates/emailTemplates.js";
+import path from "path";
 
 // Get all jobs for Process Coordinator
 export const getAllJobsForProcessCoordinator = async (req, res) => {
   try {
     const jobCards = await JobCard.findAndCountAll({
       where: {
-        status: "coordinator_review"
+        status: "coordinator_review",
       },
       order: [["createdAt", "DESC"]],
     });
@@ -20,14 +28,12 @@ export const getAllJobsForProcessCoordinator = async (req, res) => {
     console.error("Error fetching jobs for Process Coordinator:", error);
     res.status(500).json({ message: "Internal server error" });
   }
-}
-
+};
 
 // ------------------------------
 // ASSIGN DESIGNER TO JOB
 // ------------------------------
 // process coordinator api to assigns designer to a job
-
 
 export const assignDesigner = async (req, res) => {
   const t = await JobCard.sequelize.transaction();
@@ -67,15 +73,14 @@ export const assignDesigner = async (req, res) => {
     await job.save({ transaction: t });
 
     // Track Stage
-    await StageTracking.create(
-      {
-        job_no,
-        performed_by_id: req.user?.id,
-        stage_name: "assigned_to_designer",
-        started_at: new Date(),
-      },
-      { transaction: t }
-    );
+    await advanceStage({
+      job_no,
+      new_stage: "assigned_to_designer",
+      performed_by_id: req.user?.id || null,
+      started_at: new Date(),
+      remarks: "(Process Coordinator -> Designer) Job assigned to designer",
+      transaction: t,
+    });
 
     // Log Action
     await ActivityLog.create(
@@ -92,10 +97,59 @@ export const assignDesigner = async (req, res) => {
 
     res.json({ message: "Designer assigned successfully", assignment });
 
+    // Fetch CRM handling this job
+    const crmUser = await User.findOne({
+      where: {
+        username: job.order_handled_by,
+        department: "CRM",
+      },
+    });
+
+    // Designer Email
+    await sendMailForFMS({
+      to: desginer.email,
+      subject: `New Job Assigned - Job #${job_no}`,
+      html: designerAssignmentTemplate({
+        designerName: desginer.username,
+        jobNo: job_no,
+        dashboardUrl: `${process.env.LEADS_URL}/job-fms/designer`,
+      }),
+      attachments: [
+        {
+          filename: "epo-logo.png",
+          path: path.resolve("assets/epo-logo.png"),
+          cid: "epo-logo",
+        },
+      ],
+    });
+
+    // CRM Notification Email
+    // CRM Email
+    if (crmUser?.email) {
+      await sendMailForFMS({
+        to: crmUser.email,
+        subject: `Job #${job_no} Assigned to Designer`,
+        html: crmJobStageTemplate({
+          crmName: crmUser.username,
+          jobNo: job_no,
+          dashboardUrl: `${process.env.LEADS_URL}/job-fms/crm`,
+        }),
+        attachments: [
+          {
+            filename: "epo-logo.png",
+            path: path.resolve("assets/epo-logo.png"),
+            cid: "epo-logo",
+          },
+        ],
+      });
+    }
+
   } catch (err) {
-    await t.rollback();
+    if (!t.finished) {
+      await t.rollback();
+    }
     console.error(err);
-    res.status(500).json({ error: "Failed to assign designer" });
+    return res.status(500).json({ error: "Failed to assign designer" });
   }
 };
 
@@ -140,30 +194,33 @@ export const getDesignerStatus = async (req, res) => {
           designer_id: designerId,
           status: "completed",
           designer_end_time: {
-            [Op.gte]: new Date(new Date().setHours(0, 0, 0, 0))
-          }
-        }
+            [Op.gte]: new Date(new Date().setHours(0, 0, 0, 0)),
+          },
+        },
       });
 
       // -----------------------------
-      // 4️⃣ Expected Free Time 
+      // 4️⃣ Expected Free Time
       //    Based on end_time of all active tasks.
       // -----------------------------
       let expectedFreeTime = null;
 
       if (activeJobs.length > 0) {
-        const endTimes = activeJobs.map(job => {
-          if (job.designer_end_time) return new Date(job.designer_end_time);
-          
+        const endTimes = activeJobs.map((job) => {
+          if (job.estimated_completion_time)
+            return new Date(job.estimated_completion_time);
+
           // fallback: assume 1 hour if no end time
-          return new Date(new Date(job.designer_start_time).getTime() + 60 * 60 * 1000);
+          return new Date(
+            new Date(job.designer_start_time).getTime() + 60 * 60 * 1000
+          );
         });
 
         expectedFreeTime = new Date(Math.max(...endTimes));
       }
 
       // -----------------------------
-      // 5️⃣ Workload Score 
+      // 5️⃣ Workload Score
       //    0–100% based on active + pending job count
       // -----------------------------
       const totalTasks = activeJobs.length + pendingJobs.length;
@@ -172,38 +229,39 @@ export const getDesignerStatus = async (req, res) => {
       // -----------------------------
       // 6️⃣ Contains urgent tasks?
       // -----------------------------
-      const urgentFlag = pendingJobs.some(p => p.jobCard?.task_priority === "Urgent");
+      const urgentFlag = pendingJobs.some(
+        (p) => p.jobCard?.task_priority === "Urgent"
+      );
 
       // -----------------------------
-      // 7️⃣ Recommended score 
+      // 7️⃣ Recommended score
       // (lower = better: idle designers first, lower workload first)
       // -----------------------------
       const recommendedScore =
-        (activeJobs.length * 5) +
-        (pendingJobs.length * 3) +
-        (urgentFlag ? 5 : 0);
+        activeJobs.length * 5 + pendingJobs.length * 3 + (urgentFlag ? 5 : 0);
 
       result.push({
         designer_id: designerId,
         name: designer.username,
         status: activeJobs.length > 0 ? "busy" : "idle",
-        active_jobs: activeJobs.map(j => ({
+        active_jobs: activeJobs.map((j) => ({
           job_no: j.job_no,
           priority: j.jobCard?.task_priority,
           start_time: j.designer_start_time,
           designer_end_time: j.designer_end_time,
         })),
-        pending_jobs: pendingJobs.map(j => ({
+        pending_jobs: pendingJobs.map((j) => ({
           job_no: j.job_no,
           priority: j.jobCard?.task_priority,
           assigned_at: j.assigned_at,
         })),
         today_completed: todayCompletedJobs.length,
-        today_jobs: activeJobs.length + pendingJobs.length + todayCompletedJobs.length,
+        today_jobs:
+          activeJobs.length + pendingJobs.length + todayCompletedJobs.length,
         workload_score: workloadScore,
         urgent_flag: urgentFlag,
         expected_free_time: expectedFreeTime,
-        recommended_score: recommendedScore
+        recommended_score: recommendedScore,
       });
     }
 
@@ -211,7 +269,6 @@ export const getDesignerStatus = async (req, res) => {
     result.sort((a, b) => a.recommended_score - b.recommended_score);
 
     res.json(result);
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch designer status" });
