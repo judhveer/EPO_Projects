@@ -4,7 +4,7 @@ import {
     getAllJobCards,
     getJobCardByJobNo,
     updateJobCard,
-    deleteJobCard,
+    // deleteJobCard,
     getEnquiryForItems,
     cancelJobCard
 } from "../../controllers/jobFmsController/jobCard.controller.js";
@@ -15,7 +15,7 @@ router.post("/", createJobCard);
 router.get("/", getAllJobCards);
 router.get("/:job_no", getJobCardByJobNo);
 router.put("/:job_no", updateJobCard);
-router.delete("/:job_no", deleteJobCard);
+// router.delete("/:job_no", deleteJobCard);
 router.patch("/:job_no/cancel", cancelJobCard);
 
 
