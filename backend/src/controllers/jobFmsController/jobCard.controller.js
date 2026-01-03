@@ -1,6 +1,6 @@
 import models from "../../models/index.js";
 import { advanceStage } from "../../utils/jobFms/stageTracking.js";
-import { sendMailForFMS } from '../../email/sendMail.js'; 
+import { sendMailForFMS } from "../../email/sendMail.js";
 
 const {
   JobCard,
@@ -15,7 +15,6 @@ const {
   ItemMaster,
   PaperMaster,
 } = models;
-
 
 /**
  * CREATE JOB CARD + JOB ITEMS (in a single transaction)
@@ -521,19 +520,27 @@ export const updateJobCard = async (req, res) => {
           attributes: ["id"],
         });
 
+        if (!item_master_id) {
+          throw new Error(
+            `ItemMaster not found for ${item.category} - ${item.enquiry_for}`
+          );
+        }
+
         item.item_master_id = item_master_id.dataValues.id;
 
-        console.log("here 1");
-        const selected_paper_id = await PaperMaster.findOne({
-          where: {
-            paper_name: item.paper_type,
-            gsm: Number(item.paper_gsm),
-            size_name: item.best_inside_sheet,
-          },
-          attributes: ["id"],
-        });
-        console.log("here 2");
-        item.selected_paper_id = selected_paper_id.dataValues.id;
+        if (item.paper_type && item.paper_gsm && item.best_inside_sheet) {
+          const selected_paper_id = await PaperMaster.findOne({
+            where: {
+              paper_name: item.paper_type,
+              gsm: Number(item.paper_gsm),
+              size_name: item.best_inside_sheet,
+            },
+            attributes: ["id"],
+          });
+          if (selected_paper_id) {
+            item.selected_paper_id = selected_paper_id.dataValues.id;
+          }
+        }
 
         // CLEAN FIELDS LIKE CREATE API
         if (item.category !== "Multiple Sheet") {
@@ -541,15 +548,25 @@ export const updateJobCard = async (req, res) => {
           item.cover_paper_gsm = null;
           item.cover_color_scheme = null;
         } else {
-          const selected_cover_paper_id = await PaperMaster.findOne({
-            where: {
-              paper_name: item.cover_paper_type,
-              gsm: Number(item.cover_paper_gsm),
-              size_name: item.best_cover_sheet,
-            },
-            attributes: ["id"],
-          });
-          item.selected_cover_paper_id = selected_cover_paper_id.dataValues.id;
+          if (
+            item.cover_paper_type &&
+            item.cover_paper_gsm &&
+            item.best_cover_sheet
+          ) {
+            const selected_cover_paper_id = await PaperMaster.findOne({
+              where: {
+                paper_name: item.cover_paper_type,
+                gsm: Number(item.cover_paper_gsm),
+                size_name: item.best_cover_sheet,
+              },
+              attributes: ["id"],
+            });
+
+            if (selected_cover_paper_id) {
+              item.selected_cover_paper_id =
+                selected_cover_paper_id.dataValues.id;
+            }
+          }
 
           item.inside_pages = Number(item.inside_pages);
           item.cover_pages = Number(item.cover_pages);
@@ -559,7 +576,22 @@ export const updateJobCard = async (req, res) => {
           ? item.binding_types
           : [];
 
-        await JobItem.update(item, { where: { id: item.id }, transaction: t });
+        const {
+          selectedPaper,
+          selectedCoverPaper,
+          itemMaster,
+          available_items,
+          available_papers,
+          available_gsm,
+          available_gsm_cover,
+          available_bindings,
+          ...safeItem
+        } = item;
+
+        await JobItem.update(safeItem, {
+          where: { id: item.id },
+          transaction: t,
+        });
       }
     }
 
@@ -576,34 +608,52 @@ export const updateJobCard = async (req, res) => {
             attributes: ["id"],
           });
 
+          if (!item_master_id) {
+            throw new Error(
+              `ItemMaster not found for ${i.category} - ${i.enquiry_for}`
+            );
+          }
+
           i.item_master_id = item_master_id.dataValues.id;
 
-          const selected_paper_id = await PaperMaster.findOne({
-            where: {
-              paper_name: i.paper_type,
-              gsm: Number(i.paper_gsm),
-              size_name: i.best_inside_sheet,
-            },
-            attributes: ["id"],
-          });
-          console.log("selected_paper_id: ", selected_paper_id.dataValues.id);
 
-          i.selected_paper_id = selected_paper_id.dataValues.id;
+          if (i.paper_type && i.paper_gsm && i.best_inside_sheet){
+            const selected_paper_id = await PaperMaster.findOne({
+              where: {
+                paper_name: i.paper_type,
+                gsm: Number(i.paper_gsm),
+                size_name: i.best_inside_sheet,
+              },
+              attributes: ["id"],
+            });
+            console.log("selected_paper_id: ", selected_paper_id.dataValues.id);
+
+            if(selected_paper_id){
+              i.selected_paper_id = selected_paper_id.dataValues.id;
+            }
+          }
+
 
           if (i.category !== "Multiple Sheet") {
             i.cover_paper_type = null;
             i.cover_paper_gsm = null;
             i.cover_color_scheme = null;
           } else {
-            const selected_cover_paper_id = await PaperMaster.findOne({
-              where: {
-                paper_name: i.cover_paper_type,
-                gsm: Number(i.cover_paper_gsm),
-                size_name: i.best_cover_sheet,
-              },
-              attributes: ["id"],
-            });
-            i.selected_cover_paper_id = selected_cover_paper_id.dataValues.id;
+
+            if (i.cover_paper_type && i.cover_paper_gsm && i.best_cover_sheet){
+              const selected_cover_paper_id = await PaperMaster.findOne({
+                where: {
+                  paper_name: i.cover_paper_type,
+                  gsm: Number(i.cover_paper_gsm),
+                  size_name: i.best_cover_sheet,
+                },
+                attributes: ["id"],
+              });
+              if(selected_cover_paper_id){
+                i.selected_cover_paper_id = selected_cover_paper_id.dataValues.id;
+              }
+            }
+            
           }
 
           i.binding_types = Array.isArray(i.binding_types)
@@ -660,11 +710,11 @@ export const updateJobCard = async (req, res) => {
   }
 };
 
-
 /**
  * CANCEL JOB
  */
 export const cancelJobCard = async (req, res) => {
+  const t = await JobCard.sequelize.transaction();
   try {
     const { job_no } = req.params;
     if (!job_no) {
@@ -675,6 +725,7 @@ export const cancelJobCard = async (req, res) => {
 
     const job = await JobCard.findByPk(job_no, {
       include: [{ model: JobAssignment, as: "assignments" }],
+      transaction: t,
     });
 
     if (!job) {
@@ -697,6 +748,8 @@ export const cancelJobCard = async (req, res) => {
       transaction: t,
     });
 
+    await t.commit();
+
     res.status(200).json({
       message: "Successfully cancelled the job",
     });
@@ -708,6 +761,9 @@ export const cancelJobCard = async (req, res) => {
       actionType: "cancelled",
     });
   } catch (error) {
+    if(!t.finished){
+      await t.rollback();
+    }
     console.error("Error cancelling job: ", error);
     return res.status(500).json({
       message: "Internal server error",
@@ -838,17 +894,6 @@ async function sendJobNotificationEmail({ job, subject, actionType }) {
     console.error("❌ Failed to send job notification email:", err.message);
   }
 }
-
-
-
-
-
-
-
-
-
-
-
 
 /**
  * DELETE JOB CARD
