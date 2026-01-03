@@ -243,7 +243,7 @@ export const getDesignerStatus = async (req, res) => {
       result.push({
         designer_id: designerId,
         name: designer.username,
-        status: activeJobs.length > 0 ? "busy" : "idle",
+        status: activeJobs.length > 0 ? "active" : "idle",
         active_jobs: activeJobs.map((j) => ({
           job_no: j.job_no,
           priority: j.jobCard?.task_priority,

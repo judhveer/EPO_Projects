@@ -192,7 +192,7 @@ export default function ProcessCoordinatorTable() {
                       {designer.status === "idle" ? (
                         <span className="text-green-600 text-sm">🟢 Idle</span>
                       ) : (
-                        <span className="text-red-600 text-sm">🔴 Busy</span>
+                        <span className="text-yellow-600 text-sm">🟡 Active</span>
                       )}
                     </div>
 
@@ -204,7 +204,7 @@ export default function ProcessCoordinatorTable() {
                       ></div>
                     </div>
 
-                    <div className="text-xs text-gray-600 mt-1">
+                    <div className="text-s text-gray-600 mt-1">
                       Active Jobs: {designer.active_jobs.length} | Pending:{" "}
                       {designer.pending_jobs.length} | Today Completed:{" "}
                       {designer.today_completed}
@@ -217,12 +217,12 @@ export default function ProcessCoordinatorTable() {
                       </div>
                     )}
 
-                    {designer.status === "busy" && (
+                    {designer.status === "active" && (
                       <div className="text-xs text-red-600">
                         Free at:{" "}
                         {new Date(
                           designer.expected_free_time
-                        ).toLocaleTimeString()}
+                        ).toLocaleString()}
                       </div>
                     )}
                   </button>
