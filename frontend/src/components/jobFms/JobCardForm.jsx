@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createJobCard } from "../../lib/jobFmsApi";
 import api from "../../lib/api.js";
 import debounce from "lodash.debounce";
@@ -145,15 +145,29 @@ export default function JobCardForm({
     });
   }, [existingJob]);
 
-  const searchClients = debounce(async (query) => {
-    if (!query) return setClientSuggestions([]);
-    try {
-      const { data } = await api.get(`/api/clients/search?q=${query}`);
-      setClientSuggestions(data);
-    } catch (err) {
-      console.error("Failed to fetch clients", err);
-    }
-  }, 400);
+  const searchClients = useMemo(
+    () =>
+      debounce(async (query) => {
+        if (!query) return setClientSuggestions([]);
+        try {
+          const { data } = await api.get(`/api/clients/search?q=${query}`);
+          setClientSuggestions(data);
+        } catch (err) {
+          console.error("Failed to fetch clients", err);
+        }
+      }, 400),
+    []
+  );
+
+  useEffect(() => {
+    return () => {
+      searchClients.cancel();
+    };
+  }, [searchClients]);
+
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [clientSuggestions]);
 
   const onChange = (e) => {
     const { name, value } = e.target;
@@ -172,15 +186,19 @@ export default function JobCardForm({
 
       setForm((prev) => {
         const items = [...prev.job_items];
-        items[index].available_items = data; // store category items
-        items[index].enquiry_for = ""; // reset enquiry
-        items[index].paper_type = "";
-        items[index].paper_gsm = "";
-        items[index].available_gsm = [];
-        items[index].available_gsm_cover = [];
-        items[index].cover_paper_type = "";
-        items[index].cover_paper_gsm = "";
-        items[index].cover_color_scheme = "";
+
+        items[index] = {
+          ...items[index],
+          available_items: data,  // store category items
+          enquiry_for: "",
+          paper_type: "",
+          paper_gsm: "",
+          available_gsm: [],
+          available_gsm_cover: [],
+          cover_paper_type: "",
+          cover_paper_gsm: "",
+          cover_color_scheme: "",
+        };
         return { ...prev, job_items: items };
       });
     } catch (err) {
@@ -196,7 +214,11 @@ export default function JobCardForm({
 
       setForm((prev) => {
         const items = [...prev.job_items];
-        items[index].available_bindings = data; // store category items
+        items[index] = {
+          ...items[index],
+          available_bindings: data, // store category items
+        };
+
         return { ...prev, job_items: items };
       });
     } catch (err) {
@@ -210,7 +232,10 @@ export default function JobCardForm({
 
       setForm((prev) => {
         const items = [...prev.job_items];
-        items[index].available_papers = data;
+        items[index] = {
+          ...items[index],
+          available_papers: data
+        }; // store all papers
         return { ...prev, job_items: items };
       });
     } catch (err) {
@@ -228,7 +253,10 @@ export default function JobCardForm({
         const items = [...prev.job_items];
 
         if (type === "inside") {
-          items[index].available_gsm = data;
+          items[index] = {
+            ...items[index],
+            available_gsm: data,
+          };
         } else {
           items[index].available_gsm_cover = data;
         }
@@ -243,6 +271,12 @@ export default function JobCardForm({
   const calculateItemBackend = async (index) => {
     try {
       const item = form.job_items[index];
+      
+      // basic guard
+      if (!item.quantity || !item.paper_type || !item.paper_gsm) {
+        alert("Please fill all required fields before calculating");
+        return;
+      }
 
       // Clean the items before sending
       const cleanedItems = cleanJobItems(form.job_items);
@@ -294,7 +328,10 @@ export default function JobCardForm({
 
       setForm((prev) => {
         const items = [...prev.job_items];
-        items[index].available_sizes = data;
+        items[index] = {
+          ...items[index],
+          available_sizes: data,
+        };
         return { ...prev, job_items: items };
       });
     } catch (err) {
@@ -336,10 +373,24 @@ export default function JobCardForm({
     }
   };
 
+  const createEmptyItem = () => ({
+    id: crypto.randomUUID(),
+    category: "",
+    enquiry_for: "",
+    quantity: "",
+    uom: "",
+    binding_types: [],
+    available_items: [],
+    available_papers: [],
+    available_gsm: [],
+    available_gsm_cover: [],
+    available_bindings: [],
+  });
+
   const addItem = () => {
     setForm((prev) => ({
       ...prev,
-      job_items: [...prev.job_items, { category: "", enquiry_for: "" }],
+      job_items: [...prev.job_items, createEmptyItem()],
     }));
   };
 
@@ -358,17 +409,29 @@ export default function JobCardForm({
         available_gsm,
         available_gsm_cover,
         available_bindings,
+        available_sizes,
         ...cleaned
       } = item;
       return cleaned;
     });
   };
+  
 
   async function onSubmit(e) {
     e.preventDefault();
     setOk(false);
     setErr("");
     setLoading(true);
+
+    const isValidJobItems = form.job_items.every(
+      (item) => item.quantity && item.uom && item.unit_rate && item.item_total
+    );
+
+    if (!isValidJobItems) {
+      setErr("Please complete all job items before submitting");
+      setLoading(false);
+      return;
+    }
 
     const payload = {
       ...form,
@@ -750,6 +813,7 @@ export default function JobCardForm({
           <Input
             type="number"
             name="no_of_files"
+            min="1"
             value={form.no_of_files}
             onChange={onChange}
             required
@@ -763,7 +827,7 @@ export default function JobCardForm({
           {form.job_items.map((item, index) => {
             const category = item.category;
             return (
-              <FormCard key={index}>
+              <FormCard key={item.id}>
                 <div className="flex flex-wrap items-center justify-between">
                   <h4 className="font-semibold text-blue-700">
                     📦 Item {index + 1}
@@ -879,6 +943,7 @@ export default function JobCardForm({
                       <Field label="Inside Pages" required>
                         <Input
                           type="number"
+                          min="1"
                           value={item.inside_pages || ""}
                           onChange={(e) =>
                             handleItemChange(
@@ -1082,6 +1147,7 @@ export default function JobCardForm({
                   <Field label="Quantity" required>
                     <Input
                       type="number"
+                      min="1"
                       value={item.quantity || ""}
                       onChange={(e) =>
                         handleItemChange(index, "quantity", e.target.value)
@@ -1099,8 +1165,8 @@ export default function JobCardForm({
                       required
                     >
                       <option value="">Select</option>
-                      <option>Pc</option>
                       <option>Nos</option>
+                      <option>Pc</option>
                       <option>Copies</option>
                       <option>Books</option>
                       <option>Sheets</option>
@@ -1147,7 +1213,7 @@ export default function JobCardForm({
                       )}
                   </div>
 
-                  
+
                 </div>
               </FormCard>
             );
@@ -1175,6 +1241,7 @@ export default function JobCardForm({
         <Field label="Advance Payment">
           <Input
             type="number"
+            min="0"
             name="advance_payment"
             value={form.advance_payment}
             onChange={onChange}

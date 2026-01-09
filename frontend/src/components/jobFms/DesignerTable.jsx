@@ -7,6 +7,10 @@ export default function DesignerTable({ refresh }) {
   const [loading, setLoading] = useState(true);
   const [timers, setTimers] = useState({});
 
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
+  const [err, setErr] = useState("");
+
   const [openActionDropdown, setOpenActionDropdown] = useState(null);
   const [showItemsPanel, setShowItemsPanel] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
@@ -155,12 +159,24 @@ export default function DesignerTable({ refresh }) {
   };
 
   const handleEnd = async (job) => {
+    if (!job) return;
     try {
       clearTimerFromLS(job.job_no);
       await api.patch(`/api/fms/designers/${job.job_no}/end`);
+
+      setErr("");
+      setSuccessMsg("✅ Design Completed Successfully!");
+      setShowSuccessPopup(true);
+
+      // ⏳ Wait 2 seconds before closing modal (after popup)
+      setTimeout(() => {
+        setShowSuccessPopup(false);
+      }, 2000);
+
       fetchJobs();
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error(error);
+      setErr(error.response?.data?.message || "Failed to End Task");
     }
   };
 
@@ -302,6 +318,22 @@ export default function DesignerTable({ refresh }) {
 
   return (
     <div className="">
+      {showSuccessPopup && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm">
+          <div className="bg-white shadow-2xl rounded-xl px-8 py-6 border border-green-200 animate-fade-in text-center">
+            <h3 className="text-2xl font-semibold text-green-700 mb-2">
+              🎉 Success!
+            </h3>
+            <p className="text-slate-600 text-sm">{successMsg}</p>
+          </div>
+        </div>
+      )}
+      {err && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+          {err}
+        </div>
+      )}
+
       {/* 🎛️ Filter Toggle Button */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold text-blue-700">
@@ -310,32 +342,40 @@ export default function DesignerTable({ refresh }) {
       </div>
 
       {/* ✅ Table */}
-      <div className="relative overflow-auto border rounded-lg shadow max-h-[80vh]">
-        <table className="min-w-[2100px] max-w-[6000px] text-xs border-collapse border border-gray-300 table-fixed">
+      <div className="hidden md:block relative overflow-auto border rounded-lg shadow max-h-[80vh]">
+        <table className="min-w-[1800px] lg:min-w-[2100px] text-[11px] sm:text-xs border-collapse border border-gray-300 table-fixed">
           <thead className="sticky top-0 z-30 bg-gradient-to-r from-blue-700 to-blue-600 text-white shadow-sm">
             <tr>
-              <th className="border p-2 sticky left-0 bg-blue-800 z-40  text-center font-semibold">
+              <th className="border p-1 sm:p-2 sticky left-0 bg-blue-800 z-40  text-center font-semibold shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                 Job No
               </th>
-              <th className="border p-2"> Job Created On</th>
-              <th className="border p-2">Client Name</th>
-              <th className="border p-2">Order Type</th>
-              <th className="border p-2">Order Handled By</th>
-              <th className="border p-2">Execution Location</th>
-              <th className="border p-2">Delivery Date</th>
-              <th className="border p-2 max-w-[500px] ">Delivery Location</th>
-              <th className="border p-2">Proof Date</th>
-              <th className="border p-2 min-w-[150px text-center">Priority</th>
-              <th className="border p-2">Instructions</th>
-              <th className="border p-2">No of Files</th>
-              <th className="border p-2">Job Completion Deadline</th>
-              <th className="border p-2">Items</th>
-              <th className="border p-2 bg-blue-800 z-40">
+              <th className="border p-1 sm:p-2"> Job Created On</th>
+              <th className="border p-1 sm:p-2">Client Name</th>
+              <th className="border p-1 sm:p-2">Order Type</th>
+              <th className="border p-1 sm:p-2">Order Handled By</th>
+              <th className="border p-1 sm:p-2">Execution Location</th>
+              <th className="border p-1 sm:p-2">Delivery Date</th>
+              <th className="border p-1 sm:p-2 max-w-[500px] ">
+                Delivery Location
+              </th>
+              <th className="border p-1 sm:p-2">Proof Date</th>
+              <th className="border p-1 sm:p-2 min-w-[150px text-center">
+                Priority
+              </th>
+              <th className="border p-1 sm:p-2">Instructions</th>
+              <th className="border p-1 sm:p-2">No of Files</th>
+              <th className="border p-1 sm:p-2">Job Completion Deadline</th>
+              <th className="border p-1 sm:p-2">Items</th>
+              <th className="border p-1 sm:p-2 bg-blue-800 sticky right-[220px] sm:right-[260px] min-w-[200px] sm:min-w-[250px] z-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                 {" "}
                 Estimated Completion Time
               </th>
-              <th className="border p-2 bg-blue-800 z-40">Start Time</th>
-              <th className="border p-2 bg-blue-800 z-40">End Task</th>
+              <th className="border p-1 sm:p-2 bg-blue-800 sticky right-[100px] min-w-[160px] z-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
+                Start Time
+              </th>
+              <th className="border p-1 sm:p-2 bg-blue-800 sticky right-0 min-w-[100px] z-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
+                End Task
+              </th>
             </tr>
           </thead>
 
@@ -344,21 +384,23 @@ export default function DesignerTable({ refresh }) {
               paginatedJobs.map((job, index) => (
                 <tr
                   key={job.job_no}
-                  className={`border-b transition-all duration-200 ${
+                  className={`group border-b transition-all duration-200 ${
                     index % 2 === 0 ? "bg-white" : "bg-slate-300"
                   } hover:bg-blue-500 hover:text-white`}
                 >
-                  <td className="border p-2 sticky left-0 bg-white z-20 text-center font-bold text-blue-700">
+                  <td className="border p-1 sm:p-2 sticky left-0 bg-white z-20 text-center font-bold text-blue-700 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                     {job.job_no}
                   </td>
-                  <td className="border p-2">
+                  <td className="border p-1 sm:p-2">
                     {new Date(job.createdAt).toLocaleString()}
                   </td>
-                  <td className="border p-2">{job.client_name}</td>
-                  <td className="border p-2 ">{job.order_type}</td>
-                  <td className="border p-2">{job.order_handled_by}</td>
-                  <td className="border p-2">{job.execution_location}</td>
-                  <td className="border p-2 font-semibold text-blue-600 hover:text-white">
+                  <td className="border p-1 sm:p-2">{job.client_name}</td>
+                  <td className="border p-1 sm:p-2 ">{job.order_type}</td>
+                  <td className="border p-1 sm:p-2">{job.order_handled_by}</td>
+                  <td className="border p-1 sm:p-2">
+                    {job.execution_location}
+                  </td>
+                  <td className="border p-1 sm:p-2 font-semibold text-blue-600 hover:text-white">
                     {new Date(job.delivery_date).toLocaleString()}
                   </td>
                   <td className="border-r border-gray-200 px-2  max-w-[500px]">
@@ -369,10 +411,10 @@ export default function DesignerTable({ refresh }) {
                       </div>
                     )}
                   </td>
-                  <td className="border p-2 ">
+                  <td className="border p-1 sm:p-2 ">
                     {new Date(job.proof_date).toLocaleDateString()}
                   </td>
-                  <td className="border p-2 min-w-[150px] text-center">
+                  <td className="border p-1 sm:p-2 min-w-[150px] text-center">
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-semibold ${
                         job.task_priority === "Urgent"
@@ -383,13 +425,13 @@ export default function DesignerTable({ refresh }) {
                       {job.task_priority}
                     </span>
                   </td>
-                  <td className="border p-2">{job.instructions}</td>
-                  <td className="border p-2">{job.no_of_files}</td>
-                  <td className="border p-2">
+                  <td className="border p-1 sm:p-2">{job.instructions}</td>
+                  <td className="border p-1 sm:p-2">{job.no_of_files}</td>
+                  <td className="border p-1 sm:p-2">
                     {new Date(job.job_completion_deadline).toLocaleString()}
                   </td>
 
-                  <td className="border p-2 text-center text-gray-500 text-xs italic hover:text-white cursor-default">
+                  <td className="border p-1 sm:p-2 text-center text-gray-500 text-xs italic hover:text-white cursor-default">
                     {job.items?.length || 0} items{" "}
                     {job.items?.length > 0 && (
                       <button
@@ -406,7 +448,7 @@ export default function DesignerTable({ refresh }) {
                   {/* action-dropdown */}
 
                   {/* Estimated Time Input */}
-                  <td className="border p-2 text-center">
+                  <td className="border p-1 sm:p-2 text-center sticky right-[260px] bg-white z-40 min-w-[250px] group-hover:bg-blue-500 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                     <input
                       type="datetime-local"
                       value={toDateTimeLocal(
@@ -465,7 +507,7 @@ export default function DesignerTable({ refresh }) {
                   </td>
 
                   {/* Timer Column */}
-                  <td className="border p-2 text-center font-mono text-blue-600 text-lg">
+                  <td className="border p-1 sm:p-2 text-center font-mono text-blue-600 text-lg sticky right-[100px] bg-white z-40 min-w-[160px] group-hover:bg-blue-500 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                     {job.status === "assigned_to_designer" && (
                       <span className="text-gray-500 text-sm">Not Started</span>
                     )}
@@ -483,7 +525,7 @@ export default function DesignerTable({ refresh }) {
                   </td>
 
                   {/* Action Column */}
-                  <td className="border p-2 text-center space-y-2">
+                  <td className="border p-1 sm:p-2 text-center space-y-2 sticky right-0 bg-white z-40 min-w-[100px] group-hover:bg-blue-500 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                     {/* Start Button */}
                     {job.status === "assigned_to_designer" && (
                       <button
@@ -582,6 +624,90 @@ export default function DesignerTable({ refresh }) {
         </div>
       </div>
 
+      {/* MOBILE VIEW */}
+      <div className="md:hidden space-y-4">
+        {paginatedJobs.map((job) => (
+          <div
+            key={job.job_no}
+            className="border rounded-xl p-4 shadow bg-white space-y-3"
+          >
+            <div className="flex justify-between items-center">
+              <span className="font-bold text-blue-700">Job #{job.job_no}</span>
+              <span className="text-xs text-gray-500">
+                {new Date(job.createdAt).toLocaleDateString()}
+              </span>
+            </div>
+
+            <div className="text-sm">
+              <b>Client:</b> {job.client_name}
+            </div>
+
+            <div className="text-sm">
+              <b>Order Type:</b> {job.order_type}
+            </div>
+
+            <div className="text-sm">
+              <b>Delivery:</b>{" "}
+              {new Date(job.delivery_date).toLocaleDateString()}
+            </div>
+
+            <div className="text-sm">
+              <b>Items:</b> {job.items?.length || 0}
+            </div>
+
+            {/* TIMER */}
+            <div className="flex justify-between items-center">
+              <span className="font-mono text-blue-600">
+                {formatTimer(timers[job.job_no] || 0)}
+              </span>
+
+              {job.assignment?.is_paused && (
+                <span className="text-xs text-red-500">(Paused)</span>
+              )}
+            </div>
+
+            {/* ACTIONS */}
+            <div className="flex gap-2 flex-wrap">
+              {job.status === "assigned_to_designer" && (
+                <button
+                  onClick={() => handleStart(job)}
+                  className="px-3 py-1 bg-blue-600 text-white rounded text-xs"
+                >
+                  Start
+                </button>
+              )}
+
+              {job.status === "design_in_progress" && (
+                <>
+                  {!job.assignment.is_paused ? (
+                    <button
+                      onClick={() => handlePause(job)}
+                      className="px-3 py-1 bg-yellow-500 text-white rounded text-xs"
+                    >
+                      Pause
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleResume(job)}
+                      className="px-3 py-1 bg-green-600 text-white rounded text-xs"
+                    >
+                      Resume
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => handleEnd(job)}
+                    className="px-3 py-1 bg-red-600 text-white rounded text-xs"
+                  >
+                    End
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
       <AnimatePresence>
         {showItemsPanel && (
           <>
@@ -604,7 +730,7 @@ export default function DesignerTable({ refresh }) {
               className="fixed top-0 right-0 h-full w-full sm:w-[35%] bg-white shadow-2xl z-50 overflow-y-auto"
             >
               {/* Header */}
-              <div className="sticky top-0 bg-blue-600 text-white flex justify-between items-center p-4">
+              <div className="sticky top-0 bg-blue-600 text-white flex justify-between items-center p-4 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                 <h3 className="text-lg font-semibold">
                   🧾 Items for Job #{selectedJobNo}
                 </h3>
@@ -739,13 +865,12 @@ export default function DesignerTable({ refresh }) {
 
                           {item.inside_pages && (
                             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
-                            <span className="font-medium shrink-0">
-                              Inside Pages:
-                            </span>
-                            <span>{item.inside_pages || "—"}</span>
-                          </div>
+                              <span className="font-medium shrink-0">
+                                Inside Pages:
+                              </span>
+                              <span>{item.inside_pages || "—"}</span>
+                            </div>
                           )}
-
                         </div>
                       )}
 

@@ -5,12 +5,16 @@ import { motion, AnimatePresence } from "framer-motion";
 export default function ProcessCoordinatorTable() {
   const [jobs, setJobs] = useState([]);
   const [designers, setDesigners] = useState([]);
-  const [openDropdownJob, setOpenDropdownJob] = useState(null);
-
+  // const [openDropdownJob, setOpenDropdownJob] = useState(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [selectedJobForAssign, setSelectedJobForAssign] = useState(null);
 
-  const dropdownRef = useRef(null);
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [assigning, setAssigning] = useState(false);
+
+  // const dropdownRef = useRef(null);
 
   // Load jobs
   const fetchJobs = async () => {
@@ -20,7 +24,9 @@ export default function ProcessCoordinatorTable() {
 
   // Load designers with status
   const fetchDesigners = async () => {
-    const { data } = await api.get("/api/fms/process-coordinator/designers/status");
+    const { data } = await api.get(
+      "/api/fms/process-coordinator/designers/status"
+    );
     setDesigners(data);
   };
 
@@ -30,38 +36,70 @@ export default function ProcessCoordinatorTable() {
   }, []);
 
   // Close dropdown on outside click
-  useEffect(() => {
-    const handler = (e) => {
-      if (
-        openDropdownJob &&
-        dropdownRef.current &&
-        !dropdownRef.current.contains(e.target)
-      ) {
-        setOpenDropdownJob(null);
-      }
-    };
+  // useEffect(() => {
+  //   const handler = (e) => {
+  //     if (
+  //       openDropdownJob &&
+  //       dropdownRef.current &&
+  //       !dropdownRef.current.contains(e.target)
+  //     ) {
+  //       setOpenDropdownJob(null);
+  //     }
+  //   };
 
-    window.addEventListener("mousedown", handler);
-    return () => window.removeEventListener("mousedown", handler);
-  }, [openDropdownJob]);
+  //   window.addEventListener("mousedown", handler);
+  //   return () => window.removeEventListener("mousedown", handler);
+  // }, [openDropdownJob]);
 
   const assignDesigner = async (job_no, designer_id) => {
+    if (!job_no || !designer_id) return;
+
+    if (assigning) return; // prevent multiple clicks
+    setAssigning(true);
+
     try {
       await api.patch(`/api/fms/process-coordinator/${job_no}/assign`, {
         designer_id,
       });
+      setErr("");
+      setSuccessMsg("✅ Job Assigned to Designer successfully!");
+      setShowSuccessPopup(true);
 
-      setOpenDropdownJob(null);
+      // ⏳ Wait 2 seconds before closing modal (after popup)
+      setTimeout(() => {
+        setShowSuccessPopup(false);
+        setShowAssignModal(false); // close modal AFTER popup
+      }, 2000);
+
+      // setOpenDropdownJob(null);
       fetchJobs();
       fetchDesigners();
-    } catch (err) {
-      console.error(err);
-      alert("Failed to assign");
+    } catch (error) {
+      console.error(error);
+      setErr(error.response?.data?.message || "Failed to Assign Job Card");
+    } finally {
+      setAssigning(false);
     }
   };
 
   return (
     <div>
+      {showSuccessPopup && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm">
+          <div className="bg-white shadow-2xl rounded-xl px-8 py-6 border border-green-200 animate-fade-in text-center">
+            <h3 className="text-2xl font-semibold text-green-700 mb-2">
+              🎉 Success!
+            </h3>
+            <p className="text-slate-600 text-sm">{successMsg}</p>
+          </div>
+        </div>
+      )}
+      {err && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+          {err}
+        </div>
+      )}
+
       <h2 className="text-2xl font-bold text-blue-700 mb-4">
         🧑‍💼 Process Coordinator Dashboard
       </h2>
@@ -98,7 +136,9 @@ export default function ProcessCoordinatorTable() {
                     {job.job_no}
                   </td>
                   <td className="border p-2">
-                    {new Date(job.createdAt).toLocaleString()}
+                    {job.createdAt
+                      ? new Date(job.createdAt).toLocaleString()
+                      : "-"}
                   </td>
                   <td className="border p-2">{job.client_name}</td>
                   <td className="border p-2">{job.order_type}</td>
@@ -174,13 +214,13 @@ export default function ProcessCoordinatorTable() {
               <div className="space-y-3">
                 {designers.map((designer) => (
                   <button
+                    disabled={assigning}
                     key={designer.designer_id}
                     onClick={() => {
                       assignDesigner(
                         selectedJobForAssign.job_no,
                         designer.designer_id
                       );
-                      setShowAssignModal(false);
                     }}
                     className="w-full text-left p-4 border rounded-lg hover:bg-blue-50 transition shadow-sm"
                   >
@@ -192,7 +232,9 @@ export default function ProcessCoordinatorTable() {
                       {designer.status === "idle" ? (
                         <span className="text-green-600 text-sm">🟢 Idle</span>
                       ) : (
-                        <span className="text-yellow-600 text-sm">🟡 Active</span>
+                        <span className="text-yellow-600 text-sm">
+                          🟡 Active
+                        </span>
                       )}
                     </div>
 
@@ -220,9 +262,7 @@ export default function ProcessCoordinatorTable() {
                     {designer.status === "active" && (
                       <div className="text-xs text-red-600">
                         Free at:{" "}
-                        {new Date(
-                          designer.expected_free_time
-                        ).toLocaleString()}
+                        {new Date(designer.expected_free_time).toLocaleString()}
                       </div>
                     )}
                   </button>
