@@ -15,6 +15,7 @@
     "dayjs": "^1.11.19",
     "framer-motion": "^12.23.24",
     "lodash.debounce": "^4.0.8",
+    "luxon": "^3.7.2",
     "react": "^19.1.1",
     "react-dom": "^19.2.1",
     "react-hook-form": "^7.66.0",

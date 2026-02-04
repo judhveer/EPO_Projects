@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import { createJobCard } from "../../lib/jobFmsApi";
 import api from "../../lib/api.js";
 import debounce from "lodash.debounce";
@@ -7,6 +13,7 @@ import Field from "../../components/salesPipeline/Field.jsx";
 import Input from "../../components/salesPipeline/Input.jsx";
 import Select from "../../components/salesPipeline/Select.jsx";
 import Button from "../../components/salesPipeline/Button.jsx";
+import JobItem from "./JobItem.jsx";
 
 export default function JobCardForm({
   onCreated,
@@ -36,8 +43,11 @@ export default function JobCardForm({
     payment_status: "",
     no_of_files: "",
     order_received_by: "",
+    is_direct_to_production: false,
     job_items: [],
   });
+
+  const formRef = useRef(form);
 
   const [clientSuggestions, setClientSuggestions] = useState([]);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -63,6 +73,7 @@ export default function JobCardForm({
         setCrmUsers(crmRes.data);
       } catch (err) {
         console.error("Failed to fetch users", err);
+        showSoftError("Failed to fetch users.");
       }
     }
     loadUsers();
@@ -154,6 +165,7 @@ export default function JobCardForm({
           setClientSuggestions(data);
         } catch (err) {
           console.error("Failed to fetch clients", err);
+          showSoftError("Failed to fetch client suggestions.");
         }
       }, 400),
     []
@@ -168,6 +180,40 @@ export default function JobCardForm({
   useEffect(() => {
     setActiveIndex(-1);
   }, [clientSuggestions]);
+
+  useEffect(() => {
+    formRef.current = form;
+  }, [form]);
+
+  const emptyToNull = (obj) =>
+    Object.fromEntries(
+      Object.entries(obj).map(([k, v]) => [k, v === "" ? null : v])
+    );
+
+  const normalizePayload = (payload) => {
+    const normalizedPayload = {
+      ...payload,
+      advance_payment: payload.advance_payment
+        ? Number(payload.advance_payment)
+        : 0,
+      total_amount: payload.total_amount ? Number(payload.total_amount) : 0,
+      no_of_files: payload.no_of_files ? Number(payload.no_of_files) : 0,
+
+      job_items: payload.job_items.map((item) => ({
+        ...item,
+        quantity: Number(item.quantity),
+        paper_gsm: item.paper_gsm ? Number(item.paper_gsm) : null,
+        cover_paper_gsm: item.cover_paper_gsm
+          ? Number(item.cover_paper_gsm)
+          : null,
+        unit_rate: Number(item.unit_rate),
+        item_total: Number(item.item_total),
+        inside_pages: item.inside_pages ? Number(item.inside_pages) : null,
+        cover_pages: item.cover_pages ? Number(item.cover_pages) : null,
+      })),
+    };
+    return emptyToNull(normalizedPayload);
+  };
 
   const onChange = (e) => {
     const { name, value } = e.target;
@@ -189,7 +235,7 @@ export default function JobCardForm({
 
         items[index] = {
           ...items[index],
-          available_items: data,  // store category items
+          available_items: data, // store category items
           enquiry_for: "",
           paper_type: "",
           paper_gsm: "",
@@ -203,6 +249,7 @@ export default function JobCardForm({
       });
     } catch (err) {
       console.error("Failed to load category items", err);
+      showSoftError("Failed to load category items. Please try again.");
     }
   };
 
@@ -222,7 +269,8 @@ export default function JobCardForm({
         return { ...prev, job_items: items };
       });
     } catch (err) {
-      console.error("Failed to load category items", err);
+      console.error("Failed to load category bindings", err);
+      showSoftError("Failed to load category bindings. Please try again.");
     }
   };
 
@@ -234,12 +282,13 @@ export default function JobCardForm({
         const items = [...prev.job_items];
         items[index] = {
           ...items[index],
-          available_papers: data
+          available_papers: data,
         }; // store all papers
         return { ...prev, job_items: items };
       });
     } catch (err) {
       console.error("Failed to load papers:", err);
+      showSoftError("Failed to load papers. Please try again.");
     }
   };
 
@@ -265,13 +314,15 @@ export default function JobCardForm({
       });
     } catch (err) {
       console.error("Failed to load paper gsm:", err);
+      showSoftError("Failed to load paper GSM. Please try again.");
     }
   };
 
   const calculateItemBackend = async (index) => {
     try {
-      const item = form.job_items[index];
-      
+      // const item = form.job_items[index];
+      const item = formRef.current.job_items[index];
+
       // basic guard
       if (!item.quantity || !item.paper_type || !item.paper_gsm) {
         alert("Please fill all required fields before calculating");
@@ -279,8 +330,11 @@ export default function JobCardForm({
       }
 
       // Clean the items before sending
-      const cleanedItems = cleanJobItems(form.job_items);
-      const cleanedItem = cleanJobItems([item])[0];
+      const cleanedItems = cleanJobItems(formRef.current.job_items);
+      // const cleanedItem = cleanJobItems([item])[0];
+      const cleanedItem = cleanJobItems([
+        { ...item, unit_rate: null, item_total: null },
+      ])[0];
 
       // Send all required fields to backend
       const payload = {
@@ -319,6 +373,31 @@ export default function JobCardForm({
       });
     } catch (err) {
       console.error("Item calculation failed:", err);
+      showSoftError("Calculation failed. Please re-check item details.");
+    }
+  };
+
+  const calculateTotalAmountAfterRemoval = async (id) => {
+    try {
+      const cleanedItems = cleanJobItems(formRef.current.job_items);
+
+      const payload = {
+        all_items: cleanedItems,
+        removed_item_id: id,
+      };
+
+      const { data } = await api.post(
+        `/api/fms/items/calculate-total-amount`,
+        payload
+      );
+
+      setForm((prev) => ({
+        ...prev,
+        total_amount: data.total_amount,
+      }));
+    } catch (err) {
+      console.error("Total amount recalculation failed:", err);
+      showSoftError("Failed to recalculate total amount.");
     }
   };
 
@@ -336,45 +415,54 @@ export default function JobCardForm({
       });
     } catch (err) {
       console.error("Failed to load sizes", err);
+      showSoftError("Failed to load sizes. Please try again.");
     }
   };
 
-  const handleItemChange = async (index, field, value) => {
-    setForm((prev) => {
-      const items = [...prev.job_items];
-      items[index] = { ...items[index], [field]: value };
-      return { ...prev, job_items: items };
-    });
-    // If category changes → fetch items from backend
-    if (field === "category") {
-      loadCategoryItems(index, value);
-      loadCategoryBindings(index, value);
-    }
+  const handleItemChange = useCallback(
+    async (id, field, value) => {
+      const index = findItemIndexById(form.job_items, id);
+      if (index === -1) return;
+      setForm((prev) => {
+        const items = [...prev.job_items];
+        items[index] = { ...items[index], [field]: value };
+        return { ...prev, job_items: items };
+      });
+      // If category changes → fetch items from backend
+      if (field === "category") {
+        loadCategoryItems(index, value);
+        loadCategoryBindings(index, value);
+      }
 
-    if (field === "enquiry_for") {
-      loadItemPapers(index, value);
-    }
+      if (field === "enquiry_for") {
+        loadItemPapers(index, value);
+      }
 
-    if (field === "paper_type") {
-      loadItemPapersGsm(index, value);
-    }
+      if (field === "paper_type") {
+        loadItemPapersGsm(index, value);
+      }
 
-    if (field === "cover_paper_type") {
-      loadItemPapersGsm(index, value, "cover");
-    }
+      if (field === "cover_paper_type") {
+        loadItemPapersGsm(index, value, "cover");
+      }
 
-    if (field === "size") {
-      loadSizes(index, value);
-    }
+      if (field === "size") {
+        loadSizes(index, value);
+      }
 
-    // 🔥 Run backend calculation ONLY when quantity is entered
-    if (field === "uom") {
-      await calculateItemBackend(index);
-    }
-  };
+      // 🔥 Run backend calculation ONLY when quantity is entered
+      if (field === "uom") {
+        await calculateItemBackend(index);
+      }
+    },
+    [form.job_items]
+  );
 
-  const createEmptyItem = () => ({
-    id: crypto.randomUUID(),
+  const createEmptyItem = React.useCallback(() => ({
+    id:
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Date.now().toString() + Math.random(),
     category: "",
     enquiry_for: "",
     quantity: "",
@@ -385,21 +473,28 @@ export default function JobCardForm({
     available_gsm: [],
     available_gsm_cover: [],
     available_bindings: [],
-  });
+  }), []);
 
-  const addItem = () => {
+
+  const addItem = useCallback(() => {
     setForm((prev) => ({
       ...prev,
       job_items: [...prev.job_items, createEmptyItem()],
     }));
-  };
+  }, [createEmptyItem]);
 
-  const removeItem = (index) => {
+  const removeItem = useCallback( async (id) => {
+    await calculateTotalAmountAfterRemoval(id);
     setForm((prev) => ({
       ...prev,
-      job_items: prev.job_items.filter((_, i) => i !== index),
+      job_items: prev.job_items.filter((item) => item.id !== id),
     }));
-  };
+  }, []);
+
+  const findItemIndexById = useCallback(
+    (items, id) => items.findIndex((item) => item.id === id),
+    []
+  );
 
   const cleanJobItems = (items) => {
     return items.map((item) => {
@@ -415,7 +510,6 @@ export default function JobCardForm({
       return cleaned;
     });
   };
-  
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -433,10 +527,11 @@ export default function JobCardForm({
       return;
     }
 
-    const payload = {
+    const rawPayload = {
       ...form,
       job_items: cleanJobItems(form.job_items),
     };
+    const payload = normalizePayload(rawPayload);
 
     try {
       if (isEditMode && existingJob?.job_no) {
@@ -546,11 +641,17 @@ export default function JobCardForm({
         }));
       } catch (err) {
         console.error("Failed to fetch client details", err);
+        showSoftError("Failed to fetch client details.");
       }
     } else if (e.key === "Escape") {
       setClientSuggestions([]);
       setActiveIndex(-1);
     }
+  };
+
+  const showSoftError = (message) => {
+    setErr(message);
+    setTimeout(() => setErr(""), 4000);
   };
 
   return (
@@ -809,6 +910,31 @@ export default function JobCardForm({
           />
         </Field>
 
+        <Field label="Production Flow">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.is_direct_to_production}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  is_direct_to_production: e.target.checked,
+                }))
+              }
+              className="mt-1"
+            />
+            <div className="text-sm">
+              <div className="font-medium text-slate-700">
+                Direct to Production
+              </div>
+              <div className="text-xs text-slate-500">
+                Artwork is final. Skip coordinator review and send directly to production.
+              </div>
+            </div>
+          </label>
+        </Field>
+
+
         <Field label="No of Files" required>
           <Input
             type="number"
@@ -824,400 +950,15 @@ export default function JobCardForm({
         <div className="md:col-span-3 mt-6">
           <h3 className="font-semibold text-blue-700 mb-3">📦 Job Items</h3>
 
-          {form.job_items.map((item, index) => {
-            const category = item.category;
-            return (
-              <FormCard key={item.id}>
-                <div className="flex flex-wrap items-center justify-between">
-                  <h4 className="font-semibold text-blue-700">
-                    📦 Item {index + 1}
-                  </h4>
-                  <Button
-                    type="button"
-                    className="bg-red-600 hover:bg-red-700 px-3 py-1 text-sm"
-                    onClick={() => removeItem(index)}
-                  >
-                    🗑 Remove
-                  </Button>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-3">
-                  <Field label="Category" required>
-                    <Select
-                      value={item.category}
-                      onChange={(e) =>
-                        handleItemChange(index, "category", e.target.value)
-                      }
-                    >
-                      <option value="">Select</option>
-                      <option>Single Sheet</option>
-                      <option>Multiple Sheet</option>
-                      <option>Wide Format</option>
-                      <option>Other</option>
-                    </Select>
-                  </Field>
-
-                  <Field label="Enquiry For" required>
-                    <div className="relative">
-                      <input
-                        list={`enquiry-for-list-${index}`}
-                        value={item.enquiry_for || ""}
-                        onChange={(e) =>
-                          handleItemChange(index, "enquiry_for", e.target.value)
-                        }
-                        placeholder="Select item..."
-                        className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
-                        required
-                      />
-
-                      <datalist id={`enquiry-for-list-${index}`}>
-                        {item.available_items?.map((opt) => (
-                          <option key={opt.id} value={opt.item_name} />
-                        ))}
-                      </datalist>
-                    </div>
-                  </Field>
-
-                  {item.enquiry_for && (
-                    <Field label="Paper Type" required>
-                      <Select
-                        value={item.paper_type || ""}
-                        onChange={(e) =>
-                          handleItemChange(index, "paper_type", e.target.value)
-                        }
-                        required
-                      >
-                        <option value="">Select Paper</option>
-
-                        {item.available_papers?.map((p) => (
-                          <option key={p.paper_name} value={p.paper_name}>
-                            {p.paper_name}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                  )}
-
-                  {item.paper_type && (
-                    <Field label="Paper GSM" required>
-                      <Select
-                        value={item.paper_gsm || ""}
-                        onChange={(e) =>
-                          handleItemChange(index, "paper_gsm", e.target.value)
-                        }
-                        required
-                      >
-                        <option value="">Select GSM</option>
-
-                        {item.available_gsm?.map((p) => (
-                          <option key={p.id} value={p.gsm}>
-                            {p.gsm}{" "}
-                            {p.size_category ? ` (${p.size_category})` : ""}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                  )}
-
-                  {/* Category-specific options */}
-
-                  {category === "Multiple Sheet" && (
-                    <React.Fragment key={`multiple-${index}`}>
-                      <Field label="Inside Paper Color" required>
-                        <Select
-                          value={item.color_scheme || ""}
-                          onChange={(e) =>
-                            handleItemChange(
-                              index,
-                              "color_scheme",
-                              e.target.value
-                            )
-                          }
-                        >
-                          <option value="">Select</option>
-                          <option>Black and White</option>
-                          <option>Multicolor</option>
-                        </Select>
-                      </Field>
-
-                      <Field label="Inside Pages" required>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={item.inside_pages || ""}
-                          onChange={(e) =>
-                            handleItemChange(
-                              index,
-                              "inside_pages",
-                              e.target.value
-                            )
-                          }
-                          placeholder="200"
-                          required
-                        />
-                      </Field>
-
-                      {/* COVER PAPER */}
-                      <Field label="Cover Paper Type" required>
-                        <Select
-                          value={item.cover_paper_type || ""}
-                          onChange={(e) =>
-                            handleItemChange(
-                              index,
-                              "cover_paper_type",
-                              e.target.value
-                            )
-                          }
-                          required
-                        >
-                          <option value="">Select Paper</option>
-                          {item.available_papers?.map((p) => (
-                            <option key={p.paper_name} value={p.paper_name}>
-                              {p.paper_name}
-                            </option>
-                          ))}
-                        </Select>
-                      </Field>
-
-                      {item.cover_paper_type && (
-                        <Field label="Cover Paper GSM" required>
-                          <Select
-                            value={item.cover_paper_gsm || ""}
-                            onChange={(e) =>
-                              handleItemChange(
-                                index,
-                                "cover_paper_gsm",
-                                e.target.value
-                              )
-                            }
-                            required
-                          >
-                            <option value="">Select GSM</option>
-                            {item.available_gsm_cover?.map((g) => (
-                              <option key={g.id} value={g.gsm}>
-                                {g.gsm}{" "}
-                                {g.size_category ? ` (${g.size_category})` : ""}
-                              </option>
-                            ))}
-                          </Select>
-                        </Field>
-                      )}
-
-                      <Field label="Cover Paper Color" required>
-                        <Select
-                          value={item.cover_color_scheme || ""}
-                          onChange={(e) =>
-                            handleItemChange(
-                              index,
-                              "cover_color_scheme",
-                              e.target.value
-                            )
-                          }
-                        >
-                          <option value="">Select</option>
-                          <option>Black and White</option>
-                          <option>Multicolor</option>
-                        </Select>
-                      </Field>
-
-                      <Field label="Cover Pages" required>
-                        <Select
-                          value={item.cover_pages || ""}
-                          onChange={(e) =>
-                            handleItemChange(
-                              index,
-                              "cover_pages",
-                              e.target.value
-                            )
-                          }
-                        >
-                          <option value="">Select</option>
-                          <option>2</option>
-                          <option>4</option>
-                        </Select>
-                      </Field>
-                    </React.Fragment>
-                  )}
-
-                  <Field label="Size" required>
-                    <div className="relative">
-                      <input
-                        list={`size-list-${index}`}
-                        value={item.size || ""}
-                        onChange={(e) =>
-                          handleItemChange(index, "size", e.target.value)
-                        }
-                        placeholder="Select size or type custom..."
-                        className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
-                        required
-                      />
-
-                      <datalist id={`size-list-${index}`}>
-                        {item.available_sizes?.map((opt) => (
-                          <option key={opt.id} value={opt.name} />
-                        ))}
-                      </datalist>
-                    </div>
-
-                    {/* <Input
-                      value={item.size || ""}
-                      onChange={(e) =>
-                        handleItemChange(index, "size", e.target.value)
-                      }
-                      placeholder="12x24"
-                      required
-                    /> */}
-                  </Field>
-
-                  {(category === "Multiple Sheet" ||
-                    category === "Single Sheet") && (
-                    <Field label="Sides" required>
-                      <Select
-                        value={item.sides || ""}
-                        onChange={(e) =>
-                          handleItemChange(index, "sides", e.target.value)
-                        }
-                      >
-                        <option value="">Select</option>
-                        <option>Single Side</option>
-                        <option>Both Side</option>
-                      </Select>
-                    </Field>
-                  )}
-
-                  {item.available_bindings &&
-                    item.available_bindings.length > 0 && (
-                      <Field label="Type of Binding" required>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
-                          {item.available_bindings.map((b) => (
-                            <label
-                              key={b.binding_name}
-                              className="text-sm flex items-center gap-1"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={item.binding_types?.includes(
-                                  b.binding_name
-                                )}
-                                onChange={(e) => {
-                                  const prev = item.binding_types || [];
-                                  const updated = e.target.checked
-                                    ? [...prev, b.binding_name]
-                                    : prev.filter((x) => x !== b.binding_name);
-
-                                  handleItemChange(
-                                    index,
-                                    "binding_types",
-                                    updated
-                                  );
-                                }}
-                              />
-                              {b.binding_name}
-                              {/* {b.rate !== null && (
-                                <span className="text-xs text-gray-500">
-                                  ₹{b.rate_per_unit}
-                                </span>
-                              )} */}
-                            </label>
-                          ))}
-                        </div>
-                      </Field>
-                    )}
-
-                  {category !== "Multiple Sheet" && (
-                    <Field label="Color Scheme" required>
-                      <Select
-                        value={item.color_scheme || ""}
-                        onChange={(e) =>
-                          handleItemChange(
-                            index,
-                            "color_scheme",
-                            e.target.value
-                          )
-                        }
-                      >
-                        <option value="">Select</option>
-                        <option>Black and White</option>
-                        <option>Multicolor</option>
-                      </Select>
-                    </Field>
-                  )}
-
-                  {/* Common Fields */}
-                  <Field label="Quantity" required>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={item.quantity || ""}
-                      onChange={(e) =>
-                        handleItemChange(index, "quantity", e.target.value)
-                      }
-                      required
-                    />
-                  </Field>
-
-                  <Field label="Unit Of Measurment" required>
-                    <Select
-                      value={item.uom}
-                      onChange={(e) =>
-                        handleItemChange(index, "uom", e.target.value)
-                      }
-                      required
-                    >
-                      <option value="">Select</option>
-                      <option>Nos</option>
-                      <option>Pc</option>
-                      <option>Copies</option>
-                      <option>Books</option>
-                      <option>Sheets</option>
-                    </Select>
-                  </Field>
-
-                  <Field label="Unit Rate" required>
-                    <Input
-                      value={item.unit_rate || ""}
-                      readOnly
-                      onChange={(e) =>
-                        handleItemChange(index, "unit_rate", e.target.value)
-                      }
-                    />
-                  </Field>
-
-                  <Field label="Item Total" required>
-                    <Input
-                      value={item.item_total || ""}
-                      onChange={(e) =>
-                        handleItemChange(index, "item_total", e.target.value)
-                      }
-                      readOnly
-                    />
-                  </Field>
-
-                  {/* ---------- Best Sheet Results (Inside + Cover) ---------- */}
-                  <div className="col-span-2">
-                    {item.best_inside_sheet && (
-                      <p className="text-xs text-green-700 mt-1">
-                        Inside Sheet: <b>{item.best_inside_sheet}</b> (
-                        {item.best_inside_dimensions}) — UPS:{" "}
-                        <b>{item.best_inside_ups}</b>
-                      </p>
-                    )}
-
-                    {item.category === "Multiple Sheet" &&
-                      item.best_cover_sheet && (
-                        <p className="text-xs text-blue-700 mt-1">
-                          Cover Sheet: <b>{item.best_cover_sheet}</b> (
-                          {item.best_cover_dimensions}) — UPS:{" "}
-                          <b>{item.best_cover_ups}</b>
-                        </p>
-                      )}
-                  </div>
-
-
-                </div>
-              </FormCard>
-            );
-          })}
+          {form.job_items.map((item, index) => (
+            <JobItem
+              key={item.id}
+              item={item}
+              index={index}
+              handleItemChange={handleItemChange}
+              onRemove={removeItem}
+            />
+          ))}
 
           <Button
             type="button"

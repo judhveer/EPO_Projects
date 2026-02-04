@@ -1,11 +1,14 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import api from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
+import { DateTime } from "luxon";
 
 export default function ProcessCoordinatorTable() {
   const [jobs, setJobs] = useState([]);
   const [designers, setDesigners] = useState([]);
   // const [openDropdownJob, setOpenDropdownJob] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [selectedJobForAssign, setSelectedJobForAssign] = useState(null);
 
@@ -14,53 +17,74 @@ export default function ProcessCoordinatorTable() {
   const [err, setErr] = useState("");
   const [assigning, setAssigning] = useState(false);
 
+  const assignLock = useRef(false);
+
+
   // const dropdownRef = useRef(null);
 
   // Load jobs
-  const fetchJobs = async () => {
-    const { data } = await api.get("/api/fms/process-coordinator/jobs");
-    setJobs(Array.isArray(data) ? data : data.data || data.jobCards || []);
+  const fetchJobs = async (signal) => {
+    try{
+      const { data } = await api.get("/api/fms/process-coordinator/jobs", { signal } );  
+      setJobs(Array.isArray(data) ? data : data.data || data.jobCards || []);
+    }
+    catch(error){
+      if (error.name === "CanceledError") return;
+      console.error("Failed to fetch jobs", error);
+      setErr("Unable to load jobs");
+    }
   };
 
   // Load designers with status
-  const fetchDesigners = async () => {
-    const { data } = await api.get(
-      "/api/fms/process-coordinator/designers/status"
-    );
-    setDesigners(data);
+  const fetchDesigners = async (signal) => {
+    try{
+      const { data } = await api.get(
+        "/api/fms/process-coordinator/designers/status",  { signal }
+      );
+      setDesigners(data);
+    }
+    catch(error){
+      if (error.name === "CanceledError") return;
+      console.error("Failed to fetch designers", error);
+      setErr("Unable to load designers");
+    }
   };
 
   useEffect(() => {
-    fetchJobs();
-    fetchDesigners();
+    const controller = new AbortController();
+    let isMounted = true;
+    setLoading(true);
+
+    Promise.allSettled([
+      fetchJobs(controller.signal),
+      fetchDesigners(controller.signal),
+    ]).finally(() => {
+      if(isMounted){
+        setLoading(false);
+      } 
+    });
+
+    return () => {
+      isMounted = false;
+      controller.abort();   // cancel all in-flight requests
+    }
   }, []);
 
-  // Close dropdown on outside click
-  // useEffect(() => {
-  //   const handler = (e) => {
-  //     if (
-  //       openDropdownJob &&
-  //       dropdownRef.current &&
-  //       !dropdownRef.current.contains(e.target)
-  //     ) {
-  //       setOpenDropdownJob(null);
-  //     }
-  //   };
-
-  //   window.addEventListener("mousedown", handler);
-  //   return () => window.removeEventListener("mousedown", handler);
-  // }, [openDropdownJob]);
 
   const assignDesigner = async (job_no, designer_id) => {
     if (!job_no || !designer_id) return;
+    if (assignLock.current) return;
 
-    if (assigning) return; // prevent multiple clicks
+    const controller = new AbortController();
+    assignLock.current = true;
     setAssigning(true);
+    // if (assigning) return; // prevent multiple clicks
+    // setAssigning(true);
 
     try {
-      await api.patch(`/api/fms/process-coordinator/${job_no}/assign`, {
-        designer_id,
-      });
+      await api.patch(`/api/fms/process-coordinator/${job_no}/assign`, 
+        { designer_id }, { signal: controller.signal } );
+      
       setErr("");
       setSuccessMsg("✅ Job Assigned to Designer successfully!");
       setShowSuccessPopup(true);
@@ -72,20 +96,29 @@ export default function ProcessCoordinatorTable() {
       }, 2000);
 
       // setOpenDropdownJob(null);
-      fetchJobs();
-      fetchDesigners();
+      fetchJobs(controller.signal);
+      fetchDesigners(controller.signal);
     } catch (error) {
+      if (error.name === "CanceledError") return;
       console.error(error);
       setErr(error.response?.data?.message || "Failed to Assign Job Card");
     } finally {
+      assignLock.current = false;
       setAssigning(false);
     }
   };
 
+
+  const designerMap = React.useMemo(() => {
+    const map = new Map();
+    designers.forEach((d) => map.set(d.name, d));
+    return map;
+  }, [designers]);
+
   return (
     <div>
       {showSuccessPopup && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm">
+        <div className="fixed inset-0 flex items-center justify-center z-[500] bg-black/30 backdrop-blur-sm">
           <div className="bg-white shadow-2xl rounded-xl px-8 py-6 border border-green-200 animate-fade-in text-center">
             <h3 className="text-2xl font-semibold text-green-700 mb-2">
               🎉 Success!
@@ -125,10 +158,20 @@ export default function ProcessCoordinatorTable() {
           </thead>
 
           <tbody>
+
+            {jobs.length === 0 && (
+              <tr>
+                <td colSpan="11" className="text-center p-4 text-gray-500">
+                  No jobs available
+                </td>
+              </tr>
+            )}
+
             {jobs.map((job) => {
-              const assignedDesigner = designers.find(
-                (d) => d.name === job.assigned_designer
-              );
+              // const assignedDesigner = designers.find(
+              //   (d) => d.name === job.assigned_designer
+              // );
+              const assignedDesigner = designerMap.get(job.assigned_designer);
 
               return (
                 <tr key={job.job_no} className="hover:bg-blue-50">
@@ -137,7 +180,7 @@ export default function ProcessCoordinatorTable() {
                   </td>
                   <td className="border p-2">
                     {job.createdAt
-                      ? new Date(job.createdAt).toLocaleString()
+                      ? DateTime.fromJSDate(new Date(job.createdAt)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")
                       : "-"}
                   </td>
                   <td className="border p-2">{job.client_name}</td>
@@ -145,7 +188,7 @@ export default function ProcessCoordinatorTable() {
                   <td className="border p-2">{job.order_handled_by}</td>
                   <td className="border p-2">{job.execution_location}</td>
                   <td className="border p-2">
-                    {new Date(job.delivery_date).toLocaleString()}
+                    {job.delivery_date ? DateTime.fromJSDate(new Date(job.delivery_date)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a") : "-"}
                   </td>
                   {/* <td className="border p-2">{job.delivery_location}</td> */}
                   <td className="border-b px-2  max-w-[500px]">
@@ -214,7 +257,7 @@ export default function ProcessCoordinatorTable() {
               <div className="space-y-3">
                 {designers.map((designer) => (
                   <button
-                    disabled={assigning}
+                    disabled={assigning || designer.name === selectedJobForAssign?.assigned_designer}
                     key={designer.designer_id}
                     onClick={() => {
                       assignDesigner(
@@ -222,7 +265,7 @@ export default function ProcessCoordinatorTable() {
                         designer.designer_id
                       );
                     }}
-                    className="w-full text-left p-4 border rounded-lg hover:bg-blue-50 transition shadow-sm"
+                    className="w-full text-left p-4 border rounded-lg hover:bg-blue-200 transition shadow-sm cursor-pointer"
                   >
                     <div className="flex justify-between items-center">
                       <span className="font-semibold text-gray-800">
@@ -262,7 +305,7 @@ export default function ProcessCoordinatorTable() {
                     {designer.status === "active" && (
                       <div className="text-xs text-red-600">
                         Free at:{" "}
-                        {new Date(designer.expected_free_time).toLocaleString()}
+                        {designer.expected_free_time ? DateTime.fromJSDate(new Date(designer.expected_free_time)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a") : "-"}
                       </div>
                     )}
                   </button>

@@ -4,6 +4,7 @@ import Button from "../../components/salesPipeline/Button.jsx";
 import JobCardForm from "../jobFms/JobCardForm.jsx"; // 👈 Import your form component
 import { motion, AnimatePresence } from "framer-motion";
 import { createPortal } from "react-dom";
+import { DateTime } from "luxon";
 
 export default function JobWriterTable({ refresh }) {
   const [jobs, setJobs] = useState([]);
@@ -122,6 +123,7 @@ export default function JobWriterTable({ refresh }) {
     setLoading(true);
     try {
       const { data } = await api.get("/api/fms/jobcards");
+      console.log("Fetched jobs:", data.data);
       setJobs(Array.isArray(data) ? data : data.data || data.jobCards || []);
     } catch (err) {
       console.error("Failed to fetch jobs:", err);
@@ -390,9 +392,17 @@ export default function JobWriterTable({ refresh }) {
                 >
                   <td className="border p-2 sticky left-0 bg-white z-20 text-center font-bold text-blue-700">
                     {job.job_no}
+                    {job.clientApprovals?.[0]?.instance > 1 && (
+                      <div className="text-[11px] text-red-800 italic mt-1">
+                        {"Redesign"}
+                      </div>
+                    )}
                   </td>
                   <td className="border p-2">
-                    {new Date(job.createdAt).toLocaleString()}
+                    {DateTime
+                      .fromJSDate(new Date(job.createdAt))
+                      .setZone("Asia/Kolkata")
+                      .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border p-2">{job.client_name}</td>
                   <td className="border p-2">{job.client_type}</td>
@@ -404,7 +414,11 @@ export default function JobWriterTable({ refresh }) {
                   <td className="border p-2">{job.order_handled_by}</td>
                   <td className="border p-2">{job.execution_location}</td>
                   <td className="border p-2 font-semibold text-blue-600 hover:text-white">
-                    {new Date(job.delivery_date).toLocaleString()}
+                    {/* {new Date(job.delivery_date).toLocaleString()} */}
+                    {DateTime
+                      .fromJSDate(new Date(job.delivery_date))
+                      .setZone("Asia/Kolkata")
+                      .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border-r border-gray-200 px-2  max-w-[500px]">
                     {job.delivery_location}
@@ -415,7 +429,11 @@ export default function JobWriterTable({ refresh }) {
                     )}
                   </td>
                   <td className="border p-2 ">
-                    {new Date(job.proof_date).toLocaleDateString()}
+                    {/* {new Date(job.proof_date).toLocaleDateString()} */}
+                    {DateTime
+                      .fromJSDate(new Date(job.proof_date))
+                      .setZone("Asia/Kolkata")
+                      .toFormat("dd LLL yyyy")}
                   </td>
                   <td className="border p-2">
                     <span
@@ -462,7 +480,10 @@ export default function JobWriterTable({ refresh }) {
                     </span>
                   </td>
                   <td className="border p-2">
-                    {new Date(job.job_completion_deadline).toLocaleString()}
+                    {DateTime
+                      .fromJSDate(new Date(job.job_completion_deadline))
+                      .setZone("Asia/Kolkata")
+                      .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
 
                   <td className="border p-2 text-center text-gray-500 text-xs italic">

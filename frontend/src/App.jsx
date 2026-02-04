@@ -3,6 +3,8 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { Gate } from "./components/Permission.jsx";
 import AppShell from "./components/AppShell.jsx";
+import { useAuth } from "./context/AuthContext";
+
 
 import Layout from "./components/salesPipeline/Layout.jsx";
 import Dashboard from "./pages/salesPipeline/Dashboard.jsx";
@@ -35,40 +37,14 @@ import DesignerDashboard from "./pages/jobFms/DesignerDashboard.jsx";
 import CrmDashboard from "./pages/jobFms/CrmDashboard.jsx";
 import CommonDashboard from "./pages/jobFms/CommonDashboard.jsx";
 
-/**
- * Simple auth hook.
- * - By default it checks localStorage for "authToken" or "user" keys.
- * - If you have a different auth mechanism (Redux/context/cookie), replace the check inside `checkAuth`.
- */
-
-function useAuth() {
-  const [isAuthed, setIsAuthed] = useState(false);
-
-  const checkAuth = useCallback(() => {
-    // adapt this to your real auth storage: token, user object, etc.
-    const token =
-      localStorage.getItem("authToken") || localStorage.getItem("token");
-    const user = localStorage.getItem("user"); // optional
-    setIsAuthed(Boolean(token || user));
-  }, []);
-
-  useEffect(() => {
-    checkAuth();
-
-    // listen to storage events so login/logout in another tab updates this tab
-    const onStorage = (e) => {
-      if (e.key === "authToken" || e.key === "token" || e.key === "user")
-        checkAuth();
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, [checkAuth]);
-
-  return { isAuthed, checkAuth };
-}
 
 export default function App() {
-  const { isAuthed } = useAuth();
+  // const { isAuthed } = useAuth();
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <div className="p-8 text-gray-500">Loading...</div>;
+  }
 
   return (
     <Routes>
@@ -76,22 +52,21 @@ export default function App() {
       <Route path="/disc-test" element={<DiscTest />} />
 
       {/* Public: /login -> if already authed redirect to /home */}
+
       <Route
         path="/login"
-        element={isAuthed ? <Navigate to="/home" replace /> : <Login />}
+        element={user ? <Navigate to="/home" replace /> : <Login />}
       />
+
 
       {/* root: send to appropriate landing based on auth */}
       <Route
         path="/"
         element={
-          isAuthed ? (
-            <Navigate to="/home" replace />
-          ) : (
-            <Navigate to="/login" replace />
-          )
+          user ? (<Navigate to="/home" replace />) : (<Navigate to="/login" replace />)
         }
       />
+
 
       {/* Protected routes */}
       <Route element={<ProtectedRoute />}>
@@ -215,14 +190,7 @@ export default function App() {
 
             <Route
               path="common"
-              element={
-                <Gate
-                  perm="jobfms.commonDashboard.view"
-                  fallback={<div className="p-6">Not Authorized</div>}
-                >
-                  <CommonDashboard />
-                </Gate>
-              }
+              element={<CommonDashboard />}
             />
 
 
@@ -279,8 +247,9 @@ export default function App() {
       {/* wildcard: if unmatched route under protected area, send to home */}
       <Route
         path="*"
-        element={<Navigate to={isAuthed ? "/home" : "/login"} replace />}
+        element={<Navigate to={user ? "/home" : "/login"} replace />}
       />
+
     </Routes>
   );
 }

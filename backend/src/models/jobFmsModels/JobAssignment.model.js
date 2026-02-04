@@ -53,7 +53,6 @@ export default (sequelize) => {
           "assigned",
           "in_progress",
           "completed",
-          "returned_for_changes"
         ),
         defaultValue: "assigned",
       },

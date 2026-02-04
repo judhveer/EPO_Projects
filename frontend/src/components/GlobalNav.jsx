@@ -40,7 +40,7 @@ export default function GlobalNav() {
         <div className="flex items-center gap-3 min-w-0">
           {/* Put your logo file at /public/logo.png or adjust path */}
           <img
-            src="/logo.png"
+            src="/logo.jpg"
             alt="EPO"
             className="h-7 md:h-8 w-auto shrink-0"
           />

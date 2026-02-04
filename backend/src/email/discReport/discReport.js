@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import transporter from "../transporter.js";
+import { createTransporter } from "../transporter.js";
 dotenv.config();
 
 export async function sendReportMail(name, percentages, highestTrait) {
@@ -81,6 +81,7 @@ export async function sendReportMail(name, percentages, highestTrait) {
     </div>
   `;
 
+  const transporter = await createTransporter();
   // Send email
   await transporter.sendMail({
     from: `"EPO Automation" <${process.env.EMAIL_USER}>`,

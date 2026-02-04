@@ -2,10 +2,12 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { can } from "../lib/permissions";
 
-function Card({ to, title, desc }) {
+function Card({ to, title, desc, target = "_self"}) {
   return (
     <Link
       to={to}
+      target={target}
+      rel={target === "_blank" ? "noopener noreferrer" : undefined}
       className="group block rounded-2xl bg-white p-6 shadow-sm hover:shadow-md transition"
     >
       <div className="text-lg font-semibold group-hover:underline">{title}</div>
@@ -84,7 +86,7 @@ function SiteFooter() {
           className="inline-block mt-5"
         >
           <img
-            src="logo-footer.png"
+            src="logo-footer.jpg"
             alt="Eastern Panorama Offset"
             className="h-20 mx-auto"
           />
@@ -225,6 +227,8 @@ export default function Home() {
     can(user, "jobfms.designer.view") ||
     can(user, "jobfms.crm.view");
 
+  const showDiscTest = true;
+
   const isBossAdmin = user?.role === "BOSS" || user?.role === "ADMIN";
 
   return (
@@ -258,7 +262,7 @@ export default function Home() {
             desc="Add employees with department & role."
           />
         )}
-        {!showSales && !showEA && showAttendance && (
+        {!showSales && !showEA && !showJobFms && showAttendance && (
           <div className="sm:col-span-2 lg:col-span-3 text-gray-500">
             You currently have access to Attendance only.
           </div>
@@ -270,6 +274,16 @@ export default function Home() {
                 desc="Manage job cards, design assignments & approvals."
             />
         )}
+
+        {showDiscTest && (
+          <Card
+            to="/disc-test"
+            title="DISC Personality Test"
+            desc="Take the DISC personality assessment."
+            target="_blank"
+          />
+        )}
+
       </div>
 
       <div>

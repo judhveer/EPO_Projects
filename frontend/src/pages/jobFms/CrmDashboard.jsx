@@ -1,4 +1,7 @@
 import React from "react";
+import CRMTable from "../../components/jobFms/CRMTable";
 export default function CrmDashboard() {
-  return <div>🧑‍💼 Crm Dashboard - Coming soon</div>;
+  return <div>
+    <CRMTable />
+  </div>;
 }

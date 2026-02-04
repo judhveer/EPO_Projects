@@ -101,9 +101,16 @@ export const assignDesigner = async (req, res) => {
     const crmUser = await User.findOne({
       where: {
         username: job.order_handled_by,
-        department: "CRM",
       },
     });
+
+    const attachments = [
+      {
+        filename: "epo-logo.jpg",
+        path: path.resolve("assets/epo-logo.jpg"),
+        cid: "epo-logo",
+      },
+    ];
 
     // Designer Email
     await sendMailForFMS({
@@ -114,13 +121,7 @@ export const assignDesigner = async (req, res) => {
         jobNo: job_no,
         dashboardUrl: `${process.env.LEADS_URL}/job-fms/designer`,
       }),
-      attachments: [
-        {
-          filename: "epo-logo.png",
-          path: path.resolve("assets/epo-logo.png"),
-          cid: "epo-logo",
-        },
-      ],
+      attachments,
     });
 
     // CRM Notification Email
@@ -132,15 +133,11 @@ export const assignDesigner = async (req, res) => {
         html: crmJobStageTemplate({
           crmName: crmUser.username,
           jobNo: job_no,
+          designerName: desginer.username,
+          assignedAt: new Date(),
           dashboardUrl: `${process.env.LEADS_URL}/job-fms/crm`,
         }),
-        attachments: [
-          {
-            filename: "epo-logo.png",
-            path: path.resolve("assets/epo-logo.png"),
-            cid: "epo-logo",
-          },
-        ],
+        attachments,
       });
     }
 

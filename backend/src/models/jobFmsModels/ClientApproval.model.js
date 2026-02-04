@@ -19,27 +19,25 @@ export default (sequelize) => {
       },
       handled_by_id: {
         type: DataTypes.UUID,
-      },
-      approval_token: {
-        type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
       },
       status: {
         type: DataTypes.ENUM("pending", "approved", "changes_requested"),
         defaultValue: "pending",
       },
-      feedback: {
-        type: DataTypes.TEXT,
+      client_feedback: {
+        type: DataTypes.TEXT,     // CHANGE REQUEST TEXT
+      },
+      sent_at: {
+        type: DataTypes.DATE,
       },
       approved_at: {
         type: DataTypes.DATE,
       },
-      responded_by: {
-        type: DataTypes.STRING,
-      },
-      sent_at: {
-        type: DataTypes.DATE,
+      instance: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1,
       },
     },
     {

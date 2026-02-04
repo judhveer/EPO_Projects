@@ -13,25 +13,25 @@ export function can(user, perm) {
     if (SUPER.has(role)) {
         return true;
     }
-
+    // Attendance – everyone logged in
     if (perm === 'attendance.view') {
         return true;
     }
-
+    // EA Dashboard
     if (perm === 'ea.dashboard.view') {
         return (dept === 'EA') || SUPER.has(role);
     }
-
+    // Sales dashboard
     if (perm === 'sales.dashboard.view') {
-        return isSalesDept(dept) || SUPER.has(role);
+        return isSalesDept(dept) || dept === "CRM" || SUPER.has(role);
     }
 
-    const viewPerms = [
+    const SALES_VIEW = [
         'sales.research.view', 'sales.approval.view', 'sales.telecall.view', 'sales.meeting.view', 'sales.crm.view'
     ];
 
-    if (viewPerms.includes(perm)) {
-        if (SUPER.has(role)) {
+    if (SALES_VIEW.includes(perm)) {
+        if(dept === 'CRM') {
             return true;
         }
         if (!isSalesDept(dept)) {
@@ -55,9 +55,14 @@ export function can(user, perm) {
             return isSalesDept(dept) && role === 'EXECUTIVE';
 
         case 'sales.crm.mutate': 
-            return isSalesDept(dept) && role === 'CRM';
+            return ( isSalesDept(dept) && role === 'CRM' ) || dept === 'CRM';
+    }         
 
-        // default: return false;
+    // 🔵 JOB FMS VIEW PERMISSIONS
+     switch (perm) {
+        case 'jobfms.common.view':
+            return true; // everyone
+
         case 'jobfms.writer.view':
             return dept === 'Job Writer' || dept === 'Admin';
 
@@ -68,16 +73,12 @@ export function can(user, perm) {
             return dept === 'Designer';
 
         case 'jobfms.crm.view':
-            return dept === 'CRM';
+            return (isSalesDept(dept) && role === "CRM") || dept === 'CRM';
 
         default:
             return false;
-    }         
 
-    // JOB FMS Permissions
-    // 🔹 🔵 NEW: Job FMS Permissions
-    // switch (perm) {
-        
-    // }
+     }
+
 
 }

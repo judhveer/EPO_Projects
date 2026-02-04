@@ -1,6 +1,6 @@
 // email/sendReport.js
 import path from 'path';
-import transporter from "../transporter.js";
+import { createTransporter } from "../transporter.js";
 
 
 export async function sendAttendanceReport({ to, subject, html, attachmentPath }) {
@@ -26,6 +26,7 @@ export async function sendAttendanceReport({ to, subject, html, attachmentPath }
   };
 
   try {
+    const transporter = await createTransporter();
     const info = await transporter.sendMail(mailOptions);
     console.log(`✅ Weekly report sent to ${toList}: ${info.messageId}`);
     return info;

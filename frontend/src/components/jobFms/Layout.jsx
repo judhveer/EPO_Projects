@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import { useCan } from "../../components/Permission.jsx";
 
 // Utility for styling active/inactive nav links
 const navClass = ({ isActive }) =>
@@ -11,15 +12,19 @@ const navClass = ({ isActive }) =>
 
 // Define the available tabs
 const JOB_FMS_TABS = [
-  { key: "common", label: "Common Dashboard", to: "/job-fms/common" },
-  { key: "writer", label: "Job Writer", to: "/job-fms/writer" },
-  { key: "coordinator", label: "Process Coordinator", to: "/job-fms/coordinator" },
-  { key: "designer", label: "Designer", to: "/job-fms/designer" },
-  { key: "crm", label: "CRM", to: "/job-fms/crm" },
+  { key: "common", label: "Common Dashboard", to: "/job-fms/common", perm: "jobfms.common.view", },
+  { key: "writer", label: "Job Writer", to: "/job-fms/writer", perm: "jobfms.writer.view", },
+  { key: "coordinator", label: "Process Coordinator", to: "/job-fms/coordinator", perm: "jobfms.coordinator.view", },
+  { key: "designer", label: "Designer", to: "/job-fms/designer", perm: "jobfms.designer.view", },
+  { key: "crm", label: "CRM", to: "/job-fms/crm", perm: "jobfms.crm.view", },
 ];
 
 export default function JobFmsLayout() {
   const [open, setOpen] = useState(false);
+
+  const visibleTabs = JOB_FMS_TABS.filter(tab =>
+    useCan(tab.perm)
+  );
 
   const handleLinkClick = () => setOpen(false);
 
@@ -35,7 +40,7 @@ export default function JobFmsLayout() {
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex gap-2 items-center">
-            {JOB_FMS_TABS.map((tab) => (
+            {visibleTabs.map((tab) => (
               <NavLink key={tab.key} to={tab.to} className={navClass}>
                 {tab.label}
               </NavLink>
@@ -93,7 +98,7 @@ export default function JobFmsLayout() {
         >
           <div className="px-4 py-3">
             <nav className="flex flex-col gap-1">
-              {JOB_FMS_TABS.map((tab) => (
+              {visibleTabs.map((tab) => (
                 <NavLink
                   key={tab.key}
                   to={tab.to}

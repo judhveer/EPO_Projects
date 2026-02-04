@@ -77,7 +77,7 @@ export default function associateJobFmsModels(models) {
 
   // 🔗 ClientApproval
   if (ClientApproval) {
-    JobCard.hasOne(ClientApproval, { as: "approval", foreignKey: "job_no", onDelete: "CASCADE", });
+    JobCard.hasMany(ClientApproval, { as: "clientApprovals", foreignKey: "job_no", onDelete: "CASCADE", });
     ClientApproval.belongsTo(JobCard, { as: "jobCard", foreignKey: "job_no" });
     ClientApproval.belongsTo(User, { as: "handledBy", foreignKey: "handled_by_id" });
   }

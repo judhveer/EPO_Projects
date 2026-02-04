@@ -42,7 +42,7 @@ function hasAccessToTab(user, tabKey) {
   }
 
   // Only users in Sales department get the Sales tabs
-  if (!dept.includes('SALES')) {
+  if (dept !== "CRM" && !dept.includes('SALES')) {
     return false;
   }
 
@@ -61,6 +61,8 @@ function hasAccessToTab(user, tabKey) {
       return ['dashboard', 'meeting'].includes(tabKey);
     case 'CRM':
     case 'CRM EXECUTIVE':
+      return ['dashboard', 'crm'].includes(tabKey);
+    case 'STAFF':
       return ['dashboard', 'crm'].includes(tabKey);
     default:
       return false;

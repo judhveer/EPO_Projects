@@ -10,15 +10,22 @@ const {
   JobItem,
   PaperMaster,
   ItemMaster,
+  ClientApproval
 } = models;
 import { advanceStage } from "../../utils/jobFms/stageTracking.js";
+import path from "path";
+
+import { sendMailForFMS } from "../../email/sendMail.js";
+import { processCoordinatorDesignCompletedTemplate, crmDesignCompletedTemplate, processCoordinatorDesignStartedTemplate, crmDesignStartedTemplate } from "../../email/templates/emailTemplates.js"; 
 
 // Get all jobs for Designers
 export const getAllJobsForDesginer = async (req, res) => {
+  console.log("getAllJobsForDesginer called:");
   try {
     const jobCards = await JobCard.findAndCountAll({
       where: {
-        status: ["assigned_to_designer", "design_in_progress"],
+        status: ["assigned_to_designer", "design_in_progress", "client_changes"],
+        assigned_designer: req.user?.username,
       },
       include: [
         {
@@ -36,11 +43,27 @@ export const getAllJobsForDesginer = async (req, res) => {
             { model: ItemMaster, as: "itemMaster" },
           ],
         },
+        {
+          model: ClientApproval,
+          as: "clientApprovals",
+          separate: true,
+          limit: 1,
+          order: [["instance", "DESC"]],
+          required: false,
+        },
       ],
       order: [["createdAt", "DESC"]],
     });
 
-    return res.json({
+    if(!jobCards || jobCards.count === 0) {
+      return res.status(404).json({
+        total: 0,
+        data: [],
+        message: "No jobs found for the designer.",
+      });
+    }
+
+    return res.status(200).json({
       total: jobCards.count,
       data: jobCards.rows,
     });
@@ -94,6 +117,8 @@ export const setEstimatedTime = async (req, res) => {
       message: "Estimated time set successfully",
       assignment,
     });
+    
+
   } catch (err) {
     console.error(err);
     res.status(500).json({
@@ -159,6 +184,64 @@ export const designerStartTask = async (req, res) => {
     await t.commit();
 
     res.json({ message: "Task started", assignment });
+
+
+    /* ------------------ EMAIL NOTIFICATIONS ------------------ */
+
+    // Fetch CRM user
+    const crmUser = await User.findOne({
+      where: { username: job.order_handled_by },
+    });
+
+    // Fetch Process Coordinators
+    const coordinators = await User.findAll({
+      where: { department: "Process Coordinator" },
+    });
+
+    const attachments = [
+      {
+        filename: "epo-logo.jpg",
+        path: path.resolve("assets/epo-logo.jpg"),
+        cid: "epo-logo",
+      },
+    ];
+
+    // 📧 Notify Process Coordinators
+    if (coordinators.length) {
+      await sendMailForFMS({
+        to: coordinators.map((u) => u.email),
+        subject: `Design Started | Job #${job_no}`,
+        html: processCoordinatorDesignStartedTemplate({
+          jobNo: job_no,
+          clientName: job.client_name,
+          designerName: job.assigned_designer || "Designer",
+          startedAt: startTime.toLocaleString(),
+          estimatedCompletionTime: assignment.estimated_completion_time,
+          dashboardUrl: `${process.env.LEADS_URL}/job-fms/process-coordinator`,
+        }),
+        attachments,
+      });
+    }
+
+    // 📧 Notify CRM
+    if (crmUser?.email) {
+      await sendMailForFMS({
+        to: crmUser.email,
+        subject: `Design Started | Job #${job_no}`,
+        html: crmDesignStartedTemplate({
+          crmName: crmUser.username,
+          jobNo: job_no,
+          clientName: job.client_name,
+          designerName: job.assigned_designer || "Designer",
+          estimatedCompletionTime: assignment.estimated_completion_time,
+          dashboardUrl: `${process.env.LEADS_URL}/job-fms/crm`,
+        }),
+        attachments,
+      });
+    }
+
+    console.log("Emails sent successfully for action designer Started the task.");
+
   } catch (err) {
     await t.rollback();
     console.error(err);
@@ -209,6 +292,7 @@ export const designerPauseTask = async (req, res) => {
         job_no,
         performed_by_id: req.user?.id || null,
         action: "Designer Pause Task",
+        meta: { jobDesignTimeLog  },
       },
     );
 
@@ -249,6 +333,7 @@ export const designerResumeTask = async (req, res) => {
         job_no,
         performed_by_id: req.user?.id || null,
         action: "Designer Resume Task",
+        meta: { assignment },
       },
     );
 
@@ -309,6 +394,7 @@ export const designerEndTask = async (req, res) => {
     // Update JobCard ->
     const job = await JobCard.findByPk(job_no);
     job.status = "sent_for_approval";
+    job.current_stage = "sent_for_approval"; 
     await job.save({ transaction: t });
 
      // Track Stage
@@ -338,8 +424,64 @@ export const designerEndTask = async (req, res) => {
     );
 
     await t.commit();
+    res.json({ 
+      message: "Task completed", 
+      assignment 
+    });
 
-    res.json({ message: "Task completed", assignment });
+
+    // Fetch CRM
+    const crmUser = await User.findOne({
+      where: {
+        username: job.order_handled_by,
+      },
+    });
+
+    // Fetch all Process Coordinators
+    const coordinators = await User.findAll({
+      where: { department: "Process Coordinator" },
+    });
+
+    // Prepare logo attachment safely
+    const attachments = [
+      {
+        filename: "epo-logo.jpg",
+        path: path.resolve("assets/epo-logo.jpg"),
+        cid: "epo-logo",
+      },
+    ];
+    
+    // 📧 Notify Process Coordinators
+    await sendMailForFMS({
+      to: coordinators.map((u) => u.email),
+      subject: `Design Completed | Job #${job_no}`,
+      html: processCoordinatorDesignCompletedTemplate({
+        jobNo: job_no,
+        clientName: job.client_name,
+        designerName: job.assigned_designer || "Designer",
+        completedAt: new Date().toLocaleString(),
+        dashboardUrl: `${process.env.LEADS_URL}/job-fms/process-coordinator`,
+      }),
+      attachments,
+    });
+
+    // 📧 Notify CRM
+    if (crmUser?.email) {
+      await sendMailForFMS({
+        to: crmUser.email,
+        subject: `Design Completed – Send for Client Approval | Job #${job_no}`,
+        html: crmDesignCompletedTemplate({
+          crmName: crmUser.username,
+          jobNo: job_no,
+          clientName: job.client_name,
+          designerName: job.assigned_designer || "Designer",
+          dashboardUrl: `${process.env.LEADS_URL}/job-fms/crm`,
+        }),
+        attachments,
+      });
+    }
+    console.log("Emails sent successfully for action designer End the task.");
+
   } catch (err) {
     await t.rollback();
     console.error(err);

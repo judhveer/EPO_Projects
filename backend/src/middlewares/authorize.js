@@ -16,9 +16,10 @@ export function requireBossOrAdmin(req, res, next) {
 export function requirePermission(perm){
     return (req, res, next) => {
         if(can(req.user, perm)){
-            console.log(`Permission granted: ${perm} for user ${req.user?.id}`);
+            console.log(`Permission granted: ${perm} for user ${req.user?.username}`);
             return next();
         }
+        console.log(`Permission denied: ${perm} for user ${req.user?.username} with department ${req.user?.department} and role ${req.user?.role}`);
         return res.status(403).json({
             message: `You don't have permission to access this resource. Forbidden: ${perm}`,
             status: false,

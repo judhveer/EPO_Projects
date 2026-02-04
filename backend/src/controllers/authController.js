@@ -4,6 +4,8 @@ import { authConfig } from "../config/auth.js";
 import models from "../models/index.js";
 import { sendMailForCreateUser } from "../email/sendMail.js";
 import { userCreatedEmail } from "../email/templates/emailTemplates.js";
+import path from "path";
+
 
 const { User } = models;
 
@@ -174,6 +176,13 @@ export async function createUser(req, res) {
         subject,
         text,
         html,
+        attachments: [
+          {
+            filename: "epo-logo.jpg",
+            path: path.resolve("assets/epo-logo.jpg"),
+            cid: "epo-logo",
+          },
+        ],
       });
     } catch (mailError) {
       // IMPORTANT: do not fail user creation if mail fails

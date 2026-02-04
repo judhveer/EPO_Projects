@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import api from "../../lib/api.js";
 import { motion, AnimatePresence } from "framer-motion";
+import { DateTime } from "luxon";
 
 export default function DesignerTable({ refresh }) {
   const [jobs, setJobs] = useState([]);
@@ -210,8 +211,8 @@ export default function DesignerTable({ refresh }) {
                 },
                 tempEstimatedCompletionTime: undefined, // cleanup
               }
-            : j
-        )
+            : j,
+        ),
       );
     } catch (err) {
       console.error("Failed to save estimated completion time", err);
@@ -233,9 +234,16 @@ export default function DesignerTable({ refresh }) {
           const assignment = job.assignments?.[0];
           if (!assignment) return null;
 
+          const latestApproval = job.clientApprovals?.[0];
+          console.log("clientApprovals: ", job.clientApprovals?.[0]);
+          const isRework = job.clientApprovals?.[0]?.status === "changes_requested";
+
           return {
             ...job,
             assignment,
+            // 👇 THIS IS THE KEY LINE
+            instructions: latestApproval?.client_feedback ? latestApproval.client_feedback : job.instructions,
+            isRework,
           };
         })
         .filter(Boolean);
@@ -390,9 +398,15 @@ export default function DesignerTable({ refresh }) {
                 >
                   <td className="border p-1 sm:p-2 sticky left-0 bg-white z-20 text-center font-bold text-blue-700 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                     {job.job_no}
+                    {job.isRework && (
+                      <div className="text-[11px] text-red-800 italic mt-1">
+                        {"Redesign"}
+                      </div>
+                    )}
+
                   </td>
                   <td className="border p-1 sm:p-2">
-                    {new Date(job.createdAt).toLocaleString()}
+                    {DateTime.fromJSDate(new Date(job.createdAt)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border p-1 sm:p-2">{job.client_name}</td>
                   <td className="border p-1 sm:p-2 ">{job.order_type}</td>
@@ -401,7 +415,7 @@ export default function DesignerTable({ refresh }) {
                     {job.execution_location}
                   </td>
                   <td className="border p-1 sm:p-2 font-semibold text-blue-600 hover:text-white">
-                    {new Date(job.delivery_date).toLocaleString()}
+                    {DateTime.fromJSDate(new Date(job.delivery_date)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border-r border-gray-200 px-2  max-w-[500px]">
                     {job.delivery_location}
@@ -412,7 +426,7 @@ export default function DesignerTable({ refresh }) {
                     )}
                   </td>
                   <td className="border p-1 sm:p-2 ">
-                    {new Date(job.proof_date).toLocaleDateString()}
+                    {job.proof_date ? DateTime.fromJSDate(new Date(job.proof_date)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy") : "Not Set"}
                   </td>
                   <td className="border p-1 sm:p-2 min-w-[150px] text-center">
                     <span
@@ -428,7 +442,7 @@ export default function DesignerTable({ refresh }) {
                   <td className="border p-1 sm:p-2">{job.instructions}</td>
                   <td className="border p-1 sm:p-2">{job.no_of_files}</td>
                   <td className="border p-1 sm:p-2">
-                    {new Date(job.job_completion_deadline).toLocaleString()}
+                    {job.job_completion_deadline ? DateTime.fromJSDate(new Date(job.job_completion_deadline)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a") : "Not Set"}
                   </td>
 
                   <td className="border p-1 sm:p-2 text-center text-gray-500 text-xs italic hover:text-white cursor-default">
@@ -453,7 +467,7 @@ export default function DesignerTable({ refresh }) {
                       type="datetime-local"
                       value={toDateTimeLocal(
                         job.assignment.estimated_completion_time ??
-                          job.tempEstimatedCompletionTime
+                          job.tempEstimatedCompletionTime,
                       )}
                       onChange={(e) => {
                         if (job.assignment.estimated_completion_time) return;
@@ -467,8 +481,8 @@ export default function DesignerTable({ refresh }) {
                                   ...j,
                                   tempEstimatedCompletionTime: val, // 👈 TEMP ONLY
                                 }
-                              : j
-                          )
+                              : j,
+                          ),
                         );
                       }}
                       onBlur={(e) => {
@@ -483,7 +497,7 @@ export default function DesignerTable({ refresh }) {
 
                         blurTimeoutRef.current = setTimeout(() => {
                           console.log(
-                            "backend api called for blue even estimatedCompletionTimes"
+                            "backend api called for blue even estimatedCompletionTimes",
                           );
                           estimatedCompletionTimes(job.job_no, val);
                         }, 500);
@@ -508,7 +522,8 @@ export default function DesignerTable({ refresh }) {
 
                   {/* Timer Column */}
                   <td className="border p-1 sm:p-2 text-center font-mono text-blue-600 text-lg sticky right-[100px] bg-white z-40 min-w-[160px] group-hover:bg-blue-500 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
-                    {job.status === "assigned_to_designer" && (
+                    {(job.status === "assigned_to_designer" ||
+                      job.status === "client_changes") && (
                       <span className="text-gray-500 text-sm">Not Started</span>
                     )}
 
@@ -527,7 +542,8 @@ export default function DesignerTable({ refresh }) {
                   {/* Action Column */}
                   <td className="border p-1 sm:p-2 text-center space-y-2 sticky right-0 bg-white z-40 min-w-[100px] group-hover:bg-blue-500 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                     {/* Start Button */}
-                    {job.status === "assigned_to_designer" && (
+                    {(job.status === "assigned_to_designer" ||
+                      job.status === "client_changes") && (
                       <button
                         disabled={!job.assignment.estimated_completion_time}
                         onClick={() => handleStart(job)}

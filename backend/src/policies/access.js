@@ -19,7 +19,7 @@ export function can(user, perm) {
       return (dept === 'EA');
 
     case 'sales.dashboard.view':
-      return isSalesDept(dept);
+      return isSalesDept(dept) || dept === 'CRM';
 
     case 'sales.research.view':
       return (isSalesDept(dept) && SALES_ROLES.has(role));
@@ -42,9 +42,9 @@ export function can(user, perm) {
       return (isSalesDept(dept) && role === 'EXECUTIVE');
 
     case 'sales.crm.view':
-      return (isSalesDept(dept) && (role === 'CRM' || role === 'COORDINATOR'));
+      return dept === 'CRM' || (isSalesDept(dept) && (role === 'CRM' || role === 'COORDINATOR')) ;
     case 'sales.crm.mutate':
-      return (isSalesDept(dept) && role === 'CRM');
+      return dept === 'CRM' || (isSalesDept(dept) && role === 'CRM') || dept === 'CRM';
 
     default:
       return false;

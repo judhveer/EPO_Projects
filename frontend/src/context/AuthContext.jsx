@@ -12,12 +12,16 @@ export function AuthProvider({ children }) {
         async function boot() {
             try {
                 if (!localStorage.getItem('token')) {
+                    setUser(null);
                     return;
                 }
+                setAuthToken(localStorage.getItem('token'));
                 const { data } = await api.get('/api/auth/me');
                 setUser(data.user);
             }
-            catch { }
+            catch(error) {
+                setUser(null);
+             }
             finally {
                 setLoading(false);
             }

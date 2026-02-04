@@ -38,7 +38,7 @@ export default function Login() {
 
                     {/* Logo + Title */}
                     <div className="mb-8">
-                        <img src="/logo.png" alt="Logo" />
+                        <img src="/logo.jpg" alt="Logo" />
                     </div>
 
                     {/* Heading */}
