@@ -21,7 +21,15 @@ import { processCoordinatorApprovalSentTemplate, clientApprovedTemplate, clientC
 export const getAllJobsForCRM = async (req, res) => {
   console.log("Get All Jobs for CRM called by user:", req.user?.username);
   try {
-    const jobCards = await JobCard.findAndCountAll({
+
+    const total = await JobCard.count({
+      where: {
+        status: ["sent_for_approval", "awaiting_client_response"],
+        order_handled_by: req.user?.username,
+      },
+    });
+
+    const jobCards = await JobCard.findAll({
       where: {
         status: ["sent_for_approval", "awaiting_client_response"],
         order_handled_by: req.user?.username,
@@ -54,13 +62,16 @@ export const getAllJobsForCRM = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    if (!jobCards || jobCards.count === 0) {
-      return res.status(404).json({ message: "No jobs found for CRM" });
+    if (!jobCards) {
+      return res.status(404).json({ 
+        total,
+        message: "No jobs found for CRM" 
+      });
     }
 
     return res.status(200).json({
-      total: jobCards.count,
-      data: jobCards.rows,
+      total,
+      data: jobCards,
     });
   } catch (error) {
     console.error("Error fetching jobs for CRM:", error);

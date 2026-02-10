@@ -22,7 +22,16 @@ import { processCoordinatorDesignCompletedTemplate, crmDesignCompletedTemplate, 
 export const getAllJobsForDesginer = async (req, res) => {
   console.log("getAllJobsForDesginer called:");
   try {
-    const jobCards = await JobCard.findAndCountAll({
+
+    const total = await JobCard.count({
+      where: {
+        status: ["assigned_to_designer", "design_in_progress", "client_changes"],
+        assigned_designer: req.user?.username,
+      },
+    });
+
+
+    const jobCards = await JobCard.findAll({
       where: {
         status: ["assigned_to_designer", "design_in_progress", "client_changes"],
         assigned_designer: req.user?.username,
@@ -55,7 +64,7 @@ export const getAllJobsForDesginer = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    if(!jobCards || jobCards.count === 0) {
+    if(!jobCards) {
       return res.status(404).json({
         total: 0,
         data: [],
@@ -64,8 +73,8 @@ export const getAllJobsForDesginer = async (req, res) => {
     }
 
     return res.status(200).json({
-      total: jobCards.count,
-      data: jobCards.rows,
+      total,
+      data: jobCards,
     });
   } catch (error) {
     console.error("Error fetching jobs for Process Coordinator:", error);

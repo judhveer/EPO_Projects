@@ -29,7 +29,7 @@ export const getAllJobsForProcessCoordinator = async (req, res) => {
 
     res.json({
       total,
-      data: jobCards.rows,
+      data: jobCards,
     });
   } catch (error) {
     console.error("Error fetching jobs for Process Coordinator:", error);

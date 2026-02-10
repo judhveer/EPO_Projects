@@ -156,7 +156,7 @@ export default function ProcessCoordinatorTable() {
 
         {/* TOTAL JOBS TAG */}
         <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full">
-          <span className="text-xs text-blue-700 font-medium">Total Jobs</span>
+          <span className="text-xs text-blue-700 font-medium">Total Pending Jobs:</span>
           <span className="text-sm font-bold text-blue-800">{totalJobs}</span>
         </div>
       </div>

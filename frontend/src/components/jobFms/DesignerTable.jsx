@@ -26,6 +26,7 @@ export default function DesignerTable({ refresh }) {
   const endIdx = startIdx + limit;
   const paginatedJobs = jobs.slice(startIdx, endIdx);
   const totalPages = Math.ceil(jobs.length / limit);
+  const [totalJobs, setTotalJobs] = useState(0);
 
   const getTimerKey = (jobNo) => `designer_timer_${jobNo}`;
 
@@ -236,13 +237,16 @@ export default function DesignerTable({ refresh }) {
 
           const latestApproval = job.clientApprovals?.[0];
           console.log("clientApprovals: ", job.clientApprovals?.[0]);
-          const isRework = job.clientApprovals?.[0]?.status === "changes_requested";
+          const isRework =
+            job.clientApprovals?.[0]?.status === "changes_requested";
 
           return {
             ...job,
             assignment,
             // 👇 THIS IS THE KEY LINE
-            instructions: latestApproval?.client_feedback ? latestApproval.client_feedback : job.instructions,
+            instructions: latestApproval?.client_feedback
+              ? latestApproval.client_feedback
+              : job.instructions,
             isRework,
           };
         })
@@ -251,6 +255,7 @@ export default function DesignerTable({ refresh }) {
       console.log("Fetched jobs for designer:", normalized);
 
       setJobs(normalized);
+      setTotalJobs(res.data.total || normalized.length);
     } catch (err) {
       console.error("Failed to fetch jobs:", err);
     } finally {
@@ -347,6 +352,13 @@ export default function DesignerTable({ refresh }) {
         <h2 className="text-2xl font-bold text-blue-700">
           🎨 Designer Dashboard
         </h2>
+        {/* TOTAL JOBS TAG */}
+        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full">
+          <span className="text-xs text-blue-700 font-medium">
+            Total Pending Jobs:
+          </span>
+          <span className="text-sm font-bold text-blue-800">{totalJobs}</span>
+        </div>
       </div>
 
       {/* ✅ Table */}
@@ -403,10 +415,11 @@ export default function DesignerTable({ refresh }) {
                         {"Redesign"}
                       </div>
                     )}
-
                   </td>
                   <td className="border p-1 sm:p-2">
-                    {DateTime.fromJSDate(new Date(job.createdAt)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")}
+                    {DateTime.fromJSDate(new Date(job.createdAt))
+                      .setZone("Asia/Kolkata")
+                      .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border p-1 sm:p-2">{job.client_name}</td>
                   <td className="border p-1 sm:p-2 ">{job.order_type}</td>
@@ -415,7 +428,9 @@ export default function DesignerTable({ refresh }) {
                     {job.execution_location}
                   </td>
                   <td className="border p-1 sm:p-2 font-semibold text-blue-600 hover:text-white">
-                    {DateTime.fromJSDate(new Date(job.delivery_date)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")}
+                    {DateTime.fromJSDate(new Date(job.delivery_date))
+                      .setZone("Asia/Kolkata")
+                      .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border-r border-gray-200 px-2  max-w-[500px]">
                     {job.delivery_location}
@@ -426,7 +441,11 @@ export default function DesignerTable({ refresh }) {
                     )}
                   </td>
                   <td className="border p-1 sm:p-2 ">
-                    {job.proof_date ? DateTime.fromJSDate(new Date(job.proof_date)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy") : "Not Set"}
+                    {job.proof_date
+                      ? DateTime.fromJSDate(new Date(job.proof_date))
+                          .setZone("Asia/Kolkata")
+                          .toFormat("dd LLL yyyy")
+                      : "Not Set"}
                   </td>
                   <td className="border p-1 sm:p-2 min-w-[150px] text-center">
                     <span
@@ -442,7 +461,13 @@ export default function DesignerTable({ refresh }) {
                   <td className="border p-1 sm:p-2">{job.instructions}</td>
                   <td className="border p-1 sm:p-2">{job.no_of_files}</td>
                   <td className="border p-1 sm:p-2">
-                    {job.job_completion_deadline ? DateTime.fromJSDate(new Date(job.job_completion_deadline)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a") : "Not Set"}
+                    {job.job_completion_deadline
+                      ? DateTime.fromJSDate(
+                          new Date(job.job_completion_deadline),
+                        )
+                          .setZone("Asia/Kolkata")
+                          .toFormat("dd LLL yyyy, hh:mm a")
+                      : "Not Set"}
                   </td>
 
                   <td className="border p-1 sm:p-2 text-center text-gray-500 text-xs italic hover:text-white cursor-default">

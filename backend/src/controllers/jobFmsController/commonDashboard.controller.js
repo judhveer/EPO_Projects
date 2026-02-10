@@ -199,7 +199,9 @@ export const getDashboardJobDetails = async (req, res) => {
     });
 
     if (!job) {
-      return res.status(404).json({ message: "Job not found" });
+      return res.status(404).json({ 
+        message: "Job not found" 
+      });
     }
 
     res.json(job);

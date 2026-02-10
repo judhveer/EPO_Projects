@@ -25,11 +25,11 @@ export default function CRMTable({ refresh }) {
 
   const [err, setErr] = useState("");
 
-
   const startIdx = (page - 1) * limit;
   const endIdx = startIdx + limit;
   const paginatedJobs = jobs.slice(startIdx, endIdx);
   const totalPages = Math.ceil(jobs.length / limit);
+  const [totalJobs, setTotalJobs] = useState(0);
 
   const showPopup = (message, type = "success") => {
     setPopup({
@@ -43,7 +43,6 @@ export default function CRMTable({ refresh }) {
     }, 2000);
   };
 
-
   // 🔄 Fetch CRM jobs
   const fetchJobs = async () => {
     setLoading(true);
@@ -56,18 +55,23 @@ export default function CRMTable({ refresh }) {
         .map((job) => {
           const latestApproval = job.clientApprovals?.[0];
           console.log("jobcards: ", jobCards);
-          const isRework = job.clientApprovals?.[0]?.status === "changes_requested" || job.clientApprovals?.[0]?.instance > 1;
+          const isRework =
+            job.clientApprovals?.[0]?.status === "changes_requested" ||
+            job.clientApprovals?.[0]?.instance > 1;
 
           return {
             ...job,
             // 👇 THIS IS THE KEY LINE
-            instructions: latestApproval?.client_feedback ? latestApproval.client_feedback : job.instructions,
+            instructions: latestApproval?.client_feedback
+              ? latestApproval.client_feedback
+              : job.instructions,
             isRework,
           };
         })
         .filter(Boolean);
 
       setJobs(normalized);
+      setTotalJobs(res.data.total || normalized.length);
     } catch (err) {
       console.error("Failed to fetch CRM jobs", err);
     } finally {
@@ -97,7 +101,10 @@ export default function CRMTable({ refresh }) {
   const markSentToClient = async (job_no) => {
     try {
       await api.patch(`/api/fms/crm/${job_no}/sent-to-client`);
-      showPopup("📤 Job successfully sent to client, wait for the client response.", "success");
+      showPopup(
+        "📤 Job successfully sent to client, wait for the client response.",
+        "success",
+      );
       fetchJobs();
     } catch (err) {
       console.error(err);
@@ -113,7 +120,10 @@ export default function CRMTable({ refresh }) {
     try {
       if (state.decision === "approved") {
         await api.patch(`/api/fms/crm/${job.job_no}/approved`);
-        showPopup("✅ Job approved successfully! Ready for Production.", "success");
+        showPopup(
+          "✅ Job approved successfully! Ready for Production.",
+          "success",
+        );
       }
 
       if (state.decision === "client_changes") {
@@ -125,7 +135,10 @@ export default function CRMTable({ refresh }) {
         await api.patch(`/api/fms/crm/${job.job_no}/client-changes`, {
           client_feedback: state.feedback,
         });
-        showPopup("Client changes recorded. Job reassigned to the same designer for redesign.", "info");
+        showPopup(
+          "Client changes recorded. Job reassigned to the same designer for redesign.",
+          "info",
+        );
       }
 
       fetchJobs();
@@ -155,8 +168,8 @@ export default function CRMTable({ refresh }) {
                 popup.type === "success"
                   ? "border-green-200"
                   : popup.type === "info"
-                  ? "border-yellow-300"
-                  : "border-red-300"
+                    ? "border-yellow-300"
+                    : "border-red-300"
               }`}
           >
             <h3
@@ -165,8 +178,8 @@ export default function CRMTable({ refresh }) {
                   popup.type === "success"
                     ? "text-green-700"
                     : popup.type === "info"
-                    ? "text-yellow-700"
-                    : "text-red-700"
+                      ? "text-yellow-700"
+                      : "text-red-700"
                 }`}
             >
               {popup.type === "success" && "🎉 Success"}
@@ -185,11 +198,19 @@ export default function CRMTable({ refresh }) {
         </div>
       )}
 
-    
-
-      <h2 className="text-2xl font-bold text-blue-700 mb-4">
-        📋 CRM Approval Dashboard
-      </h2>
+      {/* 🎛️ Filter Toggle Button */}
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold text-blue-700">
+          📋 CRM Approval Dashboard
+        </h2>
+        {/* TOTAL JOBS TAG */}
+        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full">
+          <span className="text-xs text-blue-700 font-medium">
+            Total Pending Jobs:
+          </span>
+          <span className="text-sm font-bold text-blue-800">{totalJobs}</span>
+        </div>
+      </div>
 
       {/* TABLE */}
       <div className="relative overflow-auto border rounded-lg shadow max-h-[80vh]">
@@ -249,7 +270,9 @@ export default function CRMTable({ refresh }) {
                     )}
                   </td>
                   <td className="border p-1 sm:p-2">
-                    {DateTime.fromJSDate(new Date(job.createdAt)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")}
+                    {DateTime.fromJSDate(new Date(job.createdAt))
+                      .setZone("Asia/Kolkata")
+                      .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border p-2">{job.client_name}</td>
                   <td className="border p-2">{job.client_type}</td>
@@ -262,7 +285,9 @@ export default function CRMTable({ refresh }) {
                     {job.execution_location}
                   </td>
                   <td className="border p-1 sm:p-2 font-semibold text-blue-600 hover:text-white">
-                     {DateTime.fromJSDate(new Date(job.delivery_date)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")}
+                    {DateTime.fromJSDate(new Date(job.delivery_date))
+                      .setZone("Asia/Kolkata")
+                      .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border-r border-gray-200 px-2  max-w-[500px]">
                     {job.delivery_location}
@@ -273,7 +298,10 @@ export default function CRMTable({ refresh }) {
                     )}
                   </td>
                   <td className="border p-1 sm:p-2 ">
-                    {job.proof_date && ( DateTime.fromJSDate(new Date(job.proof_date)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy") )}
+                    {job.proof_date &&
+                      DateTime.fromJSDate(new Date(job.proof_date))
+                        .setZone("Asia/Kolkata")
+                        .toFormat("dd LLL yyyy")}
                   </td>
 
                   <td className="border p-1 sm:p-2 min-w-[150px] text-center">
@@ -300,15 +328,21 @@ export default function CRMTable({ refresh }) {
                         job.payment_status === "Paid"
                           ? "bg-green-100 text-green-700"
                           : job.payment_status === "Half Paid"
-                          ? "bg-yellow-100 text-yellow-700"
-                          : "bg-red-100 text-red-700"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-red-100 text-red-700"
                       }`}
                     >
                       {job.payment_status}
                     </span>
                   </td>
                   <td className="border p-1 sm:p-2">
-                    {job.job_completion_deadline ? ( DateTime.fromJSDate(new Date(job.job_completion_deadline)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a") ) : "Not Set"}
+                    {job.job_completion_deadline
+                      ? DateTime.fromJSDate(
+                          new Date(job.job_completion_deadline),
+                        )
+                          .setZone("Asia/Kolkata")
+                          .toFormat("dd LLL yyyy, hh:mm a")
+                      : "Not Set"}
                   </td>
 
                   <td className="border p-1 sm:p-2 text-center text-gray-500 text-xs italic hover:text-white cursor-default">
