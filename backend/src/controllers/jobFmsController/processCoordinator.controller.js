@@ -13,7 +13,14 @@ import path from "path";
 // Get all jobs for Process Coordinator
 export const getAllJobsForProcessCoordinator = async (req, res) => {
   try {
-    const jobCards = await JobCard.findAndCountAll({
+
+    const total = await JobCard.count({
+      where: {
+        status: "coordinator_review",
+      },
+    })
+
+    const jobCards = await JobCard.findAll({
       where: {
         status: "coordinator_review",
       },
@@ -21,7 +28,7 @@ export const getAllJobsForProcessCoordinator = async (req, res) => {
     });
 
     res.json({
-      total: jobCards.count,
+      total,
       data: jobCards.rows,
     });
   } catch (error) {

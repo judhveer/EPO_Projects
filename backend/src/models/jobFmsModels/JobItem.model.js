@@ -109,6 +109,9 @@ export default (sequelize) => {
     {
       tableName: "jobfms_job_items",
       underscored: true,
+      indexes: [
+        { fields: ["job_no"] },
+      ]
     }
   );
 

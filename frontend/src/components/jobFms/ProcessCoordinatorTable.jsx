@@ -1,4 +1,10 @@
-import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import React, {
+  useEffect,
+  useState,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
 import api from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { DateTime } from "luxon";
@@ -17,18 +23,27 @@ export default function ProcessCoordinatorTable() {
   const [err, setErr] = useState("");
   const [assigning, setAssigning] = useState(false);
 
+  // 📄 Pagination
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
+
+  const startIdx = (page - 1) * limit;
+  const endIdx = startIdx + limit;
+  const paginatedJobs = jobs.slice(startIdx, endIdx);
+  const totalPages = Math.ceil(jobs.length / limit);
+
   const assignLock = useRef(false);
-
-
-  // const dropdownRef = useRef(null);
+  const [totalJobs, setTotalJobs] = useState(0);
 
   // Load jobs
   const fetchJobs = async (signal) => {
-    try{
-      const { data } = await api.get("/api/fms/process-coordinator/jobs", { signal } );  
+    try {
+      const { data } = await api.get("/api/fms/process-coordinator/jobs", {
+        signal,
+      });
       setJobs(Array.isArray(data) ? data : data.data || data.jobCards || []);
-    }
-    catch(error){
+      setTotalJobs(data.total);
+    } catch (error) {
       if (error.name === "CanceledError") return;
       console.error("Failed to fetch jobs", error);
       setErr("Unable to load jobs");
@@ -37,13 +52,13 @@ export default function ProcessCoordinatorTable() {
 
   // Load designers with status
   const fetchDesigners = async (signal) => {
-    try{
+    try {
       const { data } = await api.get(
-        "/api/fms/process-coordinator/designers/status",  { signal }
+        "/api/fms/process-coordinator/designers/status",
+        { signal },
       );
       setDesigners(data);
-    }
-    catch(error){
+    } catch (error) {
       if (error.name === "CanceledError") return;
       console.error("Failed to fetch designers", error);
       setErr("Unable to load designers");
@@ -59,17 +74,16 @@ export default function ProcessCoordinatorTable() {
       fetchJobs(controller.signal),
       fetchDesigners(controller.signal),
     ]).finally(() => {
-      if(isMounted){
+      if (isMounted) {
         setLoading(false);
-      } 
+      }
     });
 
     return () => {
       isMounted = false;
-      controller.abort();   // cancel all in-flight requests
-    }
+      controller.abort(); // cancel all in-flight requests
+    };
   }, []);
-
 
   const assignDesigner = async (job_no, designer_id) => {
     if (!job_no || !designer_id) return;
@@ -82,9 +96,12 @@ export default function ProcessCoordinatorTable() {
     // setAssigning(true);
 
     try {
-      await api.patch(`/api/fms/process-coordinator/${job_no}/assign`, 
-        { designer_id }, { signal: controller.signal } );
-      
+      await api.patch(
+        `/api/fms/process-coordinator/${job_no}/assign`,
+        { designer_id },
+        { signal: controller.signal },
+      );
+
       setErr("");
       setSuccessMsg("✅ Job Assigned to Designer successfully!");
       setShowSuccessPopup(true);
@@ -107,7 +124,6 @@ export default function ProcessCoordinatorTable() {
       setAssigning(false);
     }
   };
-
 
   const designerMap = React.useMemo(() => {
     const map = new Map();
@@ -133,11 +149,19 @@ export default function ProcessCoordinatorTable() {
         </div>
       )}
 
-      <h2 className="text-2xl font-bold text-blue-700 mb-4">
-        🧑‍💼 Process Coordinator Dashboard
-      </h2>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold text-blue-700">
+          🧑‍💼 Process Coordinator Dashboard
+        </h1>
 
-      <div className="relative overflow-auto border rounded-lg shadow max-h-[80vh]">
+        {/* TOTAL JOBS TAG */}
+        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full">
+          <span className="text-xs text-blue-700 font-medium">Total Jobs</span>
+          <span className="text-sm font-bold text-blue-800">{totalJobs}</span>
+        </div>
+      </div>
+
+      <div className="hidden md:block relative overflow-auto border rounded-lg shadow max-h-[80vh]">
         <table className="w-full text-xs border-collapse border border-gray-300">
           <thead className="sticky top-0 bg-blue-700 text-white">
             <tr>
@@ -158,8 +182,7 @@ export default function ProcessCoordinatorTable() {
           </thead>
 
           <tbody>
-
-            {jobs.length === 0 && (
+            {paginatedJobs.length === 0 && (
               <tr>
                 <td colSpan="11" className="text-center p-4 text-gray-500">
                   No jobs available
@@ -167,10 +190,7 @@ export default function ProcessCoordinatorTable() {
               </tr>
             )}
 
-            {jobs.map((job) => {
-              // const assignedDesigner = designers.find(
-              //   (d) => d.name === job.assigned_designer
-              // );
+            {paginatedJobs.map((job) => {
               const assignedDesigner = designerMap.get(job.assigned_designer);
 
               return (
@@ -180,7 +200,9 @@ export default function ProcessCoordinatorTable() {
                   </td>
                   <td className="border p-2">
                     {job.createdAt
-                      ? DateTime.fromJSDate(new Date(job.createdAt)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")
+                      ? DateTime.fromJSDate(new Date(job.createdAt))
+                          .setZone("Asia/Kolkata")
+                          .toFormat("dd LLL yyyy, hh:mm a")
                       : "-"}
                   </td>
                   <td className="border p-2">{job.client_name}</td>
@@ -188,7 +210,11 @@ export default function ProcessCoordinatorTable() {
                   <td className="border p-2">{job.order_handled_by}</td>
                   <td className="border p-2">{job.execution_location}</td>
                   <td className="border p-2">
-                    {job.delivery_date ? DateTime.fromJSDate(new Date(job.delivery_date)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a") : "-"}
+                    {job.delivery_date
+                      ? DateTime.fromJSDate(new Date(job.delivery_date))
+                          .setZone("Asia/Kolkata")
+                          .toFormat("dd LLL yyyy, hh:mm a")
+                      : "-"}
                   </td>
                   {/* <td className="border p-2">{job.delivery_location}</td> */}
                   <td className="border-b px-2  max-w-[500px]">
@@ -222,6 +248,49 @@ export default function ProcessCoordinatorTable() {
             })}
           </tbody>
         </table>
+
+        {/* 📄 Sticky Pagination Controls */}
+        <div className="sticky bottom-0 left-0 right-0 bg-gray-50 backdrop-blur-sm border-t border-gray-300 p-3 flex justify-between items-center z-30 shadow-md">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-700">Rows per page:</label>
+            <select
+              value={limit}
+              onChange={(e) => {
+                setLimit(Number(e.target.value));
+                setPage(1); // reset page
+              }}
+              className="border rounded-md p-1 text-sm"
+            >
+              {[10, 25, 50, 100].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm">
+            <button
+              disabled={page === 1}
+              onClick={() => setPage((p) => Math.max(p - 1, 1))}
+              className="px-2 py-1 border rounded disabled:opacity-50 hover:bg-gray-100"
+            >
+              ⬅ Prev
+            </button>
+
+            <span className="text-gray-700">
+              Page {page} of {totalPages || 1}
+            </span>
+
+            <button
+              disabled={page === totalPages || totalPages === 0}
+              onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+              className="px-2 py-1 border rounded disabled:opacity-50 hover:bg-gray-100"
+            >
+              Next ➡
+            </button>
+          </div>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -257,12 +326,15 @@ export default function ProcessCoordinatorTable() {
               <div className="space-y-3">
                 {designers.map((designer) => (
                   <button
-                    disabled={assigning || designer.name === selectedJobForAssign?.assigned_designer}
+                    disabled={
+                      assigning ||
+                      designer.name === selectedJobForAssign?.assigned_designer
+                    }
                     key={designer.designer_id}
                     onClick={() => {
                       assignDesigner(
                         selectedJobForAssign.job_no,
-                        designer.designer_id
+                        designer.designer_id,
                       );
                     }}
                     className="w-full text-left p-4 border rounded-lg hover:bg-blue-200 transition shadow-sm cursor-pointer"
@@ -305,7 +377,13 @@ export default function ProcessCoordinatorTable() {
                     {designer.status === "active" && (
                       <div className="text-xs text-red-600">
                         Free at:{" "}
-                        {designer.expected_free_time ? DateTime.fromJSDate(new Date(designer.expected_free_time)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a") : "-"}
+                        {designer.expected_free_time
+                          ? DateTime.fromJSDate(
+                              new Date(designer.expected_free_time),
+                            )
+                              .setZone("Asia/Kolkata")
+                              .toFormat("dd LLL yyyy, hh:mm a")
+                          : "-"}
                       </div>
                     )}
                   </button>

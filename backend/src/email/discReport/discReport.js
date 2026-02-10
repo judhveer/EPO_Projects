@@ -88,12 +88,6 @@ export async function sendReportMail(name, percentages, highestTrait) {
     to: process.env.BOSS_EMAIL,
     subject: `DISC Analysis Report - ${name}`,
     html: htmlBody,
-    // attachments: [
-    //   {
-    //     filename: `DISC_Report_${name}.pdf`,
-    //     path: pdfPath
-    //   }
-    // ]
   });
 
   console.log(`📧 DISC report emailed successfully to HR for ${name}`);

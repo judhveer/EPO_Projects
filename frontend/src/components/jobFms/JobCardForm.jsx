@@ -5,7 +5,6 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import { createJobCard } from "../../lib/jobFmsApi";
 import api from "../../lib/api.js";
 import debounce from "lodash.debounce";
 import FormCard from "../../components/salesPipeline/FormCard.jsx";
@@ -102,7 +101,11 @@ export default function JobCardForm({
     };
 
     // Build job_items properly using DB values
-    const mappedItems = existingJob.items.map((item, index) => {
+
+    const safeItems = Array.isArray(existingJob?.items) ? existingJob.items : [];
+
+
+    const mappedItems = safeItems.map((item, index) => {
       return {
         ...item,
         enquiry_for: item.enquiry_for,
@@ -459,7 +462,8 @@ export default function JobCardForm({
   );
 
   const createEmptyItem = React.useCallback(() => ({
-    id:
+    id: undefined,
+    _temp_id:
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
         : Date.now().toString() + Math.random(),
@@ -546,7 +550,8 @@ export default function JobCardForm({
           onUpdated?.(); // Now close the modal AFTER showing popup
         }, 2000);
       } else {
-        const { data } = await createJobCard(payload);
+        const res = await api.post("/api/fms/jobcards", payload);
+        const data = res.data;
         setSuccessMsg("✅ Job Card created successfully!");
         setShowSuccessPopup(true);
         setOk(true);
@@ -575,6 +580,7 @@ export default function JobCardForm({
           payment_status: "",
           no_of_files: "",
           order_received_by: "",
+          is_direct_to_production: false,
           job_items: [],
         });
       }
@@ -845,7 +851,7 @@ export default function JobCardForm({
           <Field label="Delivery Address" required>
             <textarea
               name="delivery_address"
-              value={form.delivery_address}
+              value={form.delivery_address || ""}
               onChange={onChange}
               className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
               required
@@ -904,7 +910,7 @@ export default function JobCardForm({
         <Field label="Instructions">
           <textarea
             name="instructions"
-            value={form.instructions}
+            value={form.instructions || ""}
             onChange={onChange}
             className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
           />
@@ -952,7 +958,7 @@ export default function JobCardForm({
 
           {form.job_items.map((item, index) => (
             <JobItem
-              key={item.id}
+              key={item.id || item._temp_id}
               item={item}
               index={index}
               handleItemChange={handleItemChange}

@@ -1,12 +1,14 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import api from "../../lib/api.js";
 import Button from "../../components/salesPipeline/Button.jsx";
 import JobCardForm from "../jobFms/JobCardForm.jsx"; // 👈 Import your form component
 import { motion, AnimatePresence } from "framer-motion";
 import { createPortal } from "react-dom";
 import { DateTime } from "luxon";
+import JobItemsSidebar from "../../components/jobFms/commonDashboard/JobItemsSidebar";
+import DashboardFilters from "./commonDashboard/DashboardFilters.jsx";
 
-export default function JobWriterTable({ refresh }) {
+export default function JobWriterTable() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState(null); // 👈 For modal
@@ -14,6 +16,104 @@ export default function JobWriterTable({ refresh }) {
   const [confirmCancel, setConfirmCancel] = useState(null); // store job to cancel
   const [cancelling, setCancelling] = useState(false);
   const [openActionDropdown, setOpenActionDropdown] = useState(null);
+
+  const [itemSidebarJobNo, setItemSidebarJobNo] = useState(null);
+  // CRM Users
+  const [crmUsers, setCrmUsers] = useState([]);
+
+  // 📄 Pagination & Sorting
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
+  const [totalJobs, setTotalJobs] = useState(0);
+
+  const paginatedJobs = jobs; // backend already paginated
+  const totalPages = Math.ceil(totalJobs / limit);
+
+  // 🔹 Filters (backend-driven)
+  const [filters, setFilters] = useState({
+    search: "",
+    order_type: "",
+    order_handled_by: "",
+    execution_location: "",
+    payment_status: "",
+    status: "",
+    is_direct_to_production: "",
+    // client_type: "",
+    delivery_range: "",
+    delivery_from: "",
+    delivery_to: "",
+    created_range: "",
+    created_from: "",
+    created_to: "",
+  });
+
+  const cleanFilters = Object.fromEntries(
+    Object.entries(filters).filter(([_, v]) => v !== "" && v !== null),
+  );
+
+  const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
+
+  // Fetch jobs (backend pagination)
+  const fetchJobs = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/api/fms/jobcards", {
+        params: {
+          page,
+          limit,
+          ...cleanFilters,
+          search: debouncedSearch,
+        },
+      });
+      setJobs(data.data);
+      setTotalJobs(data.total || jobs.length || 0);
+    } catch (err) {
+      console.error("Failed to fetch jobs:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // fetch crms
+  const fetchCrmUsers = async () => {
+    try {
+      const { data } = await api.get("/api/users/crm");
+      setCrmUsers(data);
+    } catch (err) {
+      console.error("Failed to fetch CRM users", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchJobs();
+    setItemSidebarJobNo(null);
+  }, [
+    page,
+    limit,
+    debouncedSearch,
+    filters.status,
+    filters.order_type,
+    filters.order_handled_by,
+    filters.execution_location,
+    filters.payment_status,
+    filters.is_direct_to_production,
+    filters.delivery_from,
+    filters.delivery_to,
+    filters.created_from,
+    filters.created_to,
+  ]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(filters.search);
+    }, 300); // 300ms is ideal for dashboards
+
+    return () => clearTimeout(timer);
+  }, [filters.search]);
+
+  useEffect(() => {
+    fetchCrmUsers();
+  }, []);
 
   useEffect(() => {
     if (!openActionDropdown) return;
@@ -39,103 +139,6 @@ export default function JobWriterTable({ refresh }) {
     };
   }, [openActionDropdown]);
 
-  const [showItemsPanel, setShowItemsPanel] = useState(false);
-  const [selectedItems, setSelectedItems] = useState([]);
-  const [selectedJobNo, setSelectedJobNo] = useState(null);
-  // 🎛️ Filter Panel Visibility
-  const [showFilters, setShowFilters] = useState(false);
-
-  // 🔍 Filters & Search
-  const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState({
-    client_type: "",
-    order_type: "",
-    order_source: "",
-    order_handled_by: "",
-    execution_location: "",
-    deliveryStart: "",
-    deliveryEnd: "",
-    createdStart: "",
-    createdEnd: "",
-  });
-
-  // 📄 Pagination & Sorting
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(50);
-  const [sortField, setSortField] = useState("");
-  const [sortDir, setSortDir] = useState("asc");
-
-  const filteredJobs = useMemo(() => {
-    return jobs
-      .filter((job) => {
-        // 🔍 Global search
-        const searchLower = search.toLowerCase();
-        if (
-          search &&
-          !Object.values(job).join(" ").toLowerCase().includes(searchLower)
-        ) {
-          return false;
-        }
-
-        // 🎯 Dropdown filters
-        for (const key of [
-          "client_type",
-          "order_type",
-          "order_source",
-          "order_handled_by",
-          "execution_location",
-        ]) {
-          if (filters[key] && job[key] !== filters[key]) return false;
-        }
-
-        // 📅 Date range filters
-        const created = new Date(job.createdAt);
-        const delivery = new Date(job.delivery_date);
-
-        if (filters.createdStart && created < new Date(filters.createdStart))
-          return false;
-        if (filters.createdEnd && created > new Date(filters.createdEnd))
-          return false;
-
-        if (filters.deliveryStart && delivery < new Date(filters.deliveryStart))
-          return false;
-        if (filters.deliveryEnd && delivery > new Date(filters.deliveryEnd))
-          return false;
-
-        return true;
-      })
-      .sort((a, b) => {
-        if (!sortField) return 0;
-        const valA = a[sortField] ?? "";
-        const valB = b[sortField] ?? "";
-        if (sortDir === "asc") return valA > valB ? 1 : -1;
-        return valA < valB ? 1 : -1;
-      });
-  }, [jobs, search, filters, sortField, sortDir]);
-
-  const startIdx = (page - 1) * limit;
-  const endIdx = startIdx + limit;
-  const paginatedJobs = filteredJobs.slice(startIdx, endIdx);
-  const totalPages = Math.ceil(filteredJobs.length / limit);
-
-  // ✅ Fetch jobs
-  const fetchJobs = async () => {
-    setLoading(true);
-    try {
-      const { data } = await api.get("/api/fms/jobcards");
-      console.log("Fetched jobs:", data.data);
-      setJobs(Array.isArray(data) ? data : data.data || data.jobCards || []);
-    } catch (err) {
-      console.error("Failed to fetch jobs:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchJobs();
-  }, [refresh]);
-
   useEffect(() => {
     const onEsc = (e) => {
       if (e.key === "Escape") {
@@ -143,14 +146,25 @@ export default function JobWriterTable({ refresh }) {
         if (showModal) handleCloseModal();
         // Close cancel confirmation (if open)
         if (confirmCancel) setConfirmCancel(null);
+        // Close items side bar(if open)
+        if (itemSidebarJobNo) setItemSidebarJobNo(null);
       }
     };
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
-  }, [showModal, confirmCancel]);
+  }, [showModal, confirmCancel, itemSidebarJobNo]);
 
-  const handleEditClick = (job) => {
-    setSelectedJob(job);
+  const handleEditClick = async (job) => {
+    // 1️⃣ Fetch items for this job
+    const { data: items } = await api.get(
+      `/api/fms/common-dashboard/jobs/${job.job_no}/items`,
+    );
+    // 2️⃣ Create a NEW object (no mutation)
+    const jobWithItems = {
+      ...job,
+      items, // 👈 EXACT key JobCardForm expects
+    };
+    setSelectedJob(jobWithItems);
     setShowModal(true);
   };
 
@@ -164,27 +178,6 @@ export default function JobWriterTable({ refresh }) {
     fetchJobs(); // refresh table
   };
 
-  const handleViewItems = (job) => {
-    if (showItemsPanel && selectedJobNo === job.job_no) {
-      // Close if already open for same job
-      setShowItemsPanel(false);
-      setSelectedItems([]);
-      setSelectedJobNo(null);
-    } else {
-      // Open panel for new job
-      setSelectedItems(job.items || []);
-      setSelectedJobNo(job.job_no);
-      setShowItemsPanel(true);
-    }
-  };
-
-  if (loading)
-    return (
-      <div className="text-center py-10 text-slate-600 text-lg">
-        Loading job cards...
-      </div>
-    );
-
   return (
     <div className="">
       {/* 🎛️ Filter Toggle Button */}
@@ -192,157 +185,20 @@ export default function JobWriterTable({ refresh }) {
         <h2 className="text-2xl font-bold text-blue-700">
           📋 Job Writer Dashboard
         </h2>
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition"
-        >
-          {showFilters ? "Hide Filters ▲" : "Show Filters ▼"}
-        </button>
+
+        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full">
+          <span className="text-xs text-blue-700 font-medium">Total Jobs</span>
+          <span className="text-sm font-bold text-blue-800">{totalJobs}</span>
+        </div>
       </div>
 
-      {/* 🔍 Collapsible Filter Section */}
-      <AnimatePresence>
-        {showFilters && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="overflow-hidden"
-          >
-            <div className="p-4 bg-slate-100 rounded-lg shadow mb-4">
-              <div className="flex flex-wrap gap-3 items-center">
-                <input
-                  type="text"
-                  placeholder="🔍 Search all columns..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="border rounded-md p-2 w-64"
-                />
-
-                {/* Dropdown Filters */}
-                {[
-                  { key: "client_type", label: "Client Type" },
-                  { key: "order_type", label: "Order Type" },
-                  { key: "order_source", label: "Order Source" },
-                  { key: "order_handled_by", label: "Order Handled By" },
-                  { key: "execution_location", label: "Execution Location" },
-                ].map(({ key, label }) => (
-                  <select
-                    key={key}
-                    value={filters[key]}
-                    onChange={(e) =>
-                      setFilters((f) => ({ ...f, [key]: e.target.value }))
-                    }
-                    className="border rounded-md p-2 bg-white"
-                  >
-                    <option value="">{label}</option>
-                    {[...new Set(jobs.map((j) => j[key]).filter(Boolean))].map(
-                      (opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      )
-                    )}
-                  </select>
-                ))}
-
-                {/* Date Range Filters */}
-                <div className="flex items-center gap-2">
-                  <label className="text-sm text-gray-600">Created:</label>
-                  <input
-                    type="date"
-                    value={filters.createdStart}
-                    onChange={(e) =>
-                      setFilters((f) => ({
-                        ...f,
-                        createdStart: e.target.value,
-                      }))
-                    }
-                    className="border rounded-md p-2"
-                  />
-                  <span>to</span>
-                  <input
-                    type="date"
-                    value={filters.createdEnd}
-                    onChange={(e) =>
-                      setFilters((f) => ({ ...f, createdEnd: e.target.value }))
-                    }
-                    className="border rounded-md p-2"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <label className="text-sm text-gray-600">Delivery:</label>
-                  <input
-                    type="date"
-                    value={filters.deliveryStart}
-                    onChange={(e) =>
-                      setFilters((f) => ({
-                        ...f,
-                        deliveryStart: e.target.value,
-                      }))
-                    }
-                    className="border rounded-md p-2"
-                  />
-                  <span>to</span>
-                  <input
-                    type="date"
-                    value={filters.deliveryEnd}
-                    onChange={(e) =>
-                      setFilters((f) => ({ ...f, deliveryEnd: e.target.value }))
-                    }
-                    className="border rounded-md p-2"
-                  />
-                </div>
-
-                {/* Sorting */}
-                <select
-                  value={sortField}
-                  onChange={(e) => setSortField(e.target.value)}
-                  className="border rounded-md p-2 bg-white"
-                >
-                  <option value="">Sort By...</option>
-                  <option value="client_name">Client Name</option>
-                  <option value="createdAt">Created Date</option>
-                  <option value="delivery_date">Delivery Date</option>
-                  <option value="order_type">Order Type</option>
-                </select>
-
-                <select
-                  value={sortDir}
-                  onChange={(e) => setSortDir(e.target.value)}
-                  className="border rounded-md p-2 bg-white"
-                >
-                  <option value="asc">Ascending</option>
-                  <option value="desc">Descending</option>
-                </select>
-
-                {/* Reset Button */}
-                <button
-                  className="px-3 py-2 bg-gray-300 rounded hover:bg-gray-400"
-                  onClick={() => {
-                    setFilters({
-                      client_type: "",
-                      order_type: "",
-                      order_source: "",
-                      order_handled_by: "",
-                      execution_location: "",
-                      deliveryStart: "",
-                      deliveryEnd: "",
-                      createdStart: "",
-                      createdEnd: "",
-                    });
-                    setSearch("");
-                  }}
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Filters */}
+      <DashboardFilters
+        filters={filters}
+        setFilters={setFilters}
+        resetPage={() => setPage(1)}
+        crmUsers={crmUsers}
+      />
 
       {/* ✅ Table */}
       <div className="relative overflow-auto border rounded-lg shadow max-h-[80vh]">
@@ -382,7 +238,13 @@ export default function JobWriterTable({ refresh }) {
           </thead>
 
           <tbody>
-            {paginatedJobs.length > 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={25} className="text-center py-6 text-gray-500">
+                  Loading jobs…
+                </td>
+              </tr>
+            ) : paginatedJobs.length > 0 ? (
               paginatedJobs.map((job, index) => (
                 <tr
                   key={job.job_no}
@@ -392,15 +254,9 @@ export default function JobWriterTable({ refresh }) {
                 >
                   <td className="border p-2 sticky left-0 bg-white z-20 text-center font-bold text-blue-700">
                     {job.job_no}
-                    {job.clientApprovals?.[0]?.instance > 1 && (
-                      <div className="text-[11px] text-red-800 italic mt-1">
-                        {"Redesign"}
-                      </div>
-                    )}
                   </td>
                   <td className="border p-2">
-                    {DateTime
-                      .fromJSDate(new Date(job.createdAt))
+                    {DateTime.fromJSDate(new Date(job.createdAt))
                       .setZone("Asia/Kolkata")
                       .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
@@ -415,8 +271,7 @@ export default function JobWriterTable({ refresh }) {
                   <td className="border p-2">{job.execution_location}</td>
                   <td className="border p-2 font-semibold text-blue-600 hover:text-white">
                     {/* {new Date(job.delivery_date).toLocaleString()} */}
-                    {DateTime
-                      .fromJSDate(new Date(job.delivery_date))
+                    {DateTime.fromJSDate(new Date(job.delivery_date))
                       .setZone("Asia/Kolkata")
                       .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
@@ -430,8 +285,7 @@ export default function JobWriterTable({ refresh }) {
                   </td>
                   <td className="border p-2 ">
                     {/* {new Date(job.proof_date).toLocaleDateString()} */}
-                    {DateTime
-                      .fromJSDate(new Date(job.proof_date))
+                    {DateTime.fromJSDate(new Date(job.proof_date))
                       .setZone("Asia/Kolkata")
                       .toFormat("dd LLL yyyy")}
                   </td>
@@ -459,8 +313,8 @@ export default function JobWriterTable({ refresh }) {
                         job.payment_status === "Paid"
                           ? "bg-green-100 text-green-700"
                           : job.payment_status === "Half Paid"
-                          ? "bg-yellow-100 text-yellow-700"
-                          : "bg-red-100 text-red-700"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-red-100 text-red-700"
                       }`}
                     >
                       {job.payment_status}
@@ -472,30 +326,27 @@ export default function JobWriterTable({ refresh }) {
                         job.status === "completed"
                           ? "bg-green-100 text-green-700"
                           : job.status === "cancelled"
-                          ? "bg-gray-300 text-gray-600"
-                          : "bg-blue-100 text-blue-700"
+                            ? "bg-gray-300 text-gray-600"
+                            : "bg-blue-100 text-blue-700"
                       }`}
                     >
                       {job.status}
                     </span>
                   </td>
                   <td className="border p-2">
-                    {DateTime
-                      .fromJSDate(new Date(job.job_completion_deadline))
+                    {DateTime.fromJSDate(new Date(job.job_completion_deadline))
                       .setZone("Asia/Kolkata")
                       .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
 
-                  <td className="border p-2 text-center text-gray-500 text-xs italic">
-                    {job.items?.length || 0} items{" "}
-                    {job.items?.length > 0 && (
+                  <td className="border p-2 text-center text-xs">
+                    {job.item_count || 0} items
+                    {job.item_count > 0 && (
                       <button
-                        onClick={() => handleViewItems(job)}
+                        onClick={() => setItemSidebarJobNo(job.job_no)}
                         className="ml-2 text-blue-600 hover:text-blue-800 underline text-xs cursor-pointer"
                       >
-                        {showItemsPanel && selectedJobNo === job.job_no
-                          ? "Hide"
-                          : "View"}
+                        View
                       </button>
                     )}
                   </td>
@@ -511,7 +362,7 @@ export default function JobWriterTable({ refresh }) {
                             openActionDropdown &&
                               openActionDropdown.job_no === job.job_no
                               ? null
-                              : { job_no: job.job_no, rect }
+                              : { job_no: job.job_no, rect },
                           );
                         }}
                         className={`px-3 py-1 rounded-md text-xs font-semibold shadow-sm transition-all ${
@@ -563,7 +414,7 @@ export default function JobWriterTable({ refresh }) {
                             </button>
                           </motion.div>
                         </AnimatePresence>,
-                        document.body
+                        document.body,
                       )}
                   </td>
                 </tr>
@@ -699,7 +550,7 @@ export default function JobWriterTable({ refresh }) {
                     setCancelling(true);
                     try {
                       await api.patch(
-                        `/api/fms/jobcards/${confirmCancel.job_no}/cancel`
+                        `/api/fms/jobcards/${confirmCancel.job_no}/cancel`,
                       );
                       setConfirmCancel(null);
                       fetchJobs();
@@ -720,226 +571,10 @@ export default function JobWriterTable({ refresh }) {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {showItemsPanel && (
-          <>
-            {/* 🔹 Semi-transparent backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.5 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={() => setShowItemsPanel(false)}
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 cursor-pointer"
-            />
-
-            {/* 🔹 Slide-in Drawer */}
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", stiffness: 180, damping: 22 }}
-              className="fixed top-0 right-0 h-full w-full sm:w-[35%] bg-white shadow-2xl z-50 overflow-y-auto"
-            >
-              {/* Header */}
-              <div className="sticky top-0 bg-blue-600 text-white flex justify-between items-center p-4">
-                <h3 className="text-lg font-semibold">
-                  🧾 Items for Job #{selectedJobNo}
-                </h3>
-                <button
-                  onClick={() => setShowItemsPanel(false)}
-                  className="text-white text-2xl hover:text-gray-200"
-                >
-                  &times;
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="p-4 space-y-4">
-                {selectedItems.length === 0 ? (
-                  <p className="text-gray-500 text-sm">No items available.</p>
-                ) : (
-                  selectedItems.map((item, index) => (
-                    <div
-                      key={item.id}
-                      className="border rounded-xl p-4 shadow-sm bg-slate-50 space-y-4"
-                    >
-                      {/* HEADER */}
-                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                        <h4 className="font-semibold text-blue-700">
-                          Item {index + 1}: {item.category}
-                        </h4>
-
-                        <span
-                          className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded max-w-full sm:max-w-[220px] truncate"
-                          title={item.enquiry_for}
-                        >
-                          {item.enquiry_for || "—"}
-                        </span>
-                      </div>
-
-                      {/* BASIC DETAILS */}
-                      <div className="space-y-2 text-gray-700 text-sm">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                          <span className="font-medium shrink-0">
-                            Client Size (Finished):
-                          </span>
-                          <span
-                            className="break-words sm:truncate"
-                            title={item.size}
-                          >
-                            {item.size || "—"}
-                          </span>
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                          <span className="font-medium shrink-0">
-                            Quantity:
-                          </span>
-                          <span>
-                            {item.quantity || 0} {item.uom || ""}
-                          </span>
-                        </div>
-
-                        {item.color_scheme && (
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                            <span className="font-medium shrink-0">
-                              Color Scheme:
-                            </span>
-                            <span>{item.color_scheme}</span>
-                          </div>
-                        )}
-
-                        {item.sides && (
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                            <span className="font-medium shrink-0">Sides:</span>
-                            <span>{item.sides}</span>
-                          </div>
-                        )}
-
-                        {/* COMMON BINDING */}
-                        {item.binding_types && (
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                            <span className="font-medium shrink-0">
-                              Binding:
-                            </span>
-                            <span
-                              className="break-words sm:truncate"
-                              title={
-                                Array.isArray(item.binding_types)
-                                  ? item.binding_types.join(", ")
-                                  : item.binding_types
-                              }
-                            >
-                              {Array.isArray(item.binding_types)
-                                ? item.binding_types.join(", ")
-                                : item.binding_types}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* PAPER DETAILS */}
-                      {item.selectedPaper && (
-                        <div className="border rounded-lg p-3 bg-white space-y-2">
-                          <h6 className="font-semibold text-gray-700">
-                            🧻 Paper Details
-                          </h6>
-
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
-                            <span className="font-medium shrink-0">
-                              Paper Type:
-                            </span>
-                            <span
-                              className="break-words sm:truncate"
-                              title={item.selectedPaper.paper_name}
-                            >
-                              {item.selectedPaper.paper_name}
-                            </span>
-                          </div>
-
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
-                            <span className="font-medium shrink-0">GSM:</span>
-                            <span>{item.selectedPaper.gsm}</span>
-                          </div>
-
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
-                            <span className="font-medium shrink-0">
-                              Paper Size (Press):
-                            </span>
-                            <span
-                              className="break-words sm:truncate"
-                              title={item.selectedPaper.size_name}
-                            >
-                              {item.selectedPaper.size_name}
-                            </span>
-                          </div>
-
-                          {item.inside_pages && (
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
-                            <span className="font-medium shrink-0">
-                              Inside Pages:
-                            </span>
-                            <span>{item.inside_pages || "—"}</span>
-                          </div>
-                          )}
-
-                        </div>
-                      )}
-
-                      {/* MULTIPLE SHEET ONLY */}
-                      {item.category === "Multiple Sheet" && (
-                        <>
-                          {item.selectedCoverPaper && (
-                            <div className="border rounded-lg p-3 bg-slate-100 space-y-2">
-                              <h6 className="font-semibold text-gray-700">
-                                📘 Cover Paper Details
-                              </h6>
-
-                              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
-                                <span className="font-medium shrink-0">
-                                  Cover Type:
-                                </span>
-                                <span
-                                  className="break-words sm:truncate"
-                                  title={item.selectedCoverPaper.paper_name}
-                                >
-                                  {item.selectedCoverPaper.paper_name}
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
-                                <span className="font-medium shrink-0">
-                                  Cover GSM:
-                                </span>
-                                <span>{item.selectedCoverPaper.gsm}</span>
-                              </div>
-
-                              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
-                                <span className="font-medium shrink-0">
-                                  Cover Pages:
-                                </span>
-                                <span>{item.cover_pages || "—"}</span>
-                              </div>
-
-                              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
-                                <span className="font-medium shrink-0">
-                                  Cover Color:
-                                </span>
-                                <span>{item.cover_color_scheme || "—"}</span>
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      <JobItemsSidebar
+        jobNo={itemSidebarJobNo}
+        onClose={() => setItemSidebarJobNo(null)}
+      />
     </div>
   );
 }

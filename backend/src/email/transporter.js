@@ -11,18 +11,6 @@ export async function createTransporter() {
   try {
     const accessToken = await getAccessToken();
 
-    // Create OAuth2 client for token refresh
-    // const OAuth2 = google.auth.OAuth2;
-    // const oauth2Client = new OAuth2(
-    //   process.env.CLIENT_ID,
-    //   process.env.CLIENT_SECRET,
-    //   "https://developers.google.com/oauthplayground"
-    // );
-
-    // oauth2Client.setCredentials({
-    //   refresh_token: process.env.REFRESH_TOKEN,
-    // });
-
     return nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 587, // Changed from 465 to 587 (STARTTLS is more reliable)

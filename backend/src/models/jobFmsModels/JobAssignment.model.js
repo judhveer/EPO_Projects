@@ -72,6 +72,13 @@ export default (sequelize) => {
     {
       tableName: "jobfms_job_assignments",
       underscored: true,
+      indexes: [
+        { fields: ["job_no"] },
+        { fields: ["instance"] },
+        { fields: ["status"] },
+        { fields: ["is_paused"] },
+        { fields: ["assigned_at"] },
+      ]
     }
   );
 

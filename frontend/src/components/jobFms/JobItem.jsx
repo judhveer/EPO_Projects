@@ -14,7 +14,7 @@ const JobItem = React.memo(function JobItem({
   const category = item.category;
 
   return (
-    <FormCard key={item.id}>
+    <FormCard key={item.id || item._temp_id}>
       <div className="flex flex-wrap items-center justify-between">
         <h4 className="font-semibold text-blue-700">📦 Item {index + 1}</h4>
         <Button

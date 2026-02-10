@@ -355,10 +355,6 @@ export const clientChanges = async (req, res) => {
       });
     }
 
-    job.status = "client_changes";
-    job.current_stage = "client_changes";
-    await job.save({ transaction: t });
-
     const [updatedCount] = await ClientApproval.update(
       {
         status: "changes_requested",
@@ -382,6 +378,12 @@ export const clientChanges = async (req, res) => {
     } else {
       console.log("ClientApproval updated to changes_requested successfully");
     }
+
+    job.status = "client_changes";
+    job.current_stage = "client_changes";
+    await job.save({ transaction: t });
+
+
 
     const jobAssignmentsLatestEntry = await JobAssignment.findOne({
       where: {

@@ -43,6 +43,14 @@ export default (sequelize) => {
     {
       tableName: "jobfms_client_approvals",
       underscored: true,
+      indexes: [
+        { fields: ["job_no"] },
+        { fields: ["instance"] },
+        { fields: ["status"] },
+        { fields: ["sent_at"] },
+        { fields: ["approved_at"] },
+      ]
+
     }
   );
 
