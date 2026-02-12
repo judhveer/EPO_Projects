@@ -202,7 +202,13 @@ export default function JobWriterTable() {
 
       {/* ✅ Table */}
       <div className="relative overflow-auto border rounded-lg shadow max-h-[80vh]">
-        <table className="min-w-[4000px] max-w-[6000px] text-xs border-collapse border border-gray-300 table-fixed">
+        <table
+          className={
+            loading
+              ? "opacity-50 pointer-events-none"
+              : "min-w-[4000px] max-w-[6000px] text-xs border-collapse border border-gray-300 table-fixed"
+          }
+        >
           <thead className="sticky top-0 z-30 bg-gradient-to-r from-blue-700 to-blue-600 text-white shadow-sm">
             <tr>
               <th className="border p-2 sticky left-0 bg-blue-800 z-40  text-center font-semibold">
