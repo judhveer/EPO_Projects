@@ -1,40 +1,60 @@
 import { Op, where } from "sequelize";
-import models from "../../models/index.js";
+import db from "../../models/index.js";
 const {
   JobCard,
   JobAssignment,
-  StageTracking,
   ActivityLog,
   User,
   JobDesignTime,
-  JobItem,
-  PaperMaster,
-  ItemMaster,
-  ClientApproval
-} = models;
+  ClientApproval,
+} = db;
 import { advanceStage } from "../../utils/jobFms/stageTracking.js";
 import path from "path";
 
 import { sendMailForFMS } from "../../email/sendMail.js";
-import { processCoordinatorDesignCompletedTemplate, crmDesignCompletedTemplate, processCoordinatorDesignStartedTemplate, crmDesignStartedTemplate } from "../../email/templates/emailTemplates.js"; 
+import {
+  processCoordinatorDesignCompletedTemplate,
+  crmDesignCompletedTemplate,
+  processCoordinatorDesignStartedTemplate,
+  crmDesignStartedTemplate,
+} from "../../email/templates/emailTemplates.js";
 
 // Get all jobs for Designers
 export const getAllJobsForDesginer = async (req, res) => {
   console.log("getAllJobsForDesginer called:");
   try {
-
     const total = await JobCard.count({
       where: {
-        status: ["assigned_to_designer", "design_in_progress", "client_changes"],
+        status: [
+          "assigned_to_designer",
+          "design_in_progress",
+          "client_changes",
+        ],
         assigned_designer: req.user?.username,
       },
     });
 
-
     const jobCards = await JobCard.findAll({
       where: {
-        status: ["assigned_to_designer", "design_in_progress", "client_changes"],
+        status: [
+          "assigned_to_designer",
+          "design_in_progress",
+          "client_changes",
+        ],
         assigned_designer: req.user?.username,
+      },
+      // For items count
+      attributes: {
+        include: [
+          [
+            db.sequelize.literal(`(
+                          SELECT COUNT(*)
+                          FROM jobfms_job_items ji
+                          WHERE ji.job_no = JobCard.job_no
+                        )`),
+            "item_count",
+          ],
+        ],
       },
       include: [
         {
@@ -42,15 +62,6 @@ export const getAllJobsForDesginer = async (req, res) => {
           as: "assignments",
           where: { status: { [Op.in]: ["assigned", "in_progress"] } },
           required: false,
-        },
-        {
-          model: JobItem,
-          as: "items",
-          include: [
-            { model: PaperMaster, as: "selectedPaper" }, // <-- important
-            { model: PaperMaster, as: "selectedCoverPaper" },
-            { model: ItemMaster, as: "itemMaster" },
-          ],
         },
         {
           model: ClientApproval,
@@ -64,7 +75,7 @@ export const getAllJobsForDesginer = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    if(!jobCards) {
+    if (!jobCards) {
       return res.status(404).json({
         total: 0,
         data: [],
@@ -126,8 +137,6 @@ export const setEstimatedTime = async (req, res) => {
       message: "Estimated time set successfully",
       assignment,
     });
-    
-
   } catch (err) {
     console.error(err);
     res.status(500).json({
@@ -159,7 +168,7 @@ export const designerStartTask = async (req, res) => {
         assignment_id: assignment.id,
         start_time: new Date(),
       },
-      { transaction: t }
+      { transaction: t },
     );
 
     await assignment.save({ transaction: t });
@@ -185,15 +194,14 @@ export const designerStartTask = async (req, res) => {
         job_no,
         performed_by_id: req.user?.id || null,
         action: "Designer Start Task",
-        meta: {assignment},
+        meta: { assignment },
       },
-      { transaction: t }
+      { transaction: t },
     );
 
     await t.commit();
 
     res.json({ message: "Task started", assignment });
-
 
     /* ------------------ EMAIL NOTIFICATIONS ------------------ */
 
@@ -249,8 +257,9 @@ export const designerStartTask = async (req, res) => {
       });
     }
 
-    console.log("Emails sent successfully for action designer Started the task.");
-
+    console.log(
+      "Emails sent successfully for action designer Started the task.",
+    );
   } catch (err) {
     await t.rollback();
     console.error(err);
@@ -289,21 +298,19 @@ export const designerPauseTask = async (req, res) => {
 
     jobDesignTimeLog.end_time = new Date();
     jobDesignTimeLog.duration_seconds = Math.round(
-      (new Date() - new Date(jobDesignTimeLog.start_time)) / 1000
+      (new Date() - new Date(jobDesignTimeLog.start_time)) / 1000,
     );
     assignment.designer_duration_seconds += jobDesignTimeLog.duration_seconds;
     assignment.is_paused = true;
     await assignment.save();
     await jobDesignTimeLog.save();
 
-    await ActivityLog.create(
-      {
-        job_no,
-        performed_by_id: req.user?.id || null,
-        action: "Designer Pause Task",
-        meta: { jobDesignTimeLog  },
-      },
-    );
+    await ActivityLog.create({
+      job_no,
+      performed_by_id: req.user?.id || null,
+      action: "Designer Pause Task",
+      meta: { jobDesignTimeLog },
+    });
 
     res.json({
       message: "Task paused",
@@ -337,14 +344,12 @@ export const designerResumeTask = async (req, res) => {
     assignment.is_paused = false;
     await assignment.save();
 
-    await ActivityLog.create(
-      {
-        job_no,
-        performed_by_id: req.user?.id || null,
-        action: "Designer Resume Task",
-        meta: { assignment },
-      },
-    );
+    await ActivityLog.create({
+      job_no,
+      performed_by_id: req.user?.id || null,
+      action: "Designer Resume Task",
+      meta: { assignment },
+    });
 
     res.json({ message: "Task resumed" });
   } catch (err) {
@@ -381,7 +386,7 @@ export const designerEndTask = async (req, res) => {
     if (openLog) {
       openLog.end_time = endTime;
       openLog.duration_seconds = Math.round(
-        (endTime - new Date(openLog.start_time)) / 1000
+        (endTime - new Date(openLog.start_time)) / 1000,
       );
       await openLog.save({ transaction: t });
     }
@@ -403,16 +408,17 @@ export const designerEndTask = async (req, res) => {
     // Update JobCard ->
     const job = await JobCard.findByPk(job_no);
     job.status = "sent_for_approval";
-    job.current_stage = "sent_for_approval"; 
+    job.current_stage = "sent_for_approval";
     await job.save({ transaction: t });
 
-     // Track Stage
+    // Track Stage
     await advanceStage({
       job_no,
       new_stage: "sent_for_approval",
       performed_by_id: req.user?.id || null,
       started_at: new Date(),
-      remarks: "( Designer -> CRM ) Task completed and CRM has to send for approval",
+      remarks:
+        "( Designer -> CRM ) Task completed and CRM has to send for approval",
       transaction: t,
     });
 
@@ -429,15 +435,14 @@ export const designerEndTask = async (req, res) => {
             .substring(11, 19),
         },
       },
-      { transaction: t }
+      { transaction: t },
     );
 
     await t.commit();
-    res.json({ 
-      message: "Task completed", 
-      assignment 
+    res.json({
+      message: "Task completed",
+      assignment,
     });
-
 
     // Fetch CRM
     const crmUser = await User.findOne({
@@ -459,7 +464,7 @@ export const designerEndTask = async (req, res) => {
         cid: "epo-logo",
       },
     ];
-    
+
     // 📧 Notify Process Coordinators
     await sendMailForFMS({
       to: coordinators.map((u) => u.email),
@@ -490,7 +495,6 @@ export const designerEndTask = async (req, res) => {
       });
     }
     console.log("Emails sent successfully for action designer End the task.");
-
   } catch (err) {
     await t.rollback();
     console.error(err);

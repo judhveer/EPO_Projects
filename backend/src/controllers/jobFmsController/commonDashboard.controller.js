@@ -6,12 +6,10 @@ const {
   JobAssignment,
   ClientApproval,
   User,
-  JobItem, 
+  JobItem,
   PaperMaster,
-  ItemMaster, 
+  ItemMaster,
 } = db;
-
-
 
 const buildWhereClause = (query) => {
   const {
@@ -38,12 +36,12 @@ const buildWhereClause = (query) => {
   // SIMPLE search (LIKE) — since no FULLTEXT
   if (search) {
     where[Op.or] = [
-        { job_no: { [Op.eq]: Number(search) || -1 } },
-        { client_name: { [Op.like]: `%${search}%` } },
-        { order_handled_by: { [Op.like]: `%${search}%` } },
-        { contact_number: { [Op.like]: `%${search}%` } },
-        { email_id: { [Op.like]: `%${search}%` } },
-        {assigned_designer: { [Op.like]: `%${search}%`} },
+      { job_no: { [Op.eq]: Number(search) || -1 } },
+      { client_name: { [Op.like]: `%${search}%` } },
+      { order_handled_by: { [Op.like]: `%${search}%` } },
+      { contact_number: { [Op.like]: `%${search}%` } },
+      { email_id: { [Op.like]: `%${search}%` } },
+      { assigned_designer: { [Op.like]: `%${search}%` } },
     ];
   }
 
@@ -71,15 +69,8 @@ const buildWhereClause = (query) => {
     }
   }
 
-
-
   return where;
 };
-
-
-
-
-
 
 /**
  * GET ALL JOB CARDS (with pagination & filters)
@@ -88,20 +79,15 @@ export const getDashboardJobs = async (req, res) => {
   console.log("getDashboardJobs called...");
 
   try {
-    const {
-      page = 1,
-      limit = 50,
-    } = req.query;
+    const { page = 1, limit = 50 } = req.query;
 
     const offset = (page - 1) * limit;
-
 
     const whereClause = buildWhereClause(req.query);
     // 1️⃣ COUNT (FAST)
     const total = await JobCard.count({
       where: whereClause,
     });
-
 
     // 2️⃣ DATA (with joins)
     const jobs = await JobCard.findAll({
@@ -129,14 +115,16 @@ export const getDashboardJobs = async (req, res) => {
         //     { model: ItemMaster, as: "itemMaster" },
         //   ],
         // },
-        { model: ClientApproval, 
-          as: "clientApprovals", 
+        {
+          model: ClientApproval,
+          as: "clientApprovals",
           separate: true,
           limit: 1,
           order: [["instance", "DESC"]],
           required: false,
         },
-        { model: JobAssignment, 
+        {
+          model: JobAssignment,
           as: "assignments",
           separate: true,
           order: [["instance", "DESC"]],
@@ -146,8 +134,6 @@ export const getDashboardJobs = async (req, res) => {
       offset,
       order: [["created_at", "DESC"]],
     });
-
-    console.log("job: ", jobs);
 
     res.json({
       meta: {
@@ -166,9 +152,6 @@ export const getDashboardJobs = async (req, res) => {
   }
 };
 
-
-
-
 export const getDashboardJobDetails = async (req, res) => {
   try {
     const { jobNo } = req.params;
@@ -181,7 +164,7 @@ export const getDashboardJobDetails = async (req, res) => {
           model: JobAssignment,
           as: "assignments",
           include: [
-            { model: User, as: "designer", attributes: ["username"]},
+            { model: User, as: "designer", attributes: ["username"] },
             { model: User, as: "assignedBy", attributes: ["username"] },
           ],
           order: [["assigned_at", "ASC"]],
@@ -189,18 +172,15 @@ export const getDashboardJobDetails = async (req, res) => {
         {
           model: ClientApproval,
           as: "clientApprovals",
-          include: [
-            { model: User, as: "handledBy", attributes: ["username"]}
-          ],
+          include: [{ model: User, as: "handledBy", attributes: ["username"] }],
           order: [["instance", "ASC"]],
         },
-
       ],
     });
 
     if (!job) {
-      return res.status(404).json({ 
-        message: "Job not found" 
+      return res.status(404).json({
+        message: "Job not found",
       });
     }
 
@@ -210,9 +190,6 @@ export const getDashboardJobDetails = async (req, res) => {
     res.status(500).json({ message: "Failed to load job details" });
   }
 };
-
-
-
 
 export const getJobItemsByJobNo = async (req, res) => {
   try {

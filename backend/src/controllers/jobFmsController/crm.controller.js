@@ -1,27 +1,19 @@
 import { Op, where } from "sequelize";
-import models from "../../models/index.js";
-const {
-  JobCard,
-  JobAssignment,
-  StageTracking,
-  ActivityLog,
-  User,
-  JobDesignTime,
-  JobItem,
-  PaperMaster,
-  ItemMaster,
-  ClientApproval,
-} = models;
+import db from "../../models/index.js";
+const { JobCard, JobAssignment, ActivityLog, User, ClientApproval } = db;
 import { advanceStage } from "../../utils/jobFms/stageTracking.js";
 import path from "path";
 import { sendMailForFMS } from "../../email/sendMail.js";
-import { processCoordinatorApprovalSentTemplate, clientApprovedTemplate, clientChangesProcessTemplate, designerRedesignTemplate } from "../../email/templates/emailTemplates.js"; 
-
+import {
+  processCoordinatorApprovalSentTemplate,
+  clientApprovedTemplate,
+  clientChangesProcessTemplate,
+  designerRedesignTemplate,
+} from "../../email/templates/emailTemplates.js";
 
 export const getAllJobsForCRM = async (req, res) => {
   console.log("Get All Jobs for CRM called by user:", req.user?.username);
   try {
-
     const total = await JobCard.count({
       where: {
         status: ["sent_for_approval", "awaiting_client_response"],
@@ -34,22 +26,20 @@ export const getAllJobsForCRM = async (req, res) => {
         status: ["sent_for_approval", "awaiting_client_response"],
         order_handled_by: req.user?.username,
       },
-      include: [
-        // {
-        //   model: JobAssignment,
-        //   as: "assignments",
-        //   where: { status: { [Op.in]: ["assigned", "in_progress"] } },
-        //   required: false,
-        // },
-        {
-          model: JobItem,
-          as: "items",
-          include: [
-            { model: PaperMaster, as: "selectedPaper" }, // <-- important
-            { model: PaperMaster, as: "selectedCoverPaper" },
-            { model: ItemMaster, as: "itemMaster" },
+      // For items count
+      attributes: {
+        include: [
+          [
+            db.sequelize.literal(`(
+                    SELECT COUNT(*)
+                    FROM jobfms_job_items ji
+                    WHERE ji.job_no = JobCard.job_no
+                  )`),
+            "item_count",
           ],
-        },
+        ],
+      },
+      include: [
         {
           model: ClientApproval,
           as: "clientApprovals",
@@ -57,15 +47,15 @@ export const getAllJobsForCRM = async (req, res) => {
           limit: 1,
           order: [["instance", "DESC"]],
           required: false,
-        }
+        },
       ],
       order: [["createdAt", "DESC"]],
     });
 
     if (!jobCards) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         total,
-        message: "No jobs found for CRM" 
+        message: "No jobs found for CRM",
       });
     }
 
@@ -122,26 +112,27 @@ export const sendToClient = async (req, res) => {
     });
 
     if (existingApproval) {
-        await ClientApproval.create({
+      await ClientApproval.create(
+        {
           job_no: job.job_no,
           handled_by_id: req.user?.id || null,
           status: "pending",
           sent_at: new Date(),
           instance: existingApproval.instance + 1,
-        }, { transaction: t }
+        },
+        { transaction: t },
       );
-    } else{
-        await ClientApproval.create(
-          {
-            job_no: job.job_no,
-            handled_by_id: req.user?.id || null,
-            status: "pending",
-            sent_at: new Date(),
-          },
-          { transaction: t },
-        );
-
-      }
+    } else {
+      await ClientApproval.create(
+        {
+          job_no: job.job_no,
+          handled_by_id: req.user?.id || null,
+          status: "pending",
+          sent_at: new Date(),
+        },
+        { transaction: t },
+      );
+    }
 
     await ActivityLog.create(
       {
@@ -170,7 +161,7 @@ export const sendToClient = async (req, res) => {
       },
     ];
 
-    if(coordinators.length > 0){
+    if (coordinators.length > 0) {
       for (const coordinator of coordinators) {
         await sendMailForFMS({
           to: coordinator.email,
@@ -187,8 +178,6 @@ export const sendToClient = async (req, res) => {
         });
       }
     }
-
-
   } catch (error) {
     console.error("Error sending job to client:", error);
     await t.rollback();
@@ -229,8 +218,9 @@ export const approveJobByClient = async (req, res) => {
           job_no: job.job_no,
           // status: "pending",
         },
-        transaction: t ,
-      });
+        transaction: t,
+      },
+    );
 
     if (updatedCount === 0) {
       console.log(
@@ -264,72 +254,68 @@ export const approveJobByClient = async (req, res) => {
 
     res.json({ message: "Job approved successfully" });
 
-     // 🔔 EMAIL NOTIFICATIONS
-     try{
-        // Fetch Process Coordinators
-        const coordinators = await User.findAll({
-          where: { department: "Process Coordinator" },
+    // 🔔 EMAIL NOTIFICATIONS
+    try {
+      // Fetch Process Coordinators
+      const coordinators = await User.findAll({
+        where: { department: "Process Coordinator" },
+      });
+
+      const designer = await User.findOne({
+        where: {
+          username: job.assigned_designer,
+        },
+      });
+
+      const attachments = [
+        {
+          filename: "epo-logo.jpg",
+          path: path.resolve("assets/epo-logo.jpg"),
+          cid: "epo-logo",
+        },
+      ];
+
+      const approvedAt = new Date().toLocaleString();
+      const dashboardUrl = `${process.env.LEADS_URL}/jobs/${job.job_no}`;
+
+      // Send to Process Coordinators
+      for (const coordinator of coordinators) {
+        await sendMailForFMS({
+          to: coordinator.email,
+          subject: `Client Approved - Job No ${job.job_no}`,
+          html: clientApprovedTemplate({
+            recipientName: coordinator.username,
+            jobNo: job.job_no,
+            clientName: job.client_name,
+            crmName: job.order_handled_by,
+            designerName: designer?.username,
+            approvedAt,
+            dashboardUrl,
+          }),
+          attachments,
         });
+      }
 
-        const designer = await User.findOne({
-          where: {
-            username: job.assigned_designer,
-          }
+      // Send to Assigned Designer
+      if (designer) {
+        await sendMailForFMS({
+          to: designer.email,
+          subject: `Client Approved - Job No ${job.job_no}`,
+          html: clientApprovedTemplate({
+            recipientName: designer.username,
+            jobNo: job.job_no,
+            clientName: job.client_name,
+            crmName: job.order_handled_by,
+            designerName: designer.username,
+            approvedAt,
+            dashboardUrl,
+          }),
+          attachments,
         });
-
-        const attachments = [
-          {
-            filename: "epo-logo.jpg",
-            path: path.resolve("assets/epo-logo.jpg"),
-            cid: "epo-logo",
-          },
-        ];
-
-        
-        const approvedAt = new Date().toLocaleString();
-        const dashboardUrl = `${process.env.LEADS_URL}/jobs/${job.job_no}`;
-
-        // Send to Process Coordinators
-        for(const coordinator of coordinators){
-          await sendMailForFMS({
-            to: coordinator.email,
-            subject: `Client Approved - Job No ${job.job_no}`,
-            html: clientApprovedTemplate({
-              recipientName: coordinator.username,
-              jobNo: job.job_no,
-              clientName: job.client_name,
-              crmName: job.order_handled_by,
-              designerName: designer?.username,
-              approvedAt,
-              dashboardUrl,
-            }),
-            attachments,
-          })
-        }
-
-        // Send to Assigned Designer
-        if (designer) {
-          await sendMailForFMS({
-            to: designer.email,
-            subject: `Client Approved - Job No ${job.job_no}`,
-            html: clientApprovedTemplate({
-              recipientName: designer.username,
-              jobNo: job.job_no,
-              clientName: job.client_name,
-              crmName: job.order_handled_by,
-              designerName: designer.username,
-              approvedAt,
-              dashboardUrl,
-            }),
-            attachments,
-          });
-        }
-
-     }
-     catch(emailError){
+      }
+    } catch (emailError) {
       console.error("Error sending email notifications:", emailError);
-     }
-
+    }
   } catch (error) {
     console.error("Error approving job:", error);
     await t.rollback();
@@ -376,7 +362,7 @@ export const clientChanges = async (req, res) => {
           job_no: job.job_no,
           status: "pending",
         },
-        order: [["instance", "DESC"]]
+        order: [["instance", "DESC"]],
       },
       { transaction: t },
     );
@@ -394,8 +380,6 @@ export const clientChanges = async (req, res) => {
     job.current_stage = "client_changes";
     await job.save({ transaction: t });
 
-
-
     const jobAssignmentsLatestEntry = await JobAssignment.findOne({
       where: {
         job_no: job.job_no,
@@ -408,17 +392,18 @@ export const clientChanges = async (req, res) => {
       throw new Error("Previous Job Assignment not found for the job");
     }
 
-    await JobAssignment.create({
-      job_no: job.job_no,
-      designer_id: jobAssignmentsLatestEntry.designer_id,
-      assigned_by_id: jobAssignmentsLatestEntry.assigned_by_id,
-      assigned_at: new Date(),
-      status: "assigned",
-      instance: jobAssignmentsLatestEntry.instance + 1,
-      remarks: "Re-assigned due to client requested changes",
-    }, { transaction: t }
-  );
-
+    await JobAssignment.create(
+      {
+        job_no: job.job_no,
+        designer_id: jobAssignmentsLatestEntry.designer_id,
+        assigned_by_id: jobAssignmentsLatestEntry.assigned_by_id,
+        assigned_at: new Date(),
+        status: "assigned",
+        instance: jobAssignmentsLatestEntry.instance + 1,
+        remarks: "Re-assigned due to client requested changes",
+      },
+      { transaction: t },
+    );
 
     await advanceStage({
       job_no,
@@ -446,7 +431,7 @@ export const clientChanges = async (req, res) => {
     });
 
     // 🔔 EMAIL NOTIFICATIONS
-    try{
+    try {
       // Fetch Process Coordinators
       const coordinators = await User.findAll({
         where: { department: "Process Coordinator" },
@@ -455,7 +440,7 @@ export const clientChanges = async (req, res) => {
       const designer = await User.findOne({
         where: {
           username: job.assigned_designer,
-        }
+        },
       });
 
       const attachments = [
@@ -467,8 +452,8 @@ export const clientChanges = async (req, res) => {
       ];
 
       const dashboardUrl = `${process.env.LEADS_URL}/jobs/${job.job_no}`;
-      if(coordinators.length > 0){
-        for(const coordinator of coordinators){
+      if (coordinators.length > 0) {
+        for (const coordinator of coordinators) {
           await sendMailForFMS({
             to: coordinator.email,
             subject: `Client Changes Requested - Job No ${job.job_no}`,
@@ -482,7 +467,7 @@ export const clientChanges = async (req, res) => {
               dashboardUrl,
             }),
             attachments,
-          })
+          });
         }
       }
 
@@ -501,12 +486,9 @@ export const clientChanges = async (req, res) => {
           attachments,
         });
       }
-
-
-    }catch(emailError){
+    } catch (emailError) {
       console.error("Error sending email notifications:", emailError);
     }
-
   } catch (error) {
     console.error("Error handling client changes:", error);
     await t.rollback();
