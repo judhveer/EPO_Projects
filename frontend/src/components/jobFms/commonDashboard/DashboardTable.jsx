@@ -178,7 +178,7 @@ export default function DashboardTable({
                           e.stopPropagation(); // VERY IMPORTANT
                           onViewItems(job.job_no);
                         }}
-                        className="ml-2 text-blue-600 underline cursor-pointer relative z-50"
+                        className="ml-2 text-blue-600 underline cursor-pointer relative z-30"
                       >
                         View
                       </button>
