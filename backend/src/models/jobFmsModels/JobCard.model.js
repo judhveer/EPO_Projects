@@ -1,5 +1,6 @@
 import { DataTypes } from "sequelize";
 
+
 export default (sequelize) => {
   const JobCard = sequelize.define(
     "JobCard",
@@ -15,6 +16,20 @@ export default (sequelize) => {
         allowNull: false,
         set(value) {
           this.setDataValue("client_name", value ? value.toUpperCase() : null);
+        },
+      },
+      department: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        set(value) {
+          this.setDataValue("department", value ? value.toUpperCase() : null);
+        },
+      },
+      reference: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        set(value) {
+          this.setDataValue("reference", value ? value.toUpperCase() : null);
         },
       },
       client_type: {
@@ -84,7 +99,7 @@ export default (sequelize) => {
         type: DataTypes.DATE,
       },
       task_priority: {
-        type: DataTypes.ENUM("Urgent", "Complete By Date"),
+        type: DataTypes.ENUM("Urgent", "High", "Medium", "Low"),
         allowNull: false,
       },
       instructions: {
@@ -124,7 +139,12 @@ export default (sequelize) => {
         // default: "PENDING",
         //  enum: ["pending", "in-progress", "completed", "cancelled"],
   // default: "pending",
+      },
 
+      is_direct_to_production: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
       },
       job_completion_deadline: {
         type: DataTypes.DATE,
@@ -136,6 +156,26 @@ export default (sequelize) => {
         type: DataTypes.STRING,
         allowNull: true,
       },
+      outbound_sent_to: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      paper_ordered_from: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      receiving_date_for_mm: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      discount: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+        default: 0.0
+      }
+
+
+
 
       // // NEW: Quotation / costing fields
       // quotation_subtotal: {
@@ -156,6 +196,24 @@ export default (sequelize) => {
     {
       tableName: "jobfms_job_cards",
       underscored: true,
+      indexes: [
+        // 🔍 SEARCH
+        { fields: ["job_no"] },
+        { fields: ["client_name"] },
+        { fields: ["order_handled_by"] },
+        { fields: ["contact_number"] },
+        { fields: ["email_id"] },
+
+        // 🎛 FILTERS
+        { fields: ["order_type"] },
+        { fields: ["execution_location"] },
+        { fields: ["payment_status"] },
+        { fields: ["status"] },
+        { fields: ["is_direct_to_production"] },
+
+        // 📄 SORTING / PAGINATION
+        { fields: ["created_at"] },
+      ],
     }
   );
 

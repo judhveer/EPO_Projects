@@ -18,7 +18,8 @@ export default function associateJobFmsModels(models) {
     BindingMaster,
     RateMaster,
     PaperMaster,
-    SizeMaster
+    SizeMaster,
+    WideFormatMaterial
   } = models;
 
   // 🔗 JobCard ↔ JobItem
@@ -42,6 +43,19 @@ export default function associateJobFmsModels(models) {
     as: "selectedPaper",
     foreignKey: "selected_paper_id",
   });
+
+  // JobItem ↔ WideFormatMaterial (selected wide format material)
+  JobItem.belongsTo(WideFormatMaterial, {
+    as: "wideMaterial",
+    foreignKey: "selected_wide_material_id",
+  });
+
+  // WideFormatMaterial ↔ JobItem (reverse association)
+  WideFormatMaterial.hasMany(JobItem, {
+    as: "jobItems",
+    foreignKey: "selected_wide_material_id",
+  });
+
     // (selected cover paper)
   JobItem.belongsTo(PaperMaster, {
     as: "selectedCoverPaper",

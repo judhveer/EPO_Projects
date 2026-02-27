@@ -25,9 +25,6 @@ import JobCardModel from "./jobFmsModels/JobCard.model.js";
 import JobItemModel from "./jobFmsModels/JobItem.model.js";
 import JobAssignmentModel from "./jobFmsModels/JobAssignment.model.js";
 import ClientApprovalModel from "./jobFmsModels/ClientApproval.model.js";
-import ProductionRecordModel from "./jobFmsModels/ProductionRecord.model.js";
-import FileAttachmentModel from "./jobFmsModels/FileAttachment.model.js";
-import NotificationModel from "./jobFmsModels/Notification.model.js";
 import StageTrackingModel from "./jobFmsModels/StageTracking.model.js";
 import ActivityLogModel from "./jobFmsModels/ActivityLog.model.js";
 import associateJobFmsModels from "./jobFmsModels/associations.js";
@@ -42,6 +39,7 @@ import QuotationModel from "./jobFmsModels/AccountsJobItems/Quotation.model.js";
 import JobCostingModel from "./jobFmsModels/AccountsJobItems/JobCosting.model.js";
 import SizeMasterModel from "./jobFmsModels/AccountsJobItems/SizeMaster.model.js";
 import JobDesignTimeModel from "./jobFmsModels/JobDesignTimeLog.js";
+import WideFormatMaterialModel from "./jobFmsModels/AccountsJobItems/WideFormatMaterial.model.js";
 
 // SalesPipeline Models
 const Lead = LeadModel(sequelize);
@@ -68,9 +66,6 @@ const JobCard = JobCardModel(sequelize);
 const JobItem = JobItemModel(sequelize);
 const JobAssignment = JobAssignmentModel(sequelize);
 const ClientApproval = ClientApprovalModel(sequelize);
-const ProductionRecord = ProductionRecordModel(sequelize);
-const FileAttachment = FileAttachmentModel(sequelize);
-const Notification = NotificationModel(sequelize);
 const StageTracking = StageTrackingModel(sequelize);
 const ActivityLog = ActivityLogModel(sequelize);
 const ClientDetails = ClientDetailsModel(sequelize);
@@ -84,6 +79,7 @@ const Quotation = QuotationModel(sequelize);
 const JobCosting = JobCostingModel(sequelize);
 const SizeMaster = SizeMasterModel(sequelize);
 const JobDesignTime = JobDesignTimeModel(sequelize);
+const WideFormatMaterial = WideFormatMaterialModel(sequelize);
 
 associateJobFmsModels({
   User,
@@ -91,9 +87,6 @@ associateJobFmsModels({
   JobItem,
   JobAssignment,
   ClientApproval,
-  ProductionRecord,
-  FileAttachment,
-  Notification,
   StageTracking,
   ActivityLog,
   ClientDetails,
@@ -106,7 +99,8 @@ associateJobFmsModels({
   Quotation,
   JobCosting,
   SizeMaster,
-  JobDesignTime
+  JobDesignTime,
+  WideFormatMaterial,
 });
 
 // Associations (ticketId attribute)
@@ -168,9 +162,6 @@ export default {
   JobItem,
   JobAssignment,
   ClientApproval,
-  ProductionRecord,
-  FileAttachment,
-  Notification,
   StageTracking,
   ActivityLog,
   ClientDetails,
@@ -182,5 +173,6 @@ export default {
   Quotation,
   JobCosting,
   SizeMaster,
-  JobDesignTime
+  JobDesignTime,
+  WideFormatMaterial,
 };

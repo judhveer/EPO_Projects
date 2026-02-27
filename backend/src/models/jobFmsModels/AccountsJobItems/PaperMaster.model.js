@@ -37,14 +37,11 @@ export default (sequelize) => {
         type: DataTypes.STRING,
         allowNull: true
       },
-      rate_per_kg: {
-        type: DataTypes.FLOAT,
-      },
       rate_per_sheet: {
         type: DataTypes.FLOAT,
       },
       category: {
-        type: DataTypes.STRING, // Art, Maplitho, Chromo, Sticker, PVC, Flex...
+        type: DataTypes.STRING, // Single Sheet, Multiple Sheet, WideFormat
       },
 
     },

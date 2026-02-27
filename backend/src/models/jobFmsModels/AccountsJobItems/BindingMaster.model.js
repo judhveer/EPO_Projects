@@ -26,7 +26,6 @@ export default (sequelize) => {
           "Multiple Sheet",
           "Wide Format",
           "Other",
-          "Color Scheme",
           "Designing"
         ),
         allowNull: false,

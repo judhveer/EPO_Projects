@@ -24,6 +24,8 @@ export default function JobCardForm({
     client_type: "",
     order_source: "",
     client_name: "",
+    department: "",
+    reference: "",
     order_type: "",
     address: "",
     contact_number: "",
@@ -43,6 +45,10 @@ export default function JobCardForm({
     no_of_files: "",
     order_received_by: "",
     is_direct_to_production: false,
+    outbound_sent_to: "",
+    paper_ordered_from: "",
+    receiving_date_for_mm: "",
+    discount: "",
     job_items: [],
   });
 
@@ -60,6 +66,17 @@ export default function JobCardForm({
   const [ok, setOk] = useState(false);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const findItemIndexById = useCallback((items, id) => {
+    return items.findIndex(
+      (item) => (item.id ?? item._temp_id) === id
+    );
+  }, []);
+
+  const showSoftError = (message) => {
+    setErr(message);
+    setTimeout(() => setErr(""), 20000);
+  };
 
   useEffect(() => {
     async function loadUsers() {
@@ -102,8 +119,9 @@ export default function JobCardForm({
 
     // Build job_items properly using DB values
 
-    const safeItems = Array.isArray(existingJob?.items) ? existingJob.items : [];
-
+    const safeItems = Array.isArray(existingJob?.items)
+      ? existingJob.items
+      : [];
 
     const mappedItems = safeItems.map((item, index) => {
       return {
@@ -117,6 +135,11 @@ export default function JobCardForm({
         cover_paper_type: item.selectedCoverPaper?.paper_name || "",
         cover_paper_gsm: item.selectedCoverPaper?.gsm || "",
 
+        // Wide format specific fields
+        wide_material_name: item.wide_material_name || "",
+        wide_material_gsm: item.wide_material_gsm || "",
+        wide_material_thickness: item.wide_material_thickness || "",
+
         // Ensure binding_types is an array
         binding_types: Array.isArray(item.binding_types)
           ? item.binding_types
@@ -128,6 +151,9 @@ export default function JobCardForm({
         available_gsm: [],
         available_gsm_cover: [],
         available_bindings: [],
+        // Wide format specific dropdown data
+        available_wide_materials: [],
+        available_wide_gsm: [],
       };
     });
 
@@ -135,6 +161,7 @@ export default function JobCardForm({
       ...existingJob,
       delivery_date: formatDateTimeLocal(existingJob.delivery_date),
       proof_date: formatDateOnly(existingJob.proof_date),
+      receiving_date_for_mm: formatDateOnly(existingJob.receiving_date_for_mm),
       job_items: mappedItems,
     });
 
@@ -171,7 +198,7 @@ export default function JobCardForm({
           showSoftError("Failed to fetch client suggestions.");
         }
       }, 400),
-    []
+    [],
   );
 
   useEffect(() => {
@@ -190,7 +217,7 @@ export default function JobCardForm({
 
   const emptyToNull = (obj) =>
     Object.fromEntries(
-      Object.entries(obj).map(([k, v]) => [k, v === "" ? null : v])
+      Object.entries(obj).map(([k, v]) => [k, v === "" ? null : v]),
     );
 
   const normalizePayload = (payload) => {
@@ -200,6 +227,7 @@ export default function JobCardForm({
         ? Number(payload.advance_payment)
         : 0,
       total_amount: payload.total_amount ? Number(payload.total_amount) : 0,
+      discount: payload.discount ? Number(payload.discount) : 0,
       no_of_files: payload.no_of_files ? Number(payload.no_of_files) : 0,
 
       job_items: payload.job_items.map((item) => ({
@@ -213,6 +241,14 @@ export default function JobCardForm({
         item_total: Number(item.item_total),
         inside_pages: item.inside_pages ? Number(item.inside_pages) : null,
         cover_pages: item.cover_pages ? Number(item.cover_pages) : null,
+        // for Wide Format category, send either GSM or Thickness based on material
+        wide_material_gsm: item.wide_material_gsm
+          ? Number(item.wide_material_gsm)
+          : null,
+
+        wide_material_thickness: item.wide_material_thickness
+          ? Number(item.wide_material_thickness)
+          : null,
       })),
     };
     return emptyToNull(normalizedPayload);
@@ -220,33 +256,62 @@ export default function JobCardForm({
 
   const onChange = (e) => {
     const { name, value } = e.target;
-    setForm((f) => ({ ...f, [name]: value }));
+    setForm((f) => {
+      if (name === "execution_location" && value !== "Out-Bound") {
+        return {
+          ...f,
+          execution_location: value,
+          outbound_sent_to: "",
+          paper_ordered_from: "",
+          receiving_date_for_mm: "",
+        };
+      }
+      return { ...f, [name]: value };
+    });
 
     if (name === "client_name") {
       searchClients(value);
     }
+    
   };
 
-  const loadCategoryItems = async (index, category) => {
+  const loadCategoryItems = async (itemId, category) => {
     try {
       const { data } = await api.get(
-        `/api/fms/items/by-category?category=${category}`
+        `/api/fms/items/by-category?category=${category}`,
       );
 
       setForm((prev) => {
+        const index = findItemIndexById(prev.job_items, itemId);
+        if (index === -1) return prev;
         const items = [...prev.job_items];
-
         items[index] = {
           ...items[index],
           available_items: data, // store category items
           enquiry_for: "",
+          size: "",
+          sides: "",
+          color_scheme: "",
+          inside_pages: "",
+          cover_pages: "",
+          quantity: "",
           paper_type: "",
           paper_gsm: "",
+          binding_types: [],
           available_gsm: [],
           available_gsm_cover: [],
+          available_wide_materials: [],
+          wide_material_name: "",
+          wide_material_gsm: "",
+          wide_material_thickness: "",
+          available_wide_gsm: [],
           cover_paper_type: "",
           cover_paper_gsm: "",
           cover_color_scheme: "",
+          unit_rate: "",
+          item_total: "",
+          best_inside_sheet: "",
+          best_cover_sheet: "",
         };
         return { ...prev, job_items: items };
       });
@@ -256,13 +321,15 @@ export default function JobCardForm({
     }
   };
 
-  const loadCategoryBindings = async (index, category) => {
+  const loadCategoryBindings = async (itemId, category) => {
     try {
       const { data } = await api.get(
-        `/api/fms/items/bindings?category=${category}`
+        `/api/fms/items/bindings?category=${category}`,
       );
 
       setForm((prev) => {
+        const index = findItemIndexById(prev.job_items, itemId);
+        if (index === -1) return prev;
         const items = [...prev.job_items];
         items[index] = {
           ...items[index],
@@ -277,11 +344,13 @@ export default function JobCardForm({
     }
   };
 
-  const loadItemPapers = async (index, itemName) => {
+  const loadItemPapers = async (itemId, itemName) => {
     try {
       const { data } = await api.get(`/api/fms/items/paper-types`);
 
       setForm((prev) => {
+        const index = findItemIndexById(prev.job_items, itemId);
+        if (index === -1) return prev;
         const items = [...prev.job_items];
         items[index] = {
           ...items[index],
@@ -295,13 +364,55 @@ export default function JobCardForm({
     }
   };
 
-  const loadItemPapersGsm = async (index, paperName, type = "inside") => {
+
+  const loadWideMaterials = async (itemId) => {
+    try {
+      const { data } = await api.get("/api/fms/items/wide-materials");
+
+      console.log("wide materials loaded:", data);
+
+      setForm((prev) => {
+        const index = findItemIndexById(prev.job_items, itemId);
+        if (index === -1) return prev;
+        const items = [...prev.job_items];
+        items[index].available_wide_materials = data;  // store wide format materials
+        return { ...prev, job_items: items };
+      });
+    } catch (err) {
+      console.error("Failed to load wide materials", err);
+    }
+  };
+
+  const loadWideMaterialGsm = async (itemId, materialName) => {
     try {
       const { data } = await api.get(
-        `/api/fms/items/paper-types/gsm?paperName=${paperName}`
+        `/api/fms/items/wide-materials/gsm?materialName=${materialName}`
+      );
+
+      console.log("wide material GSM loaded:", data);
+      setForm((prev) => {
+        const index = findItemIndexById(prev.job_items, itemId);
+        if (index === -1) return prev;
+        const items = [...prev.job_items];
+        items[index].available_wide_gsm = data;
+        return { ...prev, job_items: items };
+      });
+    } catch (err) {
+      console.error("Failed to load wide GSM");
+    }
+  };
+
+
+
+  const loadItemPapersGsm = async (itemId, paperName, type = "inside") => {
+    try {
+      const { data } = await api.get(
+        `/api/fms/items/paper-types/gsm?paperName=${paperName}`,
       );
 
       setForm((prev) => {
+        const index = findItemIndexById(prev.job_items, itemId);
+        if (index === -1) return prev;
         const items = [...prev.job_items];
 
         if (type === "inside") {
@@ -327,10 +438,44 @@ export default function JobCardForm({
       const item = formRef.current.job_items[index];
 
       // basic guard
-      if (!item.quantity || !item.paper_type || !item.paper_gsm) {
-        alert("Please fill all required fields before calculating");
-        return;
+      // if (!item.quantity || !item.paper_type || !item.paper_gsm) {
+      //   showSoftError("Please fill all required fields before calculating");
+      //   return;
+      // }
+
+      if (!item.quantity) return;
+
+      if (item.category === "Wide Format") {
+        if (
+          !item.enquiry_for ||
+          !item.wide_material_name ||
+          !item.size
+        ) {
+          showSoftError("Please fill all required fields before calculating wide format");
+          return;
+        }
+        if ( item.wide_material_name !== "Standee" && !item.wide_material_gsm && !item.wide_material_thickness) {
+          return;
+        }
       }
+
+      else if (item.category === "Other") {
+        return; // handled separately
+      }
+
+      else {
+        if (
+          !item.enquiry_for ||
+          !item.paper_type ||
+          !item.paper_gsm ||
+          !item.size 
+        ) { 
+          showSoftError("Please fill all required fields before calculating");
+          return;
+        }
+      }
+
+
 
       // Clean the items before sending
       const cleanedItems = cleanJobItems(formRef.current.job_items);
@@ -375,40 +520,19 @@ export default function JobCardForm({
         };
       });
     } catch (err) {
-      console.error("Item calculation failed:", err);
-      showSoftError("Calculation failed. Please re-check item details.");
+      console.error("Item calculation failed:", err?.response?.data?.message || err);
+      showSoftError("Calculation failed: " + err?.response?.data?.message);
     }
   };
 
-  const calculateTotalAmountAfterRemoval = async (id) => {
-    try {
-      const cleanedItems = cleanJobItems(formRef.current.job_items);
 
-      const payload = {
-        all_items: cleanedItems,
-        removed_item_id: id,
-      };
-
-      const { data } = await api.post(
-        `/api/fms/items/calculate-total-amount`,
-        payload
-      );
-
-      setForm((prev) => ({
-        ...prev,
-        total_amount: data.total_amount,
-      }));
-    } catch (err) {
-      console.error("Total amount recalculation failed:", err);
-      showSoftError("Failed to recalculate total amount.");
-    }
-  };
-
-  const loadSizes = async (index, search) => {
+  const loadSizes = async (itemId, search) => {
     try {
       const { data } = await api.get(`/api/fms/items/sizes?search=${search}`);
 
       setForm((prev) => {
+        const index = findItemIndexById(prev.job_items, itemId);
+        if (index === -1) return prev;
         const items = [...prev.job_items];
         items[index] = {
           ...items[index],
@@ -423,62 +547,148 @@ export default function JobCardForm({
   };
 
   const handleItemChange = useCallback(
-    async (id, field, value) => {
-      const index = findItemIndexById(form.job_items, id);
-      if (index === -1) return;
+    (id, field, value) => {
+      // 1. Update the field (and handle "Other" calculation)
       setForm((prev) => {
+        const index = findItemIndexById(prev.job_items, id);
+        if (index === -1) return prev;
+
         const items = [...prev.job_items];
-        items[index] = { ...items[index], [field]: value };
-        return { ...prev, job_items: items };
+        const updatedItem = { ...items[index], [field]: value };
+
+        // 🔹 "Other" category inline calculation
+        if (
+          updatedItem.category === "Other" &&
+          (field === "unit_rate" || field === "quantity")
+        ) {
+          const quantity = Number(updatedItem.quantity || 0);
+          const rate = Number(updatedItem.unit_rate || 0);
+          updatedItem.item_total = quantity * rate;
+        }
+
+        items[index] = updatedItem;
+
+        const grandTotal = items.reduce(
+          (sum, it) => sum + Number(it.item_total || 0),
+          0
+        );
+
+        return {
+          ...prev,
+          job_items: items,
+          total_amount: grandTotal,
+        };
       });
-      // If category changes → fetch items from backend
+
+      // 2. Trigger dropdown loading (pass id, not index)
       if (field === "category") {
-        loadCategoryItems(index, value);
-        loadCategoryBindings(index, value);
+        loadCategoryItems(id, value);
+        loadCategoryBindings(id, value);
+        if (value === "Wide Format") {
+          loadWideMaterials(id);
+        }
+      }
+
+      if (field === "wide_material_name") {
+        setForm((prev) => {
+          const index = findItemIndexById(prev.job_items, id);
+          if (index === -1) return prev;
+
+          const items = [...prev.job_items];
+
+          items[index] = {
+            ...items[index],
+            wide_material_gsm: "",
+            wide_material_thickness: "",
+            available_wide_gsm: [],
+          };
+
+          return { ...prev, job_items: items };
+        });
+
+        loadWideMaterialGsm(id, value);
       }
 
       if (field === "enquiry_for") {
-        loadItemPapers(index, value);
+        loadItemPapers(id);
       }
 
       if (field === "paper_type") {
-        loadItemPapersGsm(index, value);
+        loadItemPapersGsm(id, value);
       }
 
       if (field === "cover_paper_type") {
-        loadItemPapersGsm(index, value, "cover");
+        loadItemPapersGsm(id, value, "cover");
       }
 
       if (field === "size") {
-        loadSizes(index, value);
+        loadSizes(id, value);
       }
 
-      // 🔥 Run backend calculation ONLY when quantity is entered
-      if (field === "uom") {
-        await calculateItemBackend(index);
+      // 3. Backend calculation (using ref to get latest state)
+      const triggerFields = [
+        "quantity",
+        "paper_type",
+        "paper_gsm",
+        "size",
+        "uom",
+        "wide_material_name",
+        "wide_material_gsm",
+        "wide_material_thickness",
+      ];
+
+      if (triggerFields.includes(field)) {
+        setTimeout(() => {
+          const latestIndex = findItemIndexById(formRef.current.job_items, id);
+          if (latestIndex === -1) return;
+          const latestItem = formRef.current.job_items[latestIndex];
+          if (latestItem?.category !== "Other") {
+            calculateItemBackend(latestIndex); // still need index for this function – keep as is
+          }
+        }, 0);
       }
     },
-    [form.job_items]
+    // Dependencies: only stable functions (no form.job_items)
+    [
+      findItemIndexById,
+      loadCategoryItems,
+      loadCategoryBindings,
+      loadWideMaterials,
+      loadWideMaterialGsm,
+      loadItemPapers,
+      loadItemPapersGsm,
+      loadSizes,
+      calculateItemBackend,
+      showSoftError,
+    ]
   );
+  
 
-  const createEmptyItem = React.useCallback(() => ({
-    id: undefined,
-    _temp_id:
-      typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID()
-        : Date.now().toString() + Math.random(),
-    category: "",
-    enquiry_for: "",
-    quantity: "",
-    uom: "",
-    binding_types: [],
-    available_items: [],
-    available_papers: [],
-    available_gsm: [],
-    available_gsm_cover: [],
-    available_bindings: [],
-  }), []);
-
+  const createEmptyItem = React.useCallback(
+    () => ({
+      id: undefined,
+      _temp_id:
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : Date.now().toString() + Math.random(),
+      category: "",
+      enquiry_for: "",
+      size: "",
+      quantity: "",
+      uom: "",
+      binding_types: [],
+      available_items: [],
+      available_papers: [],
+      available_gsm: [],
+      available_gsm_cover: [],
+      available_bindings: [],
+      available_wide_materials: [],
+      wide_material_gsm: "",
+      wide_material_thickness: "",
+      available_wide_gsm: [],
+    }),
+    [],
+  );
 
   const addItem = useCallback(() => {
     setForm((prev) => ({
@@ -487,18 +697,25 @@ export default function JobCardForm({
     }));
   }, [createEmptyItem]);
 
-  const removeItem = useCallback( async (id) => {
-    await calculateTotalAmountAfterRemoval(id);
-    setForm((prev) => ({
-      ...prev,
-      job_items: prev.job_items.filter((item) => item.id !== id),
-    }));
+  const removeItem = useCallback((id) => {
+    setForm((prev) => {
+      const updatedItems = prev.job_items.filter(
+        (item) => (item.id ?? item._temp_id) !== id
+      );
+
+      const grandTotal = updatedItems.reduce(
+        (sum, it) => sum + Number(it.item_total || 0),
+        0
+      );
+
+      return {
+        ...prev,
+        job_items: updatedItems,
+        total_amount: grandTotal,
+      };
+    });
   }, []);
 
-  const findItemIndexById = useCallback(
-    (items, id) => items.findIndex((item) => item.id === id),
-    []
-  );
 
   const cleanJobItems = (items) => {
     return items.map((item) => {
@@ -509,6 +726,8 @@ export default function JobCardForm({
         available_gsm_cover,
         available_bindings,
         available_sizes,
+        available_wide_materials,
+        available_wide_gsm,
         ...cleaned
       } = item;
       return cleaned;
@@ -522,7 +741,7 @@ export default function JobCardForm({
     setLoading(true);
 
     const isValidJobItems = form.job_items.every(
-      (item) => item.quantity && item.uom && item.unit_rate && item.item_total
+      (item) => item.quantity && item.uom && item.unit_rate && item.item_total,
     );
 
     if (!isValidJobItems) {
@@ -562,6 +781,8 @@ export default function JobCardForm({
           client_type: "",
           order_source: "",
           client_name: "",
+          department: "",
+          reference: "",
           order_type: "",
           address: "",
           contact_number: "",
@@ -581,6 +802,10 @@ export default function JobCardForm({
           no_of_files: "",
           order_received_by: "",
           is_direct_to_production: false,
+          outbound_sent_to: "",
+          paper_ordered_from: "",
+          receiving_date_for_mm: "",
+          discount: "",
           job_items: [],
         });
       }
@@ -609,7 +834,7 @@ export default function JobCardForm({
         </span>
       ) : (
         part
-      )
+      ),
     );
   };
 
@@ -620,12 +845,12 @@ export default function JobCardForm({
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setActiveIndex((prev) =>
-        prev < clientSuggestions.length - 1 ? prev + 1 : 0
+        prev < clientSuggestions.length - 1 ? prev + 1 : 0,
       );
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActiveIndex((prev) =>
-        prev > 0 ? prev - 1 : clientSuggestions.length - 1
+        prev > 0 ? prev - 1 : clientSuggestions.length - 1,
       );
     } else if (e.key === "Enter" && activeIndex >= 0) {
       e.preventDefault();
@@ -655,10 +880,6 @@ export default function JobCardForm({
     }
   };
 
-  const showSoftError = (message) => {
-    setErr(message);
-    setTimeout(() => setErr(""), 4000);
-  };
 
   return (
     <FormCard title="Job Card Entry">
@@ -705,8 +926,8 @@ export default function JobCardForm({
                         setForm((f) => ({
                           ...f,
                           client_name: name,
+                          department: data.department || "",
                           client_type: data.client_type,
-                          // order_type: data.order_type,
                           address: data.address || "",
                           contact_number: data.contact_number || "",
                           email_id: data.email_id || "",
@@ -727,6 +948,22 @@ export default function JobCardForm({
               </ul>
             )}
           </div>
+        </Field>
+
+        <Field label="Client department" >
+          <Input
+            name="department"
+            value={form.department}
+            onChange={onChange}
+          />
+        </Field>
+
+        <Field label="Reference" >
+          <Input
+            name="reference"
+            value={form.reference}
+            onChange={onChange}
+          />
         </Field>
 
         <Field label="Client Type" required>
@@ -833,6 +1070,38 @@ export default function JobCardForm({
           </Select>
         </Field>
 
+        {form.execution_location === "Out-Bound" && (
+          <>
+            <Field label="Outbound Sent To (Vendor Name) " required>
+              <Input
+                name="outbound_sent_to"
+                value={form.outbound_sent_to || ""}
+                onChange={onChange}
+                required
+              />
+            </Field>
+
+            <Field label="Paper Ordered From" required>
+              <Input
+                name="paper_ordered_from"
+                value={form.paper_ordered_from || ""}
+                onChange={onChange}
+                required
+              />
+            </Field>
+
+            <Field label="MM Receiving Date" required>
+              <Input
+                type="date"
+                name="receiving_date_for_mm"
+                value={form.receiving_date_for_mm || ""}
+                onChange={onChange}
+                required
+              />
+            </Field>
+          </>
+        )}
+
         <Field label="Delivery Location" required>
           <Select
             name="delivery_location"
@@ -887,7 +1156,9 @@ export default function JobCardForm({
           >
             <option value="">Select</option>
             <option>Urgent</option>
-            <option>Complete By Date</option>
+            <option>High</option>
+            <option>Medium</option>
+            <option>Low</option>
           </Select>
         </Field>
 
@@ -934,12 +1205,12 @@ export default function JobCardForm({
                 Direct to Production
               </div>
               <div className="text-xs text-slate-500">
-                Artwork is final. Skip coordinator review and send directly to production.
+                Artwork is final. Skip coordinator review and send directly to
+                production.
               </div>
             </div>
           </label>
         </Field>
-
 
         <Field label="No of Files" required>
           <Input
@@ -982,6 +1253,16 @@ export default function JobCardForm({
             value={form.total_amount}
             onChange={onChange}
             readOnly
+          />
+        </Field>
+
+        <Field label="Discount">
+          <Input
+            type="number"
+            step="0.1"
+            name="discount"
+            value={form.discount || 0}
+            onChange={onChange}
           />
         </Field>
 
@@ -1031,11 +1312,13 @@ export default function JobCardForm({
                 ? "Saving..."
                 : "Creating..."
               : isEditMode
-              ? "Save Changes"
-              : "Create Job Card"}
+                ? "Save Changes"
+                : "Create Job Card"}
           </Button>
         </div>
       </form>
     </FormCard>
   );
 }
+
+

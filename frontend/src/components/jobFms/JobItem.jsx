@@ -12,15 +12,15 @@ const JobItem = React.memo(function JobItem({
   onRemove,
 }) {
   const category = item.category;
-
+  const uniqueKey = item.id ?? item._temp_id;
   return (
-    <FormCard key={item.id || item._temp_id}>
+    <FormCard>
       <div className="flex flex-wrap items-center justify-between">
         <h4 className="font-semibold text-blue-700">📦 Item {index + 1}</h4>
         <Button
           type="button"
           className="bg-red-600 hover:bg-red-700 px-3 py-1 text-sm"
-          onClick={() => onRemove(item.id)}
+          onClick={() => onRemove(uniqueKey)}
         >
           🗑 Remove
         </Button>
@@ -31,7 +31,7 @@ const JobItem = React.memo(function JobItem({
           <Select
             value={item.category}
             onChange={(e) =>
-              handleItemChange(item.id, "category", e.target.value)
+              handleItemChange(uniqueKey, "category", e.target.value)
             }
           >
             <option value="">Select</option>
@@ -48,7 +48,7 @@ const JobItem = React.memo(function JobItem({
               list={`enquiry-for-list-${index}`}
               value={item.enquiry_for || ""}
               onChange={(e) =>
-                handleItemChange(item.id, "enquiry_for", e.target.value)
+                handleItemChange(uniqueKey, "enquiry_for", e.target.value)
               }
               placeholder="Select item..."
               className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
@@ -63,12 +63,12 @@ const JobItem = React.memo(function JobItem({
           </div>
         </Field>
 
-        {item.enquiry_for && (
+        {(category === "Single Sheet" || category === "Multiple Sheet") && item.enquiry_for && (
           <Field label="Paper Type" required>
             <Select
               value={item.paper_type || ""}
               onChange={(e) =>
-                handleItemChange(item.id, "paper_type", e.target.value)
+                handleItemChange(uniqueKey, "paper_type", e.target.value)
               }
               required
             >
@@ -83,12 +83,12 @@ const JobItem = React.memo(function JobItem({
           </Field>
         )}
 
-        {item.paper_type && (
+        {(category === "Single Sheet" || category === "Multiple Sheet") && item.paper_type && (
           <Field label="Paper GSM" required>
             <Select
               value={item.paper_gsm || ""}
               onChange={(e) =>
-                handleItemChange(item.id, "paper_gsm", e.target.value)
+                handleItemChange(uniqueKey, "paper_gsm", e.target.value)
               }
               required
             >
@@ -103,6 +103,88 @@ const JobItem = React.memo(function JobItem({
           </Field>
         )}
 
+        {/* ================= WIDE FORMAT ================= */}
+
+        {category === "Wide Format" && (
+          <>
+            {/* MATERIAL NAME */}
+            <Field label="Material Name" required>
+              <Select
+                value={item.wide_material_name || ""}
+                onChange={(e) =>
+                  handleItemChange(
+                    uniqueKey,
+                    "wide_material_name",
+                    e.target.value
+                  )
+                }
+                required
+              >
+                <option value="">Select Material</option>
+
+                {item.available_wide_materials?.map((m) => (
+                  <option key={m.material_name} value={m.material_name}>
+                    {m.material_name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            {/* GSM / THICKNESS */}
+            {item.wide_material_name && 
+              item.available_wide_gsm?.some( (m) => m.gsm !== null || m.thickness_mm !== null ) && (
+              <Field
+                label={
+                  item.wide_material_name === "Sun Board"
+                    ? "Thickness"
+                    : "GSM"
+                }
+                required
+              >
+                <Select
+                  value={item.wide_material_name === "Sun Board"
+                      ? item.wide_material_thickness || ""
+                      : item.wide_material_gsm || ""
+                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+
+                    if (item.wide_material_name === "Sun Board") {
+                      handleItemChange(uniqueKey, "wide_material_thickness", value);
+                    } else {
+                      handleItemChange(uniqueKey, "wide_material_gsm", value);
+                    }
+                  }}
+                  required
+                >
+                  <option value="">Select</option>
+
+                  {item.available_wide_gsm
+                  ?.filter( (m) => m.gsm !== null || m.thickness_mm !== null )
+                  .map((m) => (
+                    <option
+                      key={m.id}
+                      value={
+                        item.wide_material_name === "Sun Board"
+                          ? m.thickness_mm
+                          : m.gsm
+                      }
+                    >
+                      {item.wide_material_name === "Sun Board" ? m.thickness_mm : m.gsm}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+          </>
+        )}
+
+
+
+
+
+
+
         {/* Category-specific options */}
 
         {category === "Multiple Sheet" && (
@@ -111,7 +193,7 @@ const JobItem = React.memo(function JobItem({
               <Select
                 value={item.color_scheme || ""}
                 onChange={(e) =>
-                  handleItemChange(item.id, "color_scheme", e.target.value)
+                  handleItemChange(uniqueKey, "color_scheme", e.target.value)
                 }
               >
                 <option value="">Select</option>
@@ -126,7 +208,7 @@ const JobItem = React.memo(function JobItem({
                 min="1"
                 value={item.inside_pages || ""}
                 onChange={(e) =>
-                  handleItemChange(item.id, "inside_pages", e.target.value)
+                  handleItemChange(uniqueKey, "inside_pages", e.target.value)
                 }
                 placeholder="200"
                 required
@@ -138,7 +220,7 @@ const JobItem = React.memo(function JobItem({
               <Select
                 value={item.cover_paper_type || ""}
                 onChange={(e) =>
-                  handleItemChange(item.id, "cover_paper_type", e.target.value)
+                  handleItemChange(uniqueKey, "cover_paper_type", e.target.value)
                 }
                 required
               >
@@ -156,7 +238,7 @@ const JobItem = React.memo(function JobItem({
                 <Select
                   value={item.cover_paper_gsm || ""}
                   onChange={(e) =>
-                    handleItemChange(item.id, "cover_paper_gsm", e.target.value)
+                    handleItemChange(uniqueKey, "cover_paper_gsm", e.target.value)
                   }
                   required
                 >
@@ -175,7 +257,7 @@ const JobItem = React.memo(function JobItem({
                 value={item.cover_color_scheme || ""}
                 onChange={(e) =>
                   handleItemChange(
-                    item.id,
+                    uniqueKey,
                     "cover_color_scheme",
                     e.target.value
                   )
@@ -191,7 +273,7 @@ const JobItem = React.memo(function JobItem({
               <Select
                 value={item.cover_pages || ""}
                 onChange={(e) =>
-                  handleItemChange(item.id, "cover_pages", e.target.value)
+                  handleItemChange(uniqueKey, "cover_pages", e.target.value)
                 }
               >
                 <option value="">Select</option>
@@ -208,7 +290,7 @@ const JobItem = React.memo(function JobItem({
               list={`size-list-${index}`}
               value={item.size || ""}
               onChange={(e) =>
-                handleItemChange(item.id, "size", e.target.value)
+                handleItemChange(uniqueKey, "size", e.target.value)
               }
               placeholder="Select size or type custom (6x9 inches)..."
               className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
@@ -221,15 +303,6 @@ const JobItem = React.memo(function JobItem({
               ))}
             </datalist>
           </div>
-
-          {/* <Input
-                      value={item.size || ""}
-                      onChange={(e) =>
-                        handleItemChange(index, "size", e.target.value)
-                      }
-                      placeholder="12x24"
-                      required
-                    /> */}
         </Field>
 
         {(category === "Multiple Sheet" || category === "Single Sheet") && (
@@ -237,7 +310,7 @@ const JobItem = React.memo(function JobItem({
             <Select
               value={item.sides || ""}
               onChange={(e) =>
-                handleItemChange(item.id, "sides", e.target.value)
+                handleItemChange(uniqueKey, "sides", e.target.value)
               }
             >
               <option value="">Select</option>
@@ -247,7 +320,7 @@ const JobItem = React.memo(function JobItem({
           </Field>
         )}
 
-        {item.available_bindings && item.available_bindings.length > 0 && (
+        {category !== "Other" && item.available_bindings && item.available_bindings.length > 0 && (
           <Field label="Type of Binding" required>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
               {item.available_bindings.map((b) => (
@@ -264,27 +337,22 @@ const JobItem = React.memo(function JobItem({
                         ? [...prev, b.binding_name]
                         : prev.filter((x) => x !== b.binding_name);
 
-                      handleItemChange(item.id, "binding_types", updated);
+                      handleItemChange(uniqueKey, "binding_types", updated);
                     }}
                   />
                   {b.binding_name}
-                  {/* {b.rate !== null && (
-                                <span className="text-xs text-gray-500">
-                                  ₹{b.rate_per_unit}
-                                </span>
-                              )} */}
                 </label>
               ))}
             </div>
           </Field>
         )}
 
-        {category !== "Multiple Sheet" && (
+        {category !== "Multiple Sheet" && category !== "Wide Format" && category !== "Other" && (
           <Field label="Color Scheme" required>
             <Select
               value={item.color_scheme || ""}
               onChange={(e) =>
-                handleItemChange(item.id, "color_scheme", e.target.value)
+                handleItemChange(uniqueKey, "color_scheme", e.target.value)
               }
             >
               <option value="">Select</option>
@@ -301,7 +369,7 @@ const JobItem = React.memo(function JobItem({
             min="1"
             value={item.quantity || ""}
             onChange={(e) =>
-              handleItemChange(item.id, "quantity", e.target.value)
+              handleItemChange(uniqueKey, "quantity", e.target.value)
             }
             required
           />
@@ -310,7 +378,7 @@ const JobItem = React.memo(function JobItem({
         <Field label="Unit Of Measurment" required>
           <Select
             value={item.uom}
-            onChange={(e) => handleItemChange(item.id, "uom", e.target.value)}
+            onChange={(e) => handleItemChange(uniqueKey, "uom", e.target.value)}
             required
           >
             <option value="">Select</option>
@@ -325,9 +393,9 @@ const JobItem = React.memo(function JobItem({
         <Field label="Unit Rate" required>
           <Input
             value={item.unit_rate || ""}
-            readOnly
+            readOnly={category !== "Other"}
             onChange={(e) =>
-              handleItemChange(item.id, "unit_rate", e.target.value)
+              handleItemChange(uniqueKey, "unit_rate", e.target.value)
             }
           />
         </Field>
@@ -336,7 +404,7 @@ const JobItem = React.memo(function JobItem({
           <Input
             value={item.item_total || ""}
             onChange={(e) =>
-              handleItemChange(item.id, "item_total", e.target.value)
+              handleItemChange(uniqueKey, "item_total", e.target.value)
             }
             readOnly
           />

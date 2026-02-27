@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 
-// const caPath = process.env.DB_CERT;
 const dialectOptions = {};
 
 // if (fs.existsSync(caPath)) {
@@ -25,5 +24,15 @@ export const sequelize = new Sequelize(
     dialect: 'mysql',
     dialectOptions,
     logging: false,
+    pool: {
+      max: 30,        
+      min: 5,
+      acquire: 60000, // wait time before timeout
+      idle: 10000,
+    },
   }
 );
+
+
+
+
