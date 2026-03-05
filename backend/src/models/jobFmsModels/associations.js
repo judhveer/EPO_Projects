@@ -46,7 +46,7 @@ export default function associateJobFmsModels(models) {
 
   // JobItem ↔ WideFormatMaterial (selected wide format material)
   JobItem.belongsTo(WideFormatMaterial, {
-    as: "wideMaterial",
+    as: "selectedWideMaterial",
     foreignKey: "selected_wide_material_id",
   });
 
