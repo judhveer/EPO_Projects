@@ -119,6 +119,36 @@ export default function JobItemsSidebar({ jobNo, onClose }) {
                       </span>
                     </div>
                   )}
+                  {/* FOLDING & CREASING */}
+                  {item.no_of_foldings  && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                      <span className="font-medium shrink-0">Folding:</span>
+                      <span>
+                        {item.no_of_foldings
+                          ? (
+                            <>
+                              <strong>{item.no_of_foldings}</strong> fold(s) per item
+                            </>
+                          )
+                          : ""}
+                      </span>
+                    </div>
+                  )}
+
+                  {item.no_of_creases  && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                      <span className="font-medium shrink-0">Creasing:</span>
+                      <span>
+                        {item.no_of_creases ? (
+                          <>
+                            <strong>{item.no_of_creases}</strong> crease(s) per item
+                          </>
+                        ) : ""}
+                      </span>
+                    </div>
+                  )}
+
+
                 </div>
 
                 {/* PAPER DETAILS */}
@@ -211,6 +241,56 @@ export default function JobItemsSidebar({ jobNo, onClose }) {
                     )}
                   </>
                 )}
+                
+
+                {/* WIDE MATERIAL DETAILS */}
+                {item.selectedWideMaterial && (
+                  <div className="border rounded-lg p-3 bg-white space-y-2">
+                    <h6 className="font-semibold text-gray-700">
+                      🧻 Wide Material Details
+                    </h6>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                      <span className="font-medium shrink-0">Material Name:</span>
+                      <span
+                        className="break-words sm:truncate"
+                        title={item.selectedWideMaterial.material_name}
+                      >
+                        {item.selectedWideMaterial.material_name}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                      <span className="font-medium shrink-0">GSM:</span>
+                      <span>{item.selectedWideMaterial.gsm}</span>
+                    </div>
+
+                    {item.selectedWideMaterial.roll_width_ft && (
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                        <span className="font-medium shrink-0">
+                          Material Size (Press):
+                        </span>
+                        <span
+                          className="break-words sm:truncate"
+                          title={item.selectedWideMaterial.roll_width_ft + "ft x " + item.selectedWideMaterial.roll_length_mtr + "mtr"}
+                        >
+                          {item.selectedWideMaterial.roll_width_ft + "ft x " + item.selectedWideMaterial.roll_length_mtr + "mtr"}
+                        </span>
+                      </div>                        
+                    )}
+
+
+                    {item.selectedWideMaterial.board_width_ft && (
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                        <span className="font-medium shrink-0">
+                          Material Size (Press):
+                        </span>
+                        <span>{item.selectedWideMaterial.board_width_ft + " x " + item.selectedWideMaterial.board_height_ft + " ft"}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
               </div>
             ))}
         </div>
