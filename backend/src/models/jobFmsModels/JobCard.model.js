@@ -86,12 +86,17 @@ export default (sequelize) => {
       },
       delivery_location: {
         type: DataTypes.ENUM(
-          "EPO to Customer",
-          "MM to Customer",
-          "Delivery Address"
+          "EPO_TO_CUSTOMER_SHIPMENT",
+          "EPO_TO_CUSTOMER_PICKUP",
+          "MM_TO_CUSTOMER_SHIPMENT",
+          "MM_TO_CUSTOMER_PICKUP",
+          "MM_TO_EPO_TO_CUSTOMER_SHIPMENT",
+          "MM_TO_EPO_TO_CUSTOMER_PICKUP",
         ),
         allowNull: false,
       },
+
+
       delivery_address: {
         type: DataTypes.TEXT,
       },
