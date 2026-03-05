@@ -99,7 +99,7 @@ export default (sequelize) => {
       },
 
       press_type: {
-        type: DataTypes.ENUM("offset", "digital"),
+        type: DataTypes.ENUM("FLEX MACHINE", "DIGITAL BLACK WHITE", "DIGITAL MULTICOLOR", "HMT", "AUTOPRINT", "PLOTTER PRINTING"),
         allowNull: true,
       },
 
@@ -107,7 +107,14 @@ export default (sequelize) => {
         type: DataTypes.JSON,
         allowNull: true,
       },
-
+      no_of_foldings: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      no_of_creases: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       // NEW: Calculated prices and breakdown (filled server-side)
       unit_rate: {
         type: DataTypes.DECIMAL(12, 2),
