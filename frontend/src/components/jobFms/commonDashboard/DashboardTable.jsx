@@ -104,7 +104,7 @@ export default function DashboardTable({
                       .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border-r border-gray-200 px-2  max-w-[500px]">
-                    {job.delivery_location}
+                    {job.delivery_location?.replace(/_/g, " ")}
                     {job.delivery_address && (
                       <div className=" text-[11px] text-gray-500 italic mt-1">
                         {job.delivery_address}
