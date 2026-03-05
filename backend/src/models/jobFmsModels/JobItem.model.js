@@ -12,7 +12,7 @@ export default (sequelize) => {
       },
       // Link to JobCard
       job_no: {
-        type: DataTypes.BIGINT.UNSIGNED,
+        type: DataTypes.BIGINT.UNSIGNED,    
         allowNull: false,
         references: {
           model: "jobfms_job_cards",
@@ -41,15 +41,22 @@ export default (sequelize) => {
       // NEW: Selected paper and size ids used for costing & printing
       selected_paper_id: {
         type: DataTypes.BIGINT.UNSIGNED,
-        allowNull: false,
+        allowNull: true,
+        references: {
+          model: "jobfms_paper_master",
+          key: "id",
+        },
+        onDelete: "SET NULL",
+        onUpdate: "CASCADE",
       },
       inside_pages: {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
       color_scheme: {
-        type: DataTypes.ENUM("Black and White", "Multicolor"),
+        type: DataTypes.ENUM("Black and White", "Bi-Color", "Tri-Color", "Multicolor"),
         allowNull: false,
+        defaultValue: "Multicolor",
       },
       selected_cover_paper_id: {
         type: DataTypes.BIGINT.UNSIGNED,
@@ -62,10 +69,21 @@ export default (sequelize) => {
           isIn: [[2, 4]],
         },
       },
+      // Link to WideFormatMaterial
+      selected_wide_material_id: {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: true,
+        references: {
+          model: "jobfms_wide_format_materials",
+          key: "id",
+        },
+        onDelete: "SET NULL",
+      },
       cover_color_scheme: {
-        type: DataTypes.ENUM("Black and White", "Multicolor"),
+        type: DataTypes.ENUM("Black and White", "Bi-Color", "Tri-Color", "Multicolor"),
         allowNull: true,
       },
+
       sides: {
         type: DataTypes.ENUM("Single Side", "Both Side"),
         allowNull: true,
