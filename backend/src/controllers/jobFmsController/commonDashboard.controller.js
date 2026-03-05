@@ -9,6 +9,7 @@ const {
   JobItem,
   PaperMaster,
   ItemMaster,
+  WideFormatMaterial,
 } = db;
 
 const buildWhereClause = (query) => {
@@ -201,6 +202,7 @@ export const getJobItemsByJobNo = async (req, res) => {
         { model: PaperMaster, as: "selectedPaper" },
         { model: PaperMaster, as: "selectedCoverPaper" },
         { model: ItemMaster, as: "itemMaster" },
+        { model: WideFormatMaterial, as: "selectedWideMaterial" },
       ],
       order: [["id", "ASC"]],
     });
