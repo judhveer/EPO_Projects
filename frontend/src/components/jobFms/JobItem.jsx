@@ -305,7 +305,7 @@ const JobItem = React.memo(function JobItem({
           </div>
         </Field>
 
-        {(category === "Multiple Sheet" || category === "Single Sheet") && (
+        {(category !== "Other" ) && (
           <Field label="Sides" required>
             <Select
               value={item.sides || ""}
@@ -338,6 +338,15 @@ const JobItem = React.memo(function JobItem({
                         : prev.filter((x) => x !== b.binding_name);
 
                       handleItemChange(uniqueKey, "binding_types", updated);
+
+                      // Clear extra fields if unchecked
+                      if (!e.target.checked && b.binding_name === "Creasing") {
+                        handleItemChange(uniqueKey, "no_of_crease", "");
+                      }
+
+                      if (!e.target.checked && b.binding_name === "Folding") {
+                        handleItemChange(uniqueKey, "no_of_folding", "");
+                      }
                     }}
                   />
                   {b.binding_name}
@@ -345,6 +354,37 @@ const JobItem = React.memo(function JobItem({
               ))}
             </div>
           </Field>
+        )}
+
+        {/* ----- EXTRA INPUTS FOR SINGLE SHEET ----- */}
+        {category === "Single Sheet" &&
+          item.binding_types?.includes("Creasing") && (
+            <Field label="No. of Crease per Sheet" required>
+              <Input
+                type="number"
+                min="1"
+                value={item.creases_per_sheet || ""}
+                onChange={(e) =>
+                  handleItemChange(uniqueKey, "creases_per_sheet", e.target.value)
+                }
+                required
+              />
+            </Field>
+        )}
+
+        {category === "Single Sheet" &&
+          item.binding_types?.includes("Folding") && (
+            <Field label="No. of Folding per Sheet" required>
+              <Input
+                type="number"
+                min="1"
+                value={item.folds_per_sheet || ""}
+                onChange={(e) =>
+                  handleItemChange(uniqueKey, "folds_per_sheet", e.target.value)
+                }
+                required
+              />
+            </Field>
         )}
 
         {category !== "Multiple Sheet" && category !== "Wide Format" && category !== "Other" && (
@@ -426,6 +466,43 @@ const JobItem = React.memo(function JobItem({
               {item.best_cover_dimensions}) — UPS: <b>{item.best_cover_ups}</b>
             </p>
           )}
+
+          {item.category === "Wide Format" && item.calculation_type && (
+            <p className="text-xs text-purple-700 mt-1">
+              Material: <b>{item.selected_material}</b>
+              {item.material_info.roll_width_ft && (
+                <>
+                  {" "}—<b>{item.material_info.roll_width_ft}ft x {item.material_info.roll_length_mtr}mtr</b>
+                </>
+              )}
+
+              {item.material_info.board_width_ft && (
+                <>
+                  {" "}—<b>{item.material_info.board_width_ft} x {item.material_info.board_height_ft}ft</b>
+                </>
+              )}
+
+              
+              — Type:{" "}
+              <b>{item.calculation_type.toUpperCase()}</b>
+              {item.rolls_or_boards_used && (
+                <>
+                  {" "}— Used: <b>{item.rolls_or_boards_used}</b>
+                </>
+              )}
+              {item.wide_ups && (
+                <>
+                  {" "}— UPS: <b>{item.wide_ups}</b>
+                </>
+              )}
+              {item.wastage_sqft !== undefined && (
+                <>
+                  {" "}— Wastage: <b>{item.wastage_sqft.toFixed(2)} sqft</b>
+                </>
+              )}
+            </p>
+          )}
+
         </div>
       </div>
     </FormCard>
