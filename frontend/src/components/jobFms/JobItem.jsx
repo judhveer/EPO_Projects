@@ -198,6 +198,8 @@ const JobItem = React.memo(function JobItem({
               >
                 <option value="">Select</option>
                 <option>Black and White</option>
+                <option>Bi-Color</option>
+                <option>Tri-Color</option>
                 <option>Multicolor</option>
               </Select>
             </Field>
@@ -265,6 +267,8 @@ const JobItem = React.memo(function JobItem({
               >
                 <option value="">Select</option>
                 <option>Black and White</option>
+                <option>Bi-Color</option>
+                <option>Tri-Color</option>
                 <option>Multicolor</option>
               </Select>
             </Field>
@@ -397,6 +401,8 @@ const JobItem = React.memo(function JobItem({
             >
               <option value="">Select</option>
               <option>Black and White</option>
+              <option>Bi-Color</option>
+              <option>Tri-Color</option>
               <option>Multicolor</option>
             </Select>
           </Field>
