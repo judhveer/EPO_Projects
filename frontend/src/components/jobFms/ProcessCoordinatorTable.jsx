@@ -219,7 +219,7 @@ export default function ProcessCoordinatorTable() {
                   {/* <td className="border p-2">{job.delivery_location}</td> */}
                   <td className="border-b px-2  max-w-[500px]">
                     {job.delivery_location}
-                    {job.delivery_location === "Delivery Address" && (
+                    {job.delivery_address && (
                       <div className=" text-[11px] text-gray-500 italic mt-1">
                         {job.delivery_address}
                       </div>
