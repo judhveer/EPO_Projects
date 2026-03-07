@@ -16,7 +16,6 @@ export default function associateJobFmsModels(models) {
     Quotation,
     JobCosting,
     BindingMaster,
-    RateMaster,
     PaperMaster,
     SizeMaster,
     WideFormatMaterial
@@ -132,13 +131,6 @@ export default function associateJobFmsModels(models) {
   // 🔗 Notification belongs to user
   if (Notification) {
     Notification.belongsTo(User, { as: "user", foreignKey: "user_id" });
-  }
-
-
-  // 🔗 RateMaster ↔ ItemMaster & PaperMaster
-  if (RateMaster) {
-    RateMaster.belongsTo(ItemMaster, { as: "item", foreignKey: "item_id" });
-    RateMaster.belongsTo(PaperMaster, { as: "paper", foreignKey: "paper_id" });
   }
 
 }

@@ -34,7 +34,6 @@ import ClientDetailsModel from "./jobFmsModels/ClientDetails.model.js";
 import ItemMasterModel from "./jobFmsModels/AccountsJobItems/ItemMaster.model.js";
 import PaperMasterModel from "./jobFmsModels/AccountsJobItems/PaperMaster.model.js";
 import BindingMasterModel from "./jobFmsModels/AccountsJobItems/BindingMaster.model.js";
-import RateMasterModel from "./jobFmsModels/AccountsJobItems/RateMaster.model.js";
 import QuotationModel from "./jobFmsModels/AccountsJobItems/Quotation.model.js";
 import JobCostingModel from "./jobFmsModels/AccountsJobItems/JobCosting.model.js";
 import SizeMasterModel from "./jobFmsModels/AccountsJobItems/SizeMaster.model.js";
@@ -74,7 +73,6 @@ const ClientDetails = ClientDetailsModel(sequelize);
 const ItemMaster = ItemMasterModel(sequelize);
 const PaperMaster = PaperMasterModel(sequelize);
 const BindingMaster = BindingMasterModel(sequelize);
-const RateMaster = RateMasterModel(sequelize);
 const Quotation = QuotationModel(sequelize);
 const JobCosting = JobCostingModel(sequelize);
 const SizeMaster = SizeMasterModel(sequelize);
@@ -95,7 +93,6 @@ associateJobFmsModels({
   PaperMaster,
 
   BindingMaster,
-  RateMaster,
   Quotation,
   JobCosting,
   SizeMaster,
@@ -169,7 +166,6 @@ export default {
   ItemMaster,
   PaperMaster,
   BindingMaster,
-  RateMaster,
   Quotation,
   JobCosting,
   SizeMaster,

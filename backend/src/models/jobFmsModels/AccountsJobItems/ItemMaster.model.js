@@ -47,10 +47,6 @@ export default (sequelize) => {
   );
 
   ItemMaster.associate = (models) => {
-    ItemMaster.hasMany(models.RateMaster, {
-      foreignKey: "item_id",
-      as: "rates",
-    });
     ItemMaster.hasMany(models.JobItem, {
       foreignKey: "item_master_id",
       as: "jobItems",
