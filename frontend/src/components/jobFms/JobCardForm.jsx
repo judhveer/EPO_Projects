@@ -124,6 +124,7 @@ export default function JobCardForm({
       : [];
 
     const mappedItems = safeItems.map((item, index) => {
+      console.log("existing item: ", item);
       return {
         ...item,
         enquiry_for: item.enquiry_for,
@@ -136,14 +137,18 @@ export default function JobCardForm({
         cover_paper_gsm: item.selectedCoverPaper?.gsm || "",
 
         // Wide format specific fields
-        wide_material_name: item.wide_material_name || "",
-        wide_material_gsm: item.wide_material_gsm || "",
-        wide_material_thickness: item.wide_material_thickness || "",
+        wide_material_name: item.selectedWideMaterial?.material_name || "",
+        wide_material_gsm: item.selectedWideMaterial?.gsm || "",
+        wide_material_thickness: item.selectedWideMaterial?.thickness_mm || "",
 
         // Ensure binding_types is an array
         binding_types: Array.isArray(item.binding_types)
           ? item.binding_types
           : [],
+
+        // extra binding details
+        folds_per_sheet: item.no_of_foldings || "",
+        creases_per_sheet: item.no_of_creases || "",
 
         // Client-side fields needed for dropdowns
         available_items: [],
@@ -166,23 +171,33 @@ export default function JobCardForm({
     });
 
     // NOW LOAD DROPDOWN OPTIONS FOR EACH ITEM
-    mappedItems.forEach((item, index) => {
+    mappedItems.forEach((item) => {
+      const itemId = item.id ?? item._temp_id;
+
       if (item.category) {
-        // loadCategoryItems(index, item.category);
-        loadCategoryBindings(index, item.category);
+        // loadCategoryItems(itemId, item.category);
+        loadCategoryBindings(itemId, item.category);
+        if (item.category === "Wide Format") {
+          loadWideMaterials(itemId);
+        }
       }
 
       if (item.enquiry_for) {
-        loadItemPapers(index, item.enquiry_for);
+        loadItemPapers(itemId, item.enquiry_for);
       }
 
       if (item.paper_type) {
-        loadItemPapersGsm(index, item.paper_type, "inside");
+        loadItemPapersGsm(itemId, item.paper_type, "inside");
       }
 
       if (item.cover_paper_type) {
-        loadItemPapersGsm(index, item.cover_paper_type, "cover");
+        loadItemPapersGsm(itemId, item.cover_paper_type, "cover");
       }
+
+      if (item.wide_material_name) {
+        loadWideMaterialGsm(itemId, item.wide_material_name);
+      }
+
     });
   }, [existingJob]);
 
@@ -312,6 +327,15 @@ export default function JobCardForm({
           item_total: "",
           best_inside_sheet: "",
           best_cover_sheet: "",
+
+          selected_material: "",
+          calculation_type: "",
+          rolls_or_boards_used: "",
+          wastage_sqft: "",
+          wide_ups: "",
+          folds_per_sheet: "",
+          creases_per_sheet: "",
+          press_type: "",
         };
         return { ...prev, job_items: items };
       });
@@ -369,8 +393,6 @@ export default function JobCardForm({
     try {
       const { data } = await api.get("/api/fms/items/wide-materials");
 
-      console.log("wide materials loaded:", data);
-
       setForm((prev) => {
         const index = findItemIndexById(prev.job_items, itemId);
         if (index === -1) return prev;
@@ -389,7 +411,6 @@ export default function JobCardForm({
         `/api/fms/items/wide-materials/gsm?materialName=${materialName}`
       );
 
-      console.log("wide material GSM loaded:", data);
       setForm((prev) => {
         const index = findItemIndexById(prev.job_items, itemId);
         if (index === -1) return prev;
@@ -433,6 +454,7 @@ export default function JobCardForm({
   };
 
   const calculateItemBackend = async (index) => {
+    console.log("calculateItemBackend Triggered:");
     try {
       // const item = form.job_items[index];
       const item = formRef.current.job_items[index];
@@ -454,9 +476,9 @@ export default function JobCardForm({
           showSoftError("Please fill all required fields before calculating wide format");
           return;
         }
-        if ( item.wide_material_name !== "Standee" && !item.wide_material_gsm && !item.wide_material_thickness) {
-          return;
-        }
+        // if ( item.wide_material_name !== "Standee" && !item.wide_material_gsm && !item.wide_material_thickness) {
+        //   return;
+        // }
       }
 
       else if (item.category === "Other") {
@@ -492,6 +514,7 @@ export default function JobCardForm({
 
       const { data } = await api.post(`/api/fms/items/calculate-item`, payload);
       // Backend returns: { unit_rate, item_total, total_amount }
+      console.log("Backend response:", data);
       setForm((prev) => {
         const updatedItems = [...prev.job_items];
 
@@ -511,6 +534,14 @@ export default function JobCardForm({
           best_cover_sheet: data.cover.sheet_selected,
           best_cover_dimensions: data.cover.sheet_dimensions,
           best_cover_ups: data.cover.ups,
+          
+          // 🔥 wide format fields
+          selected_material: data.wide?.selected_material,
+          calculation_type: data.wide?.calculation_type,
+          rolls_or_boards_used: data.wide?.details?.rolls_or_boards_used,
+          wastage_sqft: data.wide?.details?.wastage_sqft,
+          wide_ups: data.wide?.details?.ups,
+          material_info: data.wide?.details?.selected_material_info,
         };
 
         return {
@@ -1110,13 +1141,19 @@ export default function JobCardForm({
             required
           >
             <option value="">Select</option>
-            <option>EPO to Customer</option>
-            <option>MM to Customer</option>
-            <option>Delivery Address</option>
+
+            <option value="EPO_TO_CUSTOMER_SHIPMENT">EPO → Customer (Shipment)</option>
+            <option value="EPO_TO_CUSTOMER_PICKUP">EPO → Customer (Customer Pickup)</option> 
+            <option value="MM_TO_CUSTOMER_SHIPMENT">MM → Customer (Shipment)</option>
+            <option value="MM_TO_CUSTOMER_PICKUP">MM → Customer (Customer Pickup)</option>
+            <option value="MM_TO_EPO_CUSTOMER_SHIPMENT">MM → EPO → Customer (Shipment)</option>
+            <option value="MM_TO_EPO_CUSTOMER_PICKUP">MM → EPO → Customer (Customer Pickup)</option>
           </Select>
         </Field>
 
-        {form.delivery_location === "Delivery Address" && (
+        {form.delivery_location !== "EPO_TO_CUSTOMER_PICKUP" && 
+         form.delivery_location !== "MM_TO_CUSTOMER_PICKUP" && 
+         form.delivery_location !== "MM_TO_EPO_CUSTOMER_PICKUP" && (
           <Field label="Delivery Address" required>
             <textarea
               name="delivery_address"

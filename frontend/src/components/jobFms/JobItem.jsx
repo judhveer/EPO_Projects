@@ -1,4 +1,4 @@
-import React from "react";
+import React, {useEffect, useMemo} from "react";
 import FormCard from "../../components/salesPipeline/FormCard.jsx";
 import Field from "../../components/salesPipeline/Field.jsx";
 import Input from "../../components/salesPipeline/Input.jsx";
@@ -13,6 +13,43 @@ const JobItem = React.memo(function JobItem({
 }) {
   const category = item.category;
   const uniqueKey = item.id ?? item._temp_id;
+
+
+// Define PRESS_TYPES outside component (or inside but stable)
+const PRESS_TYPES = [
+  { value: "FLEX MACHINE", label: "Flex Machine" },
+  { value: "DIGITAL BLACK WHITE", label: "Digital Black & White" },
+  { value: "DIGITAL MULTICOLOR", label: "Digital Multicolor" },
+  { value: "HMT", label: "HMT Machine" },
+  { value: "AUTOPRINT", label: "Autoprint Machine" },
+  { value: "PLOTTER PRINTING", label: "Plotter Printing" },
+];
+
+// Inside your component:
+const allowedPressTypes = useMemo(() => {
+  switch (category) {
+    case 'Single Sheet':
+      return PRESS_TYPES.filter(p => 
+        ['DIGITAL BLACK WHITE', 'DIGITAL MULTICOLOR', 'HMT', 'AUTOPRINT', 'PLOTTER PRINTING'].includes(p.value)
+      );
+    case 'Multiple Sheet':
+      return PRESS_TYPES.filter(p => 
+        ['DIGITAL BLACK WHITE', 'DIGITAL MULTICOLOR', 'HMT', 'AUTOPRINT'].includes(p.value)
+      );
+    case 'Wide Format':
+      return PRESS_TYPES.filter(p => p.value === 'FLEX MACHINE');
+    default:
+      return [];
+  }
+}, [category]);
+
+useEffect(() => {
+  // If current press_type is not in allowed list, clear it
+  if (item.press_type && !allowedPressTypes.some(p => p.value === item.press_type)) {
+    handleItemChange(uniqueKey, 'press_type', '');
+  }
+}, [category, item.press_type, allowedPressTypes, uniqueKey, handleItemChange]);
+
   return (
     <FormCard>
       <div className="flex flex-wrap items-center justify-between">
@@ -404,6 +441,28 @@ const JobItem = React.memo(function JobItem({
               <option>Bi-Color</option>
               <option>Tri-Color</option>
               <option>Multicolor</option>
+            </Select>
+          </Field>
+        )}
+
+
+        {category !== "Other" && (
+          <Field label="Press Machine" required>
+            <Select
+              value={item.press_type || ""}
+              onChange={(e) =>
+                handleItemChange(uniqueKey, "press_type", e.target.value)
+              }
+            >
+              <option value="" disabled>
+                Select Press Machine
+              </option>
+
+              {allowedPressTypes.map((press) => (
+                <option key={press.value} value={press.value}>
+                  {press.label}
+                </option>
+              ))}
             </Select>
           </Field>
         )}
