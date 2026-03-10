@@ -20,12 +20,6 @@ export default (sequelize) => {
         type: DataTypes.FLOAT,
         allowNull: true,
       },
-
-      roll_length_mtr: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-      },
-
       gsm: {
         type: DataTypes.INTEGER,
         allowNull: true,
