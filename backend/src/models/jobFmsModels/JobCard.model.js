@@ -117,7 +117,14 @@ export default (sequelize) => {
         type: DataTypes.DECIMAL(10, 2),
       },
       mode_of_payment: {
-        type: DataTypes.ENUM("GST BILL", "PI", "UPI", "OTHER"),
+        type: DataTypes.ENUM(
+          "cash",
+          "upi",
+          "neft",
+          "rtgs",
+          "pfms",
+          "cheque"
+        ),
       },
       payment_status: {
         type: DataTypes.ENUM("Paid", "Half Paid", "Un-paid"),
