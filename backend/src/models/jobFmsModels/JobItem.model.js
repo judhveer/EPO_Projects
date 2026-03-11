@@ -54,7 +54,7 @@ export default (sequelize) => {
         allowNull: true,
       },
       color_scheme: {
-        type: DataTypes.ENUM("Black and White", "Bi-Color", "Tri-Color", "Multicolor"),
+        type: DataTypes.ENUM("Black and White", "Multicolor"),
         allowNull: false,
         defaultValue: "Multicolor",
       },
@@ -100,6 +100,11 @@ export default (sequelize) => {
 
       press_type: {
         type: DataTypes.ENUM("FLEX MACHINE", "DIGITAL BLACK WHITE", "DIGITAL MULTICOLOR", "HMT", "AUTOPRINT", "PLOTTER PRINTING"),
+        allowNull: true,
+      },
+
+      cover_press_type: {
+        type: DataTypes.ENUM("DIGITAL BLACK WHITE", "DIGITAL MULTICOLOR", "HMT", "AUTOPRINT", ),
         allowNull: true,
       },
 
