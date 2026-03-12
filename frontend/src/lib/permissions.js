@@ -10,9 +10,9 @@ export function can(user, perm) {
     const { role, department: dept } = user;
 
     // 🔹 Boss/Admin can do everything
-    if (SUPER.has(role)) {
-        return true;
-    }
+    // if (SUPER.has(role)) {
+    //     return true;
+    // }
     // Attendance – everyone logged in
     if (perm === 'attendance.view') {
         return true;
@@ -74,6 +74,9 @@ export function can(user, perm) {
 
         case 'jobfms.crm.view':
             return (isSalesDept(dept) && role === "CRM") || dept === 'CRM';
+
+        case 'jobfms.bills.view':
+            return (isSalesDept(dept) && role === "CRM") || dept === 'CRM' || SUPER.has(role);
 
         default:
             return false;

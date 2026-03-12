@@ -225,7 +225,8 @@ export default function Home() {
     can(user, "jobfms.writer.view") ||
     can(user, "jobfms.coordinator.view") ||
     can(user, "jobfms.designer.view") ||
-    can(user, "jobfms.crm.view");
+    can(user, "jobfms.crm.view") || 
+    can(user, "jobfms.common.view");
 
   const showDiscTest = true;
 
