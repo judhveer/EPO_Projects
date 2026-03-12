@@ -36,6 +36,7 @@ import ProcessCoordinatorDashboard from "./pages/jobFms/ProcessCoordinatorDashbo
 import DesignerDashboard from "./pages/jobFms/DesignerDashboard.jsx";
 import CrmDashboard from "./pages/jobFms/CrmDashboard.jsx";
 import CommonDashboard from "./pages/jobFms/CommonDashboard.jsx";
+import PendingBillingDashboard from "./components/jobFms/accounts/PendingBillingDashboard.jsx";
 
 
 export default function App() {
@@ -235,6 +236,18 @@ export default function App() {
                   fallback={<div className="p-6">Not Authorized</div>}
                 >
                   <CrmDashboard />
+                </Gate>
+              }
+            />
+
+            <Route
+              path="pending-bills"
+              element={
+                <Gate
+                  perm="jobfms.bills.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
+                  <PendingBillingDashboard />
                 </Gate>
               }
             />
