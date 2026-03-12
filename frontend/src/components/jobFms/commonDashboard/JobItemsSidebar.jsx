@@ -265,7 +265,7 @@ export default function JobItemsSidebar({ jobNo, onClose }) {
                       <span>{item.selectedWideMaterial.gsm}</span>
                     </div>
 
-                    {item.selectedWideMaterial.roll_width_ft && (
+                    {/* {item.selectedWideMaterial.roll_width_ft && (
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
                         <span className="font-medium shrink-0">
                           Material Size (Press):
@@ -277,7 +277,7 @@ export default function JobItemsSidebar({ jobNo, onClose }) {
                           {item.selectedWideMaterial.roll_width_ft + "ft x " + item.selectedWideMaterial.roll_length_mtr + "mtr"}
                         </span>
                       </div>                        
-                    )}
+                    )} */}
 
 
                     {item.selectedWideMaterial.board_width_ft && (
