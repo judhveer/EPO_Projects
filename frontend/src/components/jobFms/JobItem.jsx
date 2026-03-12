@@ -1,19 +1,9 @@
-import React, {useEffect, useMemo} from "react";
+import React, { useEffect, useMemo } from "react";
 import FormCard from "../../components/salesPipeline/FormCard.jsx";
 import Field from "../../components/salesPipeline/Field.jsx";
 import Input from "../../components/salesPipeline/Input.jsx";
 import Select from "../../components/salesPipeline/Select.jsx";
 import Button from "../../components/salesPipeline/Button.jsx";
-
-const JobItem = React.memo(function JobItem({
-  item,
-  index,
-  handleItemChange,
-  onRemove,
-}) {
-  const category = item.category;
-  const uniqueKey = item.id ?? item._temp_id;
-
 
 // Define PRESS_TYPES outside component (or inside but stable)
 const PRESS_TYPES = [
@@ -25,30 +15,107 @@ const PRESS_TYPES = [
   { value: "PLOTTER PRINTING", label: "Plotter Printing" },
 ];
 
-// Inside your component:
-const allowedPressTypes = useMemo(() => {
-  switch (category) {
-    case 'Single Sheet':
-      return PRESS_TYPES.filter(p => 
-        ['DIGITAL BLACK WHITE', 'DIGITAL MULTICOLOR', 'HMT', 'AUTOPRINT', 'PLOTTER PRINTING'].includes(p.value)
-      );
-    case 'Multiple Sheet':
-      return PRESS_TYPES.filter(p => 
-        ['DIGITAL BLACK WHITE', 'DIGITAL MULTICOLOR', 'HMT', 'AUTOPRINT'].includes(p.value)
-      );
-    case 'Wide Format':
-      return PRESS_TYPES.filter(p => p.value === 'FLEX MACHINE');
-    default:
-      return [];
-  }
-}, [category]);
+const thicknessMaterials = [
+  "Acrylic Export",
+  "Acrylic Indiana",
+  "Sun Board",
+  "ACP Board",
+];
 
-useEffect(() => {
-  // If current press_type is not in allowed list, clear it
-  if (item.press_type && !allowedPressTypes.some(p => p.value === item.press_type)) {
-    handleItemChange(uniqueKey, 'press_type', '');
+const isBindingDisabled = (bindingName, selectedBindings = []) => {
+  const groups = [
+    [
+      "Gloss Lamination (Single Side)",
+      "Gloss Lamination (Both Side)",
+      "Matt Lamination (Single Side)",
+      "Matt Lamination (Both Side)",
+    ],
+    ["Tin Mounting (single Side)", "Tin Mounting (both Side)"],
+  ];
+
+  for (const group of groups) {
+    const selected = selectedBindings.find((b) => group.includes(b));
+
+    if (selected && selected !== bindingName && group.includes(bindingName)) {
+      return true;
+    }
   }
-}, [category, item.press_type, allowedPressTypes, uniqueKey, handleItemChange]);
+
+  return false;
+};
+
+const JobItem = React.memo(function JobItem({
+  item,
+  index,
+  handleItemChange,
+  onRemove,
+}) {
+  const category = item.category;
+  const uniqueKey = item.id ?? item._temp_id;
+  const isThicknessMaterial = thicknessMaterials.includes(
+    item.wide_material_name,
+  );
+
+  // Inside your component:
+  const allowedPressTypes = useMemo(() => {
+    switch (category) {
+      case "Single Sheet":
+        return PRESS_TYPES.filter((p) =>
+          [
+            "DIGITAL BLACK WHITE",
+            "DIGITAL MULTICOLOR",
+            "HMT",
+            "AUTOPRINT",
+            "PLOTTER PRINTING",
+          ].includes(p.value),
+        );
+      case "Multiple Sheet":
+        return PRESS_TYPES.filter((p) =>
+          [
+            "DIGITAL BLACK WHITE",
+            "DIGITAL MULTICOLOR",
+            "HMT",
+            "AUTOPRINT",
+          ].includes(p.value),
+        );
+      case "Wide Format":
+        return PRESS_TYPES.filter((p) => p.value === "FLEX MACHINE");
+      default:
+        return [];
+    }
+  }, [category]);
+
+  useEffect(() => {
+    // If current press_type is not in allowed list, clear it
+    if (
+      item.press_type &&
+      !allowedPressTypes.some((p) => p.value === item.press_type)
+    ) {
+      handleItemChange(uniqueKey, "press_type", "");
+    }
+
+    if (
+      item.inside_press_type &&
+      !allowedPressTypes.some((p) => p.value === item.inside_press_type)
+    ) {
+      handleItemChange(uniqueKey, "inside_press_type", "");
+    }
+
+    if (
+      item.cover_press_type &&
+      !allowedPressTypes.some((p) => p.value === item.cover_press_type)
+    ) {
+      handleItemChange(uniqueKey, "cover_press_type", "");
+    }
+  }, [
+    category,
+    item.press_type,
+    item.inside_press_type,
+    item.cover_press_type,
+    allowedPressTypes,
+    uniqueKey,
+    handleItemChange,
+  ]);
 
   return (
     <FormCard>
@@ -100,45 +167,59 @@ useEffect(() => {
           </div>
         </Field>
 
-        {(category === "Single Sheet" || category === "Multiple Sheet") && item.enquiry_for && (
-          <Field label="Paper Type" required>
-            <Select
-              value={item.paper_type || ""}
-              onChange={(e) =>
-                handleItemChange(uniqueKey, "paper_type", e.target.value)
+        {(category === "Single Sheet" || category === "Multiple Sheet") &&
+          item.enquiry_for && (
+            <Field
+              label={
+                category === "Multiple Sheet"
+                  ? "Inside Paper Type"
+                  : "Paper Type"
               }
               required
             >
-              <option value="">Select Paper</option>
+              <Select
+                value={item.paper_type || ""}
+                onChange={(e) =>
+                  handleItemChange(uniqueKey, "paper_type", e.target.value)
+                }
+                required
+              >
+                <option value="">Select Paper</option>
 
-              {item.available_papers?.map((p) => (
-                <option key={p.paper_name} value={p.paper_name}>
-                  {p.paper_name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
+                {item.available_papers?.map((p) => (
+                  <option key={p.paper_name} value={p.paper_name}>
+                    {p.paper_name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
 
-        {(category === "Single Sheet" || category === "Multiple Sheet") && item.paper_type && (
-          <Field label="Paper GSM" required>
-            <Select
-              value={item.paper_gsm || ""}
-              onChange={(e) =>
-                handleItemChange(uniqueKey, "paper_gsm", e.target.value)
+        {(category === "Single Sheet" || category === "Multiple Sheet") &&
+          item.paper_type && (
+            <Field
+              label={
+                category === "Multiple Sheet" ? "Inside Paper GSM" : "Paper GSM"
               }
               required
             >
-              <option value="">Select GSM</option>
+              <Select
+                value={item.paper_gsm || ""}
+                onChange={(e) =>
+                  handleItemChange(uniqueKey, "paper_gsm", e.target.value)
+                }
+                required
+              >
+                <option value="">Select GSM</option>
 
-              {item.available_gsm?.map((p) => (
-                <option key={p.id} value={p.gsm}>
-                  {p.gsm} {p.size_category ? ` (${p.size_category})` : ""}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
+                {item.available_gsm?.map((p) => (
+                  <option key={p.id} value={p.gsm}>
+                    {p.gsm} {p.size_category ? ` (${p.size_category})` : ""}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
 
         {/* ================= WIDE FORMAT ================= */}
 
@@ -152,7 +233,7 @@ useEffect(() => {
                   handleItemChange(
                     uniqueKey,
                     "wide_material_name",
-                    e.target.value
+                    e.target.value,
                   )
                 }
                 required
@@ -168,59 +249,52 @@ useEffect(() => {
             </Field>
 
             {/* GSM / THICKNESS */}
-            {item.wide_material_name && 
-              item.available_wide_gsm?.some( (m) => m.gsm !== null || m.thickness_mm !== null ) && (
-              <Field
-                label={
-                  item.wide_material_name === "Sun Board"
-                    ? "Thickness"
-                    : "GSM"
-                }
-                required
-              >
-                <Select
-                  value={item.wide_material_name === "Sun Board"
-                      ? item.wide_material_thickness || ""
-                      : item.wide_material_gsm || ""
-                  }
-                  onChange={(e) => {
-                    const value = e.target.value;
-
-                    if (item.wide_material_name === "Sun Board") {
-                      handleItemChange(uniqueKey, "wide_material_thickness", value);
-                    } else {
-                      handleItemChange(uniqueKey, "wide_material_gsm", value);
-                    }
-                  }}
+            {item.wide_material_name &&
+              item.available_wide_gsm?.some(
+                (m) => m.gsm !== null || m.thickness_mm !== null,
+              ) && (
+                <Field
+                  label={isThicknessMaterial ? "Thickness" : "GSM"}
                   required
                 >
-                  <option value="">Select</option>
+                  <Select
+                    value={
+                      isThicknessMaterial
+                        ? item.wide_material_thickness || ""
+                        : item.wide_material_gsm || ""
+                    }
+                    onChange={(e) => {
+                      const value = e.target.value;
 
-                  {item.available_wide_gsm
-                  ?.filter( (m) => m.gsm !== null || m.thickness_mm !== null )
-                  .map((m) => (
-                    <option
-                      key={m.id}
-                      value={
-                        item.wide_material_name === "Sun Board"
-                          ? m.thickness_mm
-                          : m.gsm
+                      if (isThicknessMaterial) {
+                        handleItemChange(
+                          uniqueKey,
+                          "wide_material_thickness",
+                          value,
+                        );
+                      } else {
+                        handleItemChange(uniqueKey, "wide_material_gsm", value);
                       }
-                    >
-                      {item.wide_material_name === "Sun Board" ? m.thickness_mm : m.gsm}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            )}
+                    }}
+                    required
+                  >
+                    <option value="">Select</option>
+
+                    {item.available_wide_gsm
+                      ?.filter((m) => m.gsm !== null || m.thickness_mm !== null)
+                      .map((m) => (
+                        <option
+                          key={m.id}
+                          value={isThicknessMaterial ? m.thickness_mm : m.gsm}
+                        >
+                          {isThicknessMaterial ? m.thickness_mm : m.gsm}
+                        </option>
+                      ))}
+                  </Select>
+                </Field>
+              )}
           </>
         )}
-
-
-
-
-
-
 
         {/* Category-specific options */}
 
@@ -235,8 +309,6 @@ useEffect(() => {
               >
                 <option value="">Select</option>
                 <option>Black and White</option>
-                <option>Bi-Color</option>
-                <option>Tri-Color</option>
                 <option>Multicolor</option>
               </Select>
             </Field>
@@ -254,12 +326,39 @@ useEffect(() => {
               />
             </Field>
 
+            <Field label="Press Machine For Inside Paper" required>
+              <Select
+                value={item.inside_press_type || ""}
+                onChange={(e) =>
+                  handleItemChange(
+                    uniqueKey,
+                    "inside_press_type",
+                    e.target.value,
+                  )
+                }
+              >
+                <option value="" disabled>
+                  Select Press Machine
+                </option>
+
+                {allowedPressTypes.map((press) => (
+                  <option key={press.value} value={press.value}>
+                    {press.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
             {/* COVER PAPER */}
             <Field label="Cover Paper Type" required>
               <Select
                 value={item.cover_paper_type || ""}
                 onChange={(e) =>
-                  handleItemChange(uniqueKey, "cover_paper_type", e.target.value)
+                  handleItemChange(
+                    uniqueKey,
+                    "cover_paper_type",
+                    e.target.value,
+                  )
                 }
                 required
               >
@@ -277,7 +376,11 @@ useEffect(() => {
                 <Select
                   value={item.cover_paper_gsm || ""}
                   onChange={(e) =>
-                    handleItemChange(uniqueKey, "cover_paper_gsm", e.target.value)
+                    handleItemChange(
+                      uniqueKey,
+                      "cover_paper_gsm",
+                      e.target.value,
+                    )
                   }
                   required
                 >
@@ -298,14 +401,12 @@ useEffect(() => {
                   handleItemChange(
                     uniqueKey,
                     "cover_color_scheme",
-                    e.target.value
+                    e.target.value,
                   )
                 }
               >
                 <option value="">Select</option>
                 <option>Black and White</option>
-                <option>Bi-Color</option>
-                <option>Tri-Color</option>
                 <option>Multicolor</option>
               </Select>
             </Field>
@@ -323,6 +424,26 @@ useEffect(() => {
               </Select>
             </Field>
           </React.Fragment>
+        )}
+
+        {category !== "Other" && (
+          <Field
+            label={
+              category === "Multiple Sheet" ? "Sides For Inside Paper" : "Sides"
+            }
+            required
+          >
+            <Select
+              value={item.sides || ""}
+              onChange={(e) =>
+                handleItemChange(uniqueKey, "sides", e.target.value)
+              }
+            >
+              <option value="">Select</option>
+              <option>Single Side</option>
+              <option>Both Side</option>
+            </Select>
+          </Field>
         )}
 
         <Field label="Size" required>
@@ -346,107 +467,45 @@ useEffect(() => {
           </div>
         </Field>
 
-        {(category !== "Other" ) && (
-          <Field label="Sides" required>
+        {category === "Multiple Sheet" && (
+          <Field label="Press Machine For Cover Paper" required>
             <Select
-              value={item.sides || ""}
+              value={item.cover_press_type || ""}
               onChange={(e) =>
-                handleItemChange(uniqueKey, "sides", e.target.value)
+                handleItemChange(uniqueKey, "cover_press_type", e.target.value)
               }
             >
-              <option value="">Select</option>
-              <option>Single Side</option>
-              <option>Both Side</option>
-            </Select>
-          </Field>
-        )}
+              <option value="" disabled>
+                Select Press Machine
+              </option>
 
-        {category !== "Other" && item.available_bindings && item.available_bindings.length > 0 && (
-          <Field label="Type of Binding" required>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
-              {item.available_bindings.map((b) => (
-                <label
-                  key={b.binding_name}
-                  className="text-sm flex items-center gap-1"
-                >
-                  <input
-                    type="checkbox"
-                    checked={item.binding_types?.includes(b.binding_name)}
-                    onChange={(e) => {
-                      const prev = item.binding_types || [];
-                      const updated = e.target.checked
-                        ? [...prev, b.binding_name]
-                        : prev.filter((x) => x !== b.binding_name);
-
-                      handleItemChange(uniqueKey, "binding_types", updated);
-
-                      // Clear extra fields if unchecked
-                      if (!e.target.checked && b.binding_name === "Creasing") {
-                        handleItemChange(uniqueKey, "no_of_crease", "");
-                      }
-
-                      if (!e.target.checked && b.binding_name === "Folding") {
-                        handleItemChange(uniqueKey, "no_of_folding", "");
-                      }
-                    }}
-                  />
-                  {b.binding_name}
-                </label>
+              {allowedPressTypes.map((press) => (
+                <option key={press.value} value={press.value}>
+                  {press.label}
+                </option>
               ))}
-            </div>
-          </Field>
-        )}
-
-        {/* ----- EXTRA INPUTS FOR SINGLE SHEET ----- */}
-        {category === "Single Sheet" &&
-          item.binding_types?.includes("Creasing") && (
-            <Field label="No. of Crease per Sheet" required>
-              <Input
-                type="number"
-                min="1"
-                value={item.creases_per_sheet || ""}
-                onChange={(e) =>
-                  handleItemChange(uniqueKey, "creases_per_sheet", e.target.value)
-                }
-                required
-              />
-            </Field>
-        )}
-
-        {category === "Single Sheet" &&
-          item.binding_types?.includes("Folding") && (
-            <Field label="No. of Folding per Sheet" required>
-              <Input
-                type="number"
-                min="1"
-                value={item.folds_per_sheet || ""}
-                onChange={(e) =>
-                  handleItemChange(uniqueKey, "folds_per_sheet", e.target.value)
-                }
-                required
-              />
-            </Field>
-        )}
-
-        {category !== "Multiple Sheet" && category !== "Wide Format" && category !== "Other" && (
-          <Field label="Color Scheme" required>
-            <Select
-              value={item.color_scheme || ""}
-              onChange={(e) =>
-                handleItemChange(uniqueKey, "color_scheme", e.target.value)
-              }
-            >
-              <option value="">Select</option>
-              <option>Black and White</option>
-              <option>Bi-Color</option>
-              <option>Tri-Color</option>
-              <option>Multicolor</option>
             </Select>
           </Field>
         )}
 
+        {category !== "Multiple Sheet" &&
+          category !== "Wide Format" &&
+          category !== "Other" && (
+            <Field label="Color Scheme" required>
+              <Select
+                value={item.color_scheme || ""}
+                onChange={(e) =>
+                  handleItemChange(uniqueKey, "color_scheme", e.target.value)
+                }
+              >
+                <option value="">Select</option>
+                <option>Black and White</option>
+                <option>Multicolor</option>
+              </Select>
+            </Field>
+          )}
 
-        {category !== "Other" && (
+        {category !== "Other" && category !== "Multiple Sheet" && (
           <Field label="Press Machine" required>
             <Select
               value={item.press_type || ""}
@@ -466,6 +525,86 @@ useEffect(() => {
             </Select>
           </Field>
         )}
+
+        {category !== "Other" &&
+          item.available_bindings &&
+          item.available_bindings.length > 0 && (
+            <Field label="Type of Binding" required>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
+                {item.available_bindings.map((b) => (
+                  <label
+                    key={b.binding_name}
+                    className="text-sm flex items-center gap-1"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={item.binding_types?.includes(b.binding_name)}
+                      disabled={isBindingDisabled(
+                        b.binding_name,
+                        item.binding_types,
+                      )}
+                      onChange={(e) => {
+                        const prev = item.binding_types ?? [];
+                        const updated = e.target.checked
+                          ? [...prev, b.binding_name]
+                          : prev.filter((x) => x !== b.binding_name);
+
+                        handleItemChange(uniqueKey, "binding_types", updated);
+
+                        // Clear extra fields if unchecked
+                        if (
+                          !e.target.checked &&
+                          b.binding_name === "Creasing"
+                        ) {
+                          handleItemChange(uniqueKey, "no_of_crease", "");
+                        }
+
+                        if (!e.target.checked && b.binding_name === "Folding") {
+                          handleItemChange(uniqueKey, "no_of_folding", "");
+                        }
+                      }}
+                    />
+                    {b.binding_name}
+                  </label>
+                ))}
+              </div>
+            </Field>
+          )}
+
+        {/* ----- EXTRA INPUTS FOR SINGLE SHEET ----- */}
+        {category === "Single Sheet" &&
+          item.binding_types?.includes("Creasing") && (
+            <Field label="No. of Crease per Sheet" required>
+              <Input
+                type="number"
+                min="1"
+                value={item.creases_per_sheet || ""}
+                onChange={(e) =>
+                  handleItemChange(
+                    uniqueKey,
+                    "creases_per_sheet",
+                    e.target.value,
+                  )
+                }
+                required
+              />
+            </Field>
+          )}
+
+        {category === "Single Sheet" &&
+          item.binding_types?.includes("Folding") && (
+            <Field label="No. of Folding per Sheet" required>
+              <Input
+                type="number"
+                min="1"
+                value={item.folds_per_sheet || ""}
+                onChange={(e) =>
+                  handleItemChange(uniqueKey, "folds_per_sheet", e.target.value)
+                }
+                required
+              />
+            </Field>
+          )}
 
         {/* Common Fields */}
         <Field label="Quantity" required>
@@ -519,7 +658,7 @@ useEffect(() => {
         <div className="col-span-2">
           {item.best_inside_sheet && (
             <p className="text-xs text-green-700 mt-1">
-              Inside Sheet: <b>{item.best_inside_sheet}</b> (
+              Inside Sheet: <b>{item.best_inside_sheet_name}</b> (
               {item.best_inside_dimensions}) — UPS:{" "}
               <b>{item.best_inside_ups}</b>
             </p>
@@ -535,39 +674,37 @@ useEffect(() => {
           {item.category === "Wide Format" && item.calculation_type && (
             <p className="text-xs text-purple-700 mt-1">
               Material: <b>{item.selected_material}</b>
-              {item.material_info.roll_width_ft && (
-                <>
-                  {" "}—<b>{item.material_info.roll_width_ft}ft x {item.material_info.roll_length_mtr}mtr</b>
-                </>
-              )}
-
               {item.material_info.board_width_ft && (
                 <>
-                  {" "}—<b>{item.material_info.board_width_ft} x {item.material_info.board_height_ft}ft</b>
-                </>
-              )}
-
-              
-              — Type:{" "}
-              <b>{item.calculation_type.toUpperCase()}</b>
-              {item.rolls_or_boards_used && (
-                <>
-                  {" "}— Used: <b>{item.rolls_or_boards_used}</b>
-                </>
-              )}
-              {item.wide_ups && (
-                <>
-                  {" "}— UPS: <b>{item.wide_ups}</b>
-                </>
-              )}
-              {item.wastage_sqft !== undefined && (
-                <>
-                  {" "}— Wastage: <b>{item.wastage_sqft.toFixed(2)} sqft</b>
+                  {" "}
+                  —
+                  <b>
+                    {item.material_info.board_width_ft} x{" "}
+                    {item.material_info.board_height_ft}ft
+                  </b>
+                  — Type: <b>{item.calculation_type.toUpperCase()}</b>
+                  {item.rolls_or_boards_used && (
+                    <>
+                      {" "}
+                      — Used: <b>{item.rolls_or_boards_used}</b>
+                    </>
+                  )}
+                  {item.wide_ups && (
+                    <>
+                      {" "}
+                      — UPS: <b>{item.wide_ups}</b>
+                    </>
+                  )}
+                  {item.wastage_sqft !== undefined && (
+                    <>
+                      {" "}
+                      — Wastage: <b>{item.wastage_sqft.toFixed(2)} sqft</b>
+                    </>
+                  )}
                 </>
               )}
             </p>
           )}
-
         </div>
       </div>
     </FormCard>
