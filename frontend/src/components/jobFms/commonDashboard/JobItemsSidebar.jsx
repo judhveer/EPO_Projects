@@ -120,35 +120,37 @@ export default function JobItemsSidebar({ jobNo, onClose }) {
                     </div>
                   )}
                   {/* FOLDING & CREASING */}
-                  {item.no_of_foldings  && (
+                  {item.no_of_foldings && (
                     <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                       <span className="font-medium shrink-0">Folding:</span>
                       <span>
-                        {item.no_of_foldings
-                          ? (
-                            <>
-                              <strong>{item.no_of_foldings}</strong> fold(s) per item
-                            </>
-                          )
-                          : ""}
+                        {item.no_of_foldings ? (
+                          <>
+                            <strong>{item.no_of_foldings}</strong> fold(s) per
+                            item
+                          </>
+                        ) : (
+                          ""
+                        )}
                       </span>
                     </div>
                   )}
 
-                  {item.no_of_creases  && (
+                  {item.no_of_creases && (
                     <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                       <span className="font-medium shrink-0">Creasing:</span>
                       <span>
                         {item.no_of_creases ? (
                           <>
-                            <strong>{item.no_of_creases}</strong> crease(s) per item
+                            <strong>{item.no_of_creases}</strong> crease(s) per
+                            item
                           </>
-                        ) : ""}
+                        ) : (
+                          ""
+                        )}
                       </span>
                     </div>
                   )}
-
-
                 </div>
 
                 {/* PAPER DETAILS */}
@@ -241,7 +243,6 @@ export default function JobItemsSidebar({ jobNo, onClose }) {
                     )}
                   </>
                 )}
-                
 
                 {/* WIDE MATERIAL DETAILS */}
                 {item.selectedWideMaterial && (
@@ -251,7 +252,9 @@ export default function JobItemsSidebar({ jobNo, onClose }) {
                     </h6>
 
                     <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
-                      <span className="font-medium shrink-0">Material Name:</span>
+                      <span className="font-medium shrink-0">
+                        Material Name:
+                      </span>
                       <span
                         className="break-words sm:truncate"
                         title={item.selectedWideMaterial.material_name}
@@ -279,18 +282,21 @@ export default function JobItemsSidebar({ jobNo, onClose }) {
                       </div>                        
                     )} */}
 
-
                     {item.selectedWideMaterial.board_width_ft && (
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
                         <span className="font-medium shrink-0">
                           Material Size (Press):
                         </span>
-                        <span>{item.selectedWideMaterial.board_width_ft + " x " + item.selectedWideMaterial.board_height_ft + " ft"}</span>
+                        <span>
+                          {item.selectedWideMaterial.board_width_ft +
+                            " x " +
+                            item.selectedWideMaterial.board_height_ft +
+                            " ft"}
+                        </span>
                       </div>
                     )}
                   </div>
                 )}
-
               </div>
             ))}
         </div>
