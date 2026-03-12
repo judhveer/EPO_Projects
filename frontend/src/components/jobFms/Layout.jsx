@@ -17,6 +17,7 @@ const JOB_FMS_TABS = [
   { key: "coordinator", label: "Process Coordinator", to: "/job-fms/coordinator", perm: "jobfms.coordinator.view", },
   { key: "designer", label: "Designer", to: "/job-fms/designer", perm: "jobfms.designer.view", },
   { key: "crm", label: "CRM", to: "/job-fms/crm", perm: "jobfms.crm.view", },
+  { key: "bills", label: "Pending Bills", to: "/job-fms/pending-bills", perm: "jobfms.bills.view", },
 ];
 
 export default function JobFmsLayout() {
