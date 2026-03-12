@@ -68,9 +68,7 @@ export default function JobCardForm({
   const [loading, setLoading] = useState(false);
 
   const findItemIndexById = useCallback((items, id) => {
-    return items.findIndex(
-      (item) => (item.id ?? item._temp_id) === id
-    );
+    return items.findIndex((item) => (item.id ?? item._temp_id) === id);
   }, []);
 
   const showSoftError = (message) => {
@@ -197,7 +195,6 @@ export default function JobCardForm({
       if (item.wide_material_name) {
         loadWideMaterialGsm(itemId, item.wide_material_name);
       }
-
     });
   }, [existingJob]);
 
@@ -287,7 +284,6 @@ export default function JobCardForm({
     if (name === "client_name") {
       searchClients(value);
     }
-    
   };
 
   const loadCategoryItems = async (itemId, category) => {
@@ -326,6 +322,7 @@ export default function JobCardForm({
           unit_rate: "",
           item_total: "",
           best_inside_sheet: "",
+          best_inside_sheet_name: "",
           best_cover_sheet: "",
 
           selected_material: "",
@@ -388,7 +385,6 @@ export default function JobCardForm({
     }
   };
 
-
   const loadWideMaterials = async (itemId) => {
     try {
       const { data } = await api.get("/api/fms/items/wide-materials");
@@ -397,7 +393,7 @@ export default function JobCardForm({
         const index = findItemIndexById(prev.job_items, itemId);
         if (index === -1) return prev;
         const items = [...prev.job_items];
-        items[index].available_wide_materials = data;  // store wide format materials
+        items[index].available_wide_materials = data; // store wide format materials
         return { ...prev, job_items: items };
       });
     } catch (err) {
@@ -408,7 +404,7 @@ export default function JobCardForm({
   const loadWideMaterialGsm = async (itemId, materialName) => {
     try {
       const { data } = await api.get(
-        `/api/fms/items/wide-materials/gsm?materialName=${materialName}`
+        `/api/fms/items/wide-materials/gsm?materialName=${materialName}`,
       );
 
       setForm((prev) => {
@@ -422,8 +418,6 @@ export default function JobCardForm({
       console.error("Failed to load wide GSM");
     }
   };
-
-
 
   const loadItemPapersGsm = async (itemId, paperName, type = "inside") => {
     try {
@@ -468,36 +462,28 @@ export default function JobCardForm({
       if (!item.quantity) return;
 
       if (item.category === "Wide Format") {
-        if (
-          !item.enquiry_for ||
-          !item.wide_material_name ||
-          !item.size
-        ) {
-          showSoftError("Please fill all required fields before calculating wide format");
+        if (!item.enquiry_for || !item.wide_material_name || !item.size) {
+          showSoftError(
+            "Please fill all required fields before calculating wide format",
+          );
           return;
         }
         // if ( item.wide_material_name !== "Standee" && !item.wide_material_gsm && !item.wide_material_thickness) {
         //   return;
         // }
-      }
-
-      else if (item.category === "Other") {
+      } else if (item.category === "Other") {
         return; // handled separately
-      }
-
-      else {
+      } else {
         if (
           !item.enquiry_for ||
           !item.paper_type ||
           !item.paper_gsm ||
-          !item.size 
-        ) { 
+          !item.size
+        ) {
           showSoftError("Please fill all required fields before calculating");
           return;
         }
       }
-
-
 
       // Clean the items before sending
       const cleanedItems = cleanJobItems(formRef.current.job_items);
@@ -529,12 +515,12 @@ export default function JobCardForm({
           best_inside_sheet: data.inside.sheet_selected,
           best_inside_dimensions: data.inside.sheet_dimensions,
           best_inside_ups: data.inside.ups,
-
+          best_inside_sheet_name: data.inside.sheet_name,
           // 🔥 Store cover best-sheet details (may be null for Single Sheet)
           best_cover_sheet: data.cover.sheet_selected,
           best_cover_dimensions: data.cover.sheet_dimensions,
           best_cover_ups: data.cover.ups,
-          
+
           // 🔥 wide format fields
           selected_material: data.wide?.selected_material,
           calculation_type: data.wide?.calculation_type,
@@ -551,11 +537,13 @@ export default function JobCardForm({
         };
       });
     } catch (err) {
-      console.error("Item calculation failed:", err?.response?.data?.message || err);
+      console.error(
+        "Item calculation failed:",
+        err?.response?.data?.message || err,
+      );
       showSoftError("Calculation failed: " + err?.response?.data?.message);
     }
   };
-
 
   const loadSizes = async (itemId, search) => {
     try {
@@ -601,7 +589,7 @@ export default function JobCardForm({
 
         const grandTotal = items.reduce(
           (sum, it) => sum + Number(it.item_total || 0),
-          0
+          0,
         );
 
         return {
@@ -691,9 +679,8 @@ export default function JobCardForm({
       loadSizes,
       calculateItemBackend,
       showSoftError,
-    ]
+    ],
   );
-  
 
   const createEmptyItem = React.useCallback(
     () => ({
@@ -731,12 +718,12 @@ export default function JobCardForm({
   const removeItem = useCallback((id) => {
     setForm((prev) => {
       const updatedItems = prev.job_items.filter(
-        (item) => (item.id ?? item._temp_id) !== id
+        (item) => (item.id ?? item._temp_id) !== id,
       );
 
       const grandTotal = updatedItems.reduce(
         (sum, it) => sum + Number(it.item_total || 0),
-        0
+        0,
       );
 
       return {
@@ -746,7 +733,6 @@ export default function JobCardForm({
       };
     });
   }, []);
-
 
   const cleanJobItems = (items) => {
     return items.map((item) => {
@@ -911,7 +897,6 @@ export default function JobCardForm({
     }
   };
 
-
   return (
     <FormCard title="Job Card Entry">
       {showSuccessPopup && (
@@ -981,7 +966,7 @@ export default function JobCardForm({
           </div>
         </Field>
 
-        <Field label="Client department" >
+        <Field label="Client department">
           <Input
             name="department"
             value={form.department}
@@ -989,12 +974,8 @@ export default function JobCardForm({
           />
         </Field>
 
-        <Field label="Reference" >
-          <Input
-            name="reference"
-            value={form.reference}
-            onChange={onChange}
-          />
+        <Field label="Reference">
+          <Input name="reference" value={form.reference} onChange={onChange} />
         </Field>
 
         <Field label="Client Type" required>
@@ -1142,28 +1123,40 @@ export default function JobCardForm({
           >
             <option value="">Select</option>
 
-            <option value="EPO_TO_CUSTOMER_SHIPMENT">EPO → Customer (Shipment)</option>
-            <option value="EPO_TO_CUSTOMER_PICKUP">EPO → Customer (Customer Pickup)</option> 
-            <option value="MM_TO_CUSTOMER_SHIPMENT">MM → Customer (Shipment)</option>
-            <option value="MM_TO_CUSTOMER_PICKUP">MM → Customer (Customer Pickup)</option>
-            <option value="MM_TO_EPO_CUSTOMER_SHIPMENT">MM → EPO → Customer (Shipment)</option>
-            <option value="MM_TO_EPO_CUSTOMER_PICKUP">MM → EPO → Customer (Customer Pickup)</option>
+            <option value="EPO_TO_CUSTOMER_SHIPMENT">
+              EPO → Customer (Shipment)
+            </option>
+            <option value="EPO_TO_CUSTOMER_PICKUP">
+              EPO → Customer (Customer Pickup)
+            </option>
+            <option value="MM_TO_CUSTOMER_SHIPMENT">
+              MM → Customer (Shipment)
+            </option>
+            <option value="MM_TO_CUSTOMER_PICKUP">
+              MM → Customer (Customer Pickup)
+            </option>
+            <option value="MM_TO_EPO_CUSTOMER_SHIPMENT">
+              MM → EPO → Customer (Shipment)
+            </option>
+            <option value="MM_TO_EPO_CUSTOMER_PICKUP">
+              MM → EPO → Customer (Customer Pickup)
+            </option>
           </Select>
         </Field>
 
-        {form.delivery_location !== "EPO_TO_CUSTOMER_PICKUP" && 
-         form.delivery_location !== "MM_TO_CUSTOMER_PICKUP" && 
-         form.delivery_location !== "MM_TO_EPO_CUSTOMER_PICKUP" && (
-          <Field label="Delivery Address" required>
-            <textarea
-              name="delivery_address"
-              value={form.delivery_address || ""}
-              onChange={onChange}
-              className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
-              required
-            />
-          </Field>
-        )}
+        {form.delivery_location !== "EPO_TO_CUSTOMER_PICKUP" &&
+          form.delivery_location !== "MM_TO_CUSTOMER_PICKUP" &&
+          form.delivery_location !== "MM_TO_EPO_CUSTOMER_PICKUP" && (
+            <Field label="Delivery Address" required>
+              <textarea
+                name="delivery_address"
+                value={form.delivery_address || ""}
+                onChange={onChange}
+                className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
+                required
+              />
+            </Field>
+          )}
 
         <Field label="Delivery Date" required>
           <Input
@@ -1321,10 +1314,12 @@ export default function JobCardForm({
             onChange={onChange}
           >
             <option value="">Select</option>
-            <option>GST BILL</option>
-            <option>PI</option>
-            <option>UPI</option>
-            <option>Other</option>
+            <option value="upi">UPI</option>
+            <option value="neft">NEFT</option>
+            <option value="rtgs">RTGS</option>
+            <option value="pfms">PFMS</option>
+            <option value="cash">Cash</option>
+            <option value="cheque">Cheque</option>
           </Select>
         </Field>
 
@@ -1357,5 +1352,3 @@ export default function JobCardForm({
     </FormCard>
   );
 }
-
-
