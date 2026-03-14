@@ -33,6 +33,10 @@ router.post("/submit", async (req, res) => {
         .json({ error: "Please fill all required fields before submitting." });
     }
 
+    if (answers.length !== DISC_QUESTIONS.length) {
+      return res.status(400).json({ error: "Please answer all questions." });
+    }
+
     // ✅ Prevent duplicate submission (same mobile number)
     const existing = await db.Disc.findOne({ where: { mobile } });
     if (existing) {
@@ -58,10 +62,10 @@ router.post("/submit", async (req, res) => {
     }
 
     const percentages = {
-      D: ((scores.D / total) * 100).toFixed(1),
-      I: ((scores.I / total) * 100).toFixed(1),
-      S: ((scores.S / total) * 100).toFixed(1),
-      C: ((scores.C / total) * 100).toFixed(1),
+      D: Number(((scores.D / total) * 100).toFixed(1)),
+      I: Number(((scores.I / total) * 100).toFixed(1)),
+      S: Number(((scores.S / total) * 100).toFixed(1)),
+      C: Number(((scores.C / total) * 100).toFixed(1)),
     };
 
     // ✅ Generate a brief summary text

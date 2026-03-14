@@ -38,7 +38,7 @@ export const DISC_QUESTIONS = [
       { text: "Address them directly and seek resolution", type: "D" },
       { text: "Listen to all sides before responding", type: "C" },
       { text: "Mediate and find common ground", type: "S" },
-      { text: "Avoid conflict and maintain harmony", type: "S" },
+      { text: "Use persuasion to find a mutually agreeable solution", type: "I" },
     ],
   },
   {
@@ -49,7 +49,7 @@ export const DISC_QUESTIONS = [
       { text: "Embrace it as an opportunity", type: "D" },
       { text: "Analyze the implications carefully", type: "C" },
       { text: "Seek guidance from others", type: "S" },
-      { text: "Prefer to stick to familiar routines", type: "S" },
+      { text: "Stay optimistic and adapt with enthusiasm", type: "I" },
     ],
   },
   {
@@ -255,6 +255,57 @@ export const DISC_QUESTIONS = [
       { text: "Careful and accuracy-focused", type: "C" },
       { text: "Steady and consistent", type: "S" },
       { text: "Flexible and energetic", type: "I" },
+    ],
+  },
+  // New questions added (26-30)
+  {
+    id: 26,
+    question: "When starting a new project, what is your first priority?",
+    options: [
+      { text: "Establishing clear goals and timelines", type: "D" },
+      { text: "Getting the team excited and engaged", type: "I" },
+      { text: "Understanding the team dynamics and roles", type: "S" },
+      { text: "Reviewing all requirements and data", type: "C" },
+    ],
+  },
+  {
+    id: 27,
+    question: "How do you prefer to receive recognition for your work?",
+    options: [
+      { text: "Public acknowledgment of my achievements", type: "D" },
+      { text: "Celebratory events or team praise", type: "I" },
+      { text: "Personal, private thank you from a manager", type: "S" },
+      { text: "Written feedback or performance metrics", type: "C" },
+    ],
+  },
+  {
+    id: 28,
+    question: "When you encounter a problem you can't solve alone, what do you do?",
+    options: [
+      { text: "Seek out an expert or take charge to find a solution", type: "D" },
+      { text: "Brainstorm with a group for ideas", type: "I" },
+      { text: "Ask a trusted colleague for help", type: "S" },
+      { text: "Research thoroughly before asking", type: "C" },
+    ],
+  },
+  {
+    id: 29,
+    question: "In meetings, how do you typically participate?",
+    options: [
+      { text: "Drive the conversation toward decisions and actions", type: "D" },
+      { text: "Share ideas and encourage others to contribute", type: "I" },
+      { text: "Listen attentively and support others' points", type: "S" },
+      { text: "Ask clarifying questions and note details", type: "C" },
+    ],
+  },
+  {
+    id: 30,
+    question: "When organizing your workspace or tasks, you prefer:",
+    options: [
+      { text: "A system that maximizes efficiency and results", type: "D" },
+      { text: "An open, vibrant environment that fosters interaction", type: "I" },
+      { text: "A stable, organized setup with minimal surprises", type: "S" },
+      { text: "Everything labeled, categorized, and in order", type: "C" },
     ],
   },
 ];
