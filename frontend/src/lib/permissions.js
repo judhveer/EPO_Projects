@@ -10,9 +10,9 @@ export function can(user, perm) {
     const { role, department: dept } = user;
 
     // 🔹 Boss/Admin can do everything
-    // if (SUPER.has(role)) {
-    //     return true;
-    // }
+    if (SUPER.has(role)) {
+        return true;
+    }
     // Attendance – everyone logged in
     if (perm === 'attendance.view') {
         return true;
