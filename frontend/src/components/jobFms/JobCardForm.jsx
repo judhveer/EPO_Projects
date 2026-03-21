@@ -1135,10 +1135,10 @@ export default function JobCardForm({
             <option value="MM_TO_CUSTOMER_PICKUP">
               MM → Customer (Customer Pickup)
             </option>
-            <option value="MM_TO_EPO_CUSTOMER_SHIPMENT">
+            <option value="MM_TO_EPO_TO_CUSTOMER_SHIPMENT">
               MM → EPO → Customer (Shipment)
             </option>
-            <option value="MM_TO_EPO_CUSTOMER_PICKUP">
+            <option value="MM_TO_EPO_TO_CUSTOMER_PICKUP">
               MM → EPO → Customer (Customer Pickup)
             </option>
           </Select>
