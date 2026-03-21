@@ -87,12 +87,7 @@ dotenv.config();
 const app = express();
 app.use(helmet());
 
-app.use((req, res, next) => {
-  console.log("Origin:", req.headers.origin);
-  next();
-});
 
-console.log("cors origin -->: ", process.env.CORS_ORIGIN);
 app.use(cors({
   // https://management.easternpanoramaoffset.com
   // http://localhost:5173
@@ -244,7 +239,7 @@ export async function init() {
     // assertEnv();
     await models.sequelize.authenticate();
 
-    await models.sequelize.sync({ alter: false }); // dev only
+    await models.sequelize.sync({ alter: true }); // dev only
     console.log("DB sync successful");
 
     // await attendanceBot.telegram.deleteWebhook();
