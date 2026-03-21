@@ -263,10 +263,22 @@ export default function JobItemsSidebar({ jobNo, onClose }) {
                       </span>
                     </div>
 
+                  {item.selectedWideMaterial?.gsm && (
                     <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
                       <span className="font-medium shrink-0">GSM:</span>
                       <span>{item.selectedWideMaterial.gsm}</span>
                     </div>
+                  )}
+
+
+                  {item.selectedWideMaterial?.thickness_mm && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                      <span className="font-medium shrink-0">Thickness:</span>
+                      <span>{item.selectedWideMaterial?.thickness_mm} mm</span>
+                    </div>
+                  )}
+
+
 
                     {/* {item.selectedWideMaterial.roll_width_ft && (
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
