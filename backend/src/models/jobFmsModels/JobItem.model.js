@@ -99,12 +99,12 @@ export default (sequelize) => {
       },
 
       press_type: {
-        type: DataTypes.ENUM("FLEX MACHINE", "DIGITAL BLACK WHITE", "DIGITAL MULTICOLOR", "HMT", "AUTOPRINT", "PLOTTER PRINTING"),
+        type: DataTypes.ENUM("FLEX MACHINE", "DIGITAL BLACK WHITE", "DIGITAL MULTICOLOR", "HMT BLACK WHITE", "HMT MULTICOLOR", "AUTOPRINT","PLOTTER BLACK WHITE", "PLOTTER MULTICOLOR"),
         allowNull: true,
       },
 
       cover_press_type: {
-        type: DataTypes.ENUM("DIGITAL BLACK WHITE", "DIGITAL MULTICOLOR", "HMT", "AUTOPRINT", ),
+        type: DataTypes.ENUM("DIGITAL BLACK WHITE", "DIGITAL MULTICOLOR", "HMT BLACK WHITE", "HMT MULTICOLOR", "AUTOPRINT", ),
         allowNull: true,
       },
 
