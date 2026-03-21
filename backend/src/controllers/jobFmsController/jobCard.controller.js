@@ -1,6 +1,11 @@
-import models from "../../models/index.js";
+import db from "../../models/index.js";
+import { Op } from "sequelize";
 import { advanceStage } from "../../utils/jobFms/stageTracking.js";
 import { sendMailForFMS } from "../../email/sendMail.js";
+import { DateTime } from "luxon";
+import { orderConfirmationTemplate, crmJobAssignmentTemplate, coordinatorJobReviewTemplate } from "../../email/templates/emailTemplates.js";
+import path from "path";
+
 
 const {
   JobCard,
@@ -14,7 +19,59 @@ const {
   User,
   ItemMaster,
   PaperMaster,
-} = models;
+  WideFormatMaterial
+} = db;
+
+
+const calculateJobCompletionDeadline = (deliveryDateInput) => {
+  // ⬅️ deliveryDateInput is already IST
+  const deliveryIST = DateTime.fromISO(deliveryDateInput, {
+    zone: "Asia/Kolkata",
+  });
+  console.log("deliveryIST: ", deliveryIST);
+
+  if (!deliveryIST.isValid) {
+    throw new Error("Invalid delivery date input");
+  }
+
+  const nowIST = DateTime.now().setZone("Asia/Kolkata");
+  console.log("nowIST: ", nowIST);
+
+  const todayIST = nowIST.startOf("day");
+  console.log("todayIST: ", todayIST);
+  const tomorrowIST = todayIST.plus({ days: 1 });
+  console.log("tomorrowIST: ", tomorrowIST);
+
+  const deliveryDayIST = deliveryIST.startOf("day");
+  console.log("deliveryDayIST: ", deliveryDayIST);
+
+  // ⏱ SAME DAY delivery → 2 hours before delivery
+  if (deliveryDayIST.equals(todayIST)) {
+    return deliveryIST.minus({ hours: 2 }).toJSDate();
+  }
+
+  // ⏭ NEXT DAY delivery
+  if (deliveryDayIST.equals(tomorrowIST)) {
+    const deliveryHour = deliveryIST.hour;
+
+    // Before 1 PM IST
+    if (deliveryHour < 13) {
+      return todayIST
+        .set({ hour: 19, minute: 0, second: 0, millisecond: 0 })
+        .toJSDate();
+    }
+
+    // After 1 PM → 2 hours before delivery
+    return deliveryIST.minus({ hours: 2 }).toJSDate();
+  }
+
+  // 📆 Day after tomorrow or later
+  return deliveryDayIST
+    .minus({ days: 1 })
+    .set({ hour: 18, minute: 0, second: 0, millisecond: 0 })
+    .toJSDate();
+};
+
 
 /**
  * CREATE JOB CARD + JOB ITEMS (in a single transaction)
@@ -23,32 +80,41 @@ export const createJobCard = async (req, res) => {
   console.log("createJobCard called...");
   const t = await JobCard.sequelize.transaction();
   try {
-    console.log("req.body: ", req.body);
+    // console.log("req.body: ", req.body);
     const {
       client_type,
       order_source,
       client_name,
+      department,
+      reference,
       order_type,
       address,
       contact_number,
       email_id,
       order_handled_by,
       execution_location,
+      outbound_sent_to = null,       // if outbound then this fields will be required
+      paper_ordered_from = null,     // if outbound then this fields will be required
+      receiving_date_for_mm = null,   // if outbound then this fields will be required
       delivery_location, // ✅ fixed spelling
       delivery_address,
       delivery_date,
       proof_date,
       task_priority,
       instructions,
-      unit_rate,
       total_amount,
       advance_payment,
       mode_of_payment,
       payment_status,
       order_received_by,
       no_of_files,
+      is_direct_to_production = false,
+      discount = 0,
       job_items = [], // ✅ default empty array
     } = req.body;
+
+
+    console.log("required details: ", client_type, order_source, client_name, order_type, order_handled_by, execution_location, delivery_location, delivery_date, proof_date, task_priority, total_amount, advance_payment, mode_of_payment, contact_number, payment_status, job_items);
 
     if (
       !client_type ||
@@ -62,7 +128,6 @@ export const createJobCard = async (req, res) => {
       !proof_date ||
       !task_priority ||
       !total_amount ||
-      !advance_payment ||
       !mode_of_payment ||
       !job_items ||
       !contact_number ||
@@ -87,29 +152,41 @@ export const createJobCard = async (req, res) => {
       });
     }
 
-    if (delivery_location === "Delivery Address") {
-      if (!delivery_address) {
-        return res.status(400).json({
-          message: "Delivery Address is required.",
-        });
-      }
-    }
+    // if (delivery_location === "Delivery Address") {
+    //   if (!delivery_address) {
+    //     return res.status(400).json({
+    //       message: "Delivery Address is required.",
+    //     });
+    //   }
+    // }
+
+    // calculate job completion deadline
+    const job_completion_deadline = calculateJobCompletionDeadline(delivery_date);
+    console.log("job completion deadline: ", job_completion_deadline);
+
+    const initialStage = is_direct_to_production ? "production" : "coordinator_review";
 
     // ✅ 1. Create JobCard (auto-generates job_no via hook)
     const jobCard = await JobCard.create(
       {
-        client_type,
-        order_source,
         client_name,
+        department: department ?? null,
+        reference: reference ?? null,
+        client_type,
         order_type,
+        order_source,
         address,
         contact_number,
         email_id: email_id === "" ? null : email_id,
+        order_received_by,
         order_handled_by,
         execution_location,
+        outbound_sent_to,       // if outbound then this fields will be required
+        paper_ordered_from,    // if outbound then this fields will be required
+        receiving_date_for_mm,
+        delivery_date,
         delivery_location,
         delivery_address,
-        delivery_date,
         proof_date,
         task_priority,
         instructions,
@@ -117,10 +194,12 @@ export const createJobCard = async (req, res) => {
         advance_payment,
         mode_of_payment,
         payment_status,
-        order_received_by,
+        is_direct_to_production,
         no_of_files: Number(no_of_files),
-        status: "coordinator_review",
-        stage_name: "coordinator_review",
+        status: initialStage,
+        current_stage: initialStage,
+        job_completion_deadline,
+        discount: Number(discount) || 0,
       },
       { transaction: t }
     );
@@ -130,7 +209,7 @@ export const createJobCard = async (req, res) => {
     // if job_items are provided, create them
     if (job_items && job_items.length > 0) {
       for (const item of job_items) {
-        const item_master_id = await ItemMaster.findOne({
+        let item_master_id = await ItemMaster.findOne({
           where: {
             category: item.category,
             item_name: item.enquiry_for,
@@ -138,42 +217,92 @@ export const createJobCard = async (req, res) => {
           attributes: ["id"],
         });
 
+        if (!item_master_id) {
+          console.log("ItemMaster not found for: ", item.category, item.enquiry_for);
+          item_master_id = await ItemMaster.create({
+              category: item.category,
+              item_name: item.enquiry_for,
+          }, { transaction: t });
+        }
+
         item.item_master_id = item_master_id.dataValues.id;
 
-        const selected_paper_id = await PaperMaster.findOne({
-          where: {
-            paper_name: item.paper_type,
-            gsm: Number(item.paper_gsm),
-            size_name: item.best_inside_sheet,
-          },
-          attributes: ["id"],
-        });
-        item.selected_paper_id = selected_paper_id.dataValues.id;
+          /* ===================================================== WIDE FORMAT CASE ===================================================== */
 
-        if (item.category !== "Multiple Sheet") {
+        if(item.category === "Wide Format") {
+          const wideMaterial = await WideFormatMaterial.findByPk(item.material_info.id, { attributes: ["id"] });
+          if (!wideMaterial) {
+            throw new Error("Wide format material not found");
+          }
+          item.selected_wide_material_id = wideMaterial.dataValues.id;
+          // Clean unrelated fields          
           item.cover_paper_type = null;
           item.cover_paper_gsm = null;
           item.cover_color_scheme = null;
-        } else {
-          const selected_cover_paper_id = await PaperMaster.findOne({
+          item.color_scheme = "Multicolor";
+        }
+        else if(item.category === "Other"){
+          item.selected_wide_material_id = null;
+          item.cover_paper_type = null;
+          item.cover_paper_gsm = null;
+          item.cover_color_scheme = null;
+          item.color_scheme = "Multicolor";
+          item.sides = null;
+        }
+        /* =========================================== SINGLE SHEET AND MULTIPLE SHEET CASE ============================================ */
+        else{
+          item.selected_wide_material_id = null;
+
+          const selected_paper_id = await PaperMaster.findOne({
             where: {
-              paper_name: item.cover_paper_type,
-              gsm: Number(item.cover_paper_gsm),
-              size_name: item.best_cover_sheet,
+              paper_name: item.paper_type,
+              gsm: Number(item.paper_gsm),
+              size_name: item.best_inside_sheet,
             },
             attributes: ["id"],
           });
-          item.selected_cover_paper_id = selected_cover_paper_id.dataValues.id;
+
+          if (!selected_paper_id) {
+            throw new Error(`Paper not found: ${item.paper_type}, ${item.paper_gsm}, ${item.best_inside_sheet}`);
+          }
+
+          item.selected_paper_id = selected_paper_id.dataValues.id;
+
+          if (item.category !== "Multiple Sheet") {
+            item.cover_paper_type = null;
+            item.cover_paper_gsm = null;
+            item.cover_color_scheme = null;
+          } else {
+            const selected_cover_paper_id = await PaperMaster.findOne({
+              where: {
+                paper_name: item.cover_paper_type,
+                gsm: Number(item.cover_paper_gsm),
+                size_name: item.best_cover_sheet,
+              },
+              attributes: ["id"],
+            });
+            item.selected_cover_paper_id = selected_cover_paper_id.dataValues.id;
+          }
+
         }
+
+
         await JobItem.create(
           {
             job_no: jobCard.job_no,
             ...item,
+            selected_paper_id: item.selected_paper_id ?? null,
+            selected_cover_paper_id: item.selected_cover_paper_id ?? null,
+            selected_wide_material_id: item.selected_wide_material_id ?? null,
+
             binding_types: Array.isArray(item.binding_types)
               ? item.binding_types
               : [],
             inside_pages: item.inside_pages ? Number(item.inside_pages) : null,
             cover_pages: item.cover_pages ? Number(item.cover_pages) : null,
+            no_of_foldings: item.folds_per_sheet ? Number(item.folds_per_sheet) : null,
+            no_of_creases: item.creases_per_sheet ? Number(item.creases_per_sheet) : null,
+            press_type: item.press_type === '' || item.press_type === undefined ? null : item.press_type,
           },
           { transaction: t }
         );
@@ -191,16 +320,17 @@ export const createJobCard = async (req, res) => {
       { transaction: t }
     );
 
-    // 4. Create StageTracking entry
-    await advanceStage({
-      job_no,
-      new_stage: "coordinator_review",
-      performed_by_id: req.user?.id || null,
-      started_at: new Date(),
-      remarks:
-        "(Job created -> Coordinator review) Job sent for coordinator review",
-      transaction: t,
-    });
+      // 4. Create StageTracking entry
+      await advanceStage({
+        job_no,
+        new_stage: initialStage,
+        performed_by_id: req.user?.id || null,
+        started_at: new Date(),
+        remarks: is_direct_to_production ? "(Job created -> Direct to Production) Job sent directly to production" : "(Job created -> Coordinator review) Job sent for coordinator review",
+        transaction: t,
+      });
+
+
 
     //  Commit transaction before sending email
     await t.commit();
@@ -210,111 +340,64 @@ export const createJobCard = async (req, res) => {
       jobCard,
     });
 
+    const attachments = [
+      {
+        filename: "epo-logo.jpg",
+        path: path.resolve("assets/epo-logo.jpg"),
+        cid: "epo-logo",
+      },
+    ];
+
     // Send Email to Client (if email_id exists)
-    if (email_id) {
-      const emailHTML = `
-      <h2>Welcome to EPO - Order Confirmation & Contact Details</h2>
+    // if (email_id) {
+    //   const emailHTML = orderConfirmationTemplate({
+    //     clientName: client_name,
+    //     jobNo: jobCard.job_no,
+    //     orderHandledBy: order_handled_by,
+    //     totalAmount: total_amount,
+    //     instructions,
+    //   });
 
-      <p>Hello <strong>${client_name}</strong>,</p>
-
-      <p>Greetings from <strong>Eastern Panorama Offset!</strong></p>
-
-      <p>We're delighted to have you with us.<br/>
-      Please find your order details below:</p>
-
-      <ul>
-        <li><strong>Job No:</strong> ${jobCard.job_no}</li>
-        <li><strong>Assigned CRM:</strong> ${order_handled_by}</li>
-        <li><strong>Order Value:</strong> ₹${total_amount || 0}</li>
-        <li><strong>Order Specifications:</strong> ${instructions || "N/A"}</li>
-      </ul>
-
-      <p><em>(Please note: Our contact numbers are available from 10:00 AM to 6:00 PM.)</em></p>
-
-      <hr/>
-
-      <h3>Contact Matrix for Escalation</h3>
-
-      <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; font-size:14px;">
-      <thead>
-      <tr><th>Communication Level</th><th>Timelines</th><th>Contact Details</th></tr>
-      </thead>
-      <tbody>
-      <tr>
-      <td>1st Level of Communication</td>
-      <td>Within 12 working hours</td>
-      <td>
-      Please contact your assigned CRMs:<br/>
-      1. Fanny - Ph: 8259831001, Email: crm@easternpanorama.in<br/>
-      2. Saphiiaibet - Ph: 8258947402, Email: crm2@easternpanorama.in
-      </td>
-      </tr>
-      <tr>
-      <td>2nd Level of Communication</td>
-      <td>If no response from Level 1 within 24 working hours</td>
-      <td>
-      Ph: 8258947402, Email: ea@easternpanorama.in<br/>
-      Ph: 8258934002, Email: ea2@easternpanorama.in<br/>
-      Ph: 6909321443, Email: oa@easternpanorama.in
-      </td>
-      </tr>
-      <tr>
-      <td>3rd Level of Communication</td>
-      <td>If no response from Level 2 within 24 working hours</td>
-      <td>
-      Email: harshjw@easternpanorama.in
-      </td>
-      </tr>
-      </tbody>
-      </table>
-
-      <br/>
-      <p>Warm regards,<br/>
-      <strong>Team EPO</strong><br/>
-      (Eastern Panorama Offset)</p>
-      `;
-
-      await sendMailForFMS({
-        to: email_id,
-        subject: `Welcome to EPO - Order Confirmation | Job No: ${jobCard.job_no}`,
-        html: emailHTML,
-      });
-    }
+    //   await sendMailForFMS({
+    //     to: email_id,
+    //     subject: `Welcome to EPO - Order Confirmation | Job No: ${jobCard.job_no}`,
+    //     html: emailHTML,
+    //   });
+    // }
 
     // 2️⃣ Notify the assigned CRM
     const crmUser = await User.findOne({
-      where: { username: order_handled_by, department: "CRM" },
+      where: { username: order_handled_by },
     });
 
     if (crmUser?.email) {
-      const crmEmailHTML = `
-      <div style="font-family:Arial, sans-serif; color:#333;">
-        <h2 style="color:#0a4da2;">📋 New Job Assigned to You</h2>
-        <p>Hello <strong>${crmUser.username}</strong>,</p>
-        <p>A new JobCard has been assigned under your responsibility.</p>
-        <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; width:100%; font-size:14px;">
-          <tr><th align="left">Job No</th><td>${job_no}</td></tr>
-          <tr><th align="left">Client</th><td>${client_name}</td></tr>
-          <tr><th align="left">Order Type</th><td>${order_type}</td></tr>
-          <tr><th align="left">Order Source</th><td>${order_source}</td></tr>
-          <tr><th align="left">Execution Location</th><td>${execution_location}</td></tr>
-          <tr><th align="left">Delivery Date</th><td>${new Date(
-            delivery_date
-          ).toLocaleString()}</td></tr>
-          <tr><th align="left">Priority</th><td>${task_priority}</td></tr>
-          <tr><th align="left">Total Amount</th><td>₹${total_amount}</td></tr>
-        </table>
-        <br/>
-        <p style="color:#555;">Please log into the EPO FMS dashboard to review the details and coordinate with the Process Coordinator.</p>
-        <hr style="border:none; border-top:1px solid #ccc; margin:20px 0;" />
-        <p style="font-size:13px; color:#888;">-- Automated Notification | Eastern Panorama Offset</p>
-      </div>
-      `;
+      const dashboardUrl = `${process.env.LEADS_URL}/jobs/${jobCard.job_no}`;
+
+      // 2. Pass all required fields to the template
+      const crmEmailHTML = crmJobAssignmentTemplate({
+        crmName: order_handled_by,
+        jobNo: jobCard.job_no,
+        clientName: client_name,
+        contactNumber: contact_number,
+        clientType: client_type, 
+        orderType: order_type,
+        orderSource: order_source,
+        orderReceivedBy: order_received_by,   
+        executionLocation: execution_location,
+        deliveryDate: delivery_date,
+        deliveryLocation: delivery_location, 
+        taskPriority: task_priority,
+        totalAmount: total_amount,
+        advancePayment: advance_payment || 0, // Fallback to 0 if undefined
+        paymentStatus: payment_status,    
+        dashboardUrl: dashboardUrl,           // Computed above
+      });
 
       await sendMailForFMS({
         to: crmUser.email,
         subject: `New Job Assigned | Job No: ${job_no}`,
         html: crmEmailHTML,
+        attachments,
       });
     }
 
@@ -326,37 +409,24 @@ export const createJobCard = async (req, res) => {
     const coordinatorEmails = coordinators.map((u) => u.email).filter(Boolean);
 
     if (coordinatorEmails.length > 0) {
-      const coordinatorEmailHTML = `
-      <div style="font-family:Arial, sans-serif; color:#333;">
-        <h2 style="color:#0a4da2;">🆕 New JobCard Created - Review Required</h2>
-        <p>Hello Process Coordinator Team,</p>
-        <p>A new job card has been created and requires your review in the FMS dashboard.</p>
-
-        <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; width:100%; font-size:14px;">
-          <tr><th align="left">Job No</th><td>${job_no}</td></tr>
-          <tr><th align="left">Client</th><td>${client_name}</td></tr>
-          <tr><th align="left">Order Type</th><td>${order_type}</td></tr>
-          <tr><th align="left">Order Handled By (CRM)</th><td>${order_handled_by}</td></tr>
-          <tr><th align="left">Execution Location</th><td>${execution_location}</td></tr>
-          <tr><th align="left">Delivery Date</th><td>${new Date(
-            delivery_date
-          ).toLocaleString()}</td></tr>
-          <tr><th align="left">Priority</th><td>${task_priority}</td></tr>
-          <tr><th align="left">Total Amount</th><td>₹${total_amount}</td></tr>
-        </table>
-
-        <br/>
-        <p style="color:#555;">Please log into the EPO FMS dashboard to start the coordination and approval process.</p>
-
-        <hr style="border:none; border-top:1px solid #ccc; margin:20px 0;" />
-        <p style="font-size:13px; color:#888;">-- Automated Notification | Eastern Panorama Offset</p>
-      </div>
-      `;
+      const coordinatorEmailHTML = coordinatorJobReviewTemplate({
+        jobNo: job_no,
+        clientName: client_name,
+        orderType: order_type,
+        crmName: order_handled_by,
+        executionLocation: execution_location,
+        deliveryLocation: delivery_location,
+        deliveryDate: delivery_date,
+        taskPriority: task_priority,
+        paymentStatus: payment_status,
+        dashboardUrl: `${process.env.LEADS_URL}/jobs/${job_no}`,
+      });
 
       await sendMailForFMS({
         to: coordinatorEmails.join(","),
         subject: `New JobCard - Coordinator Review | Job No: ${job_no}`,
         html: coordinatorEmailHTML,
+        attachments,
       });
     }
   } catch (error) {
@@ -369,34 +439,119 @@ export const createJobCard = async (req, res) => {
   }
 };
 
+
+
+
+
+
+
+const buildWhereClause = (query) => {
+  const {
+    status,
+    order_type,
+    order_handled_by,
+    execution_location,
+    payment_status,
+    is_direct_to_production,
+    search,
+  } = query;
+
+  const where = {};
+
+  if (status) where.status = status;
+  if (order_type) where.order_type = order_type;
+  if (order_handled_by) where.order_handled_by = order_handled_by;
+  if (execution_location) where.execution_location = execution_location;
+  if (payment_status) where.payment_status = payment_status;
+  if (is_direct_to_production !== undefined && is_direct_to_production !== "") {
+    where.is_direct_to_production = is_direct_to_production === "true";
+  }
+
+  // SIMPLE search (LIKE) — since no FULLTEXT
+  if (search) {
+    where[Op.or] = [
+        { job_no: { [Op.eq]: Number(search) || -1 } },
+        { client_name: { [Op.like]: `%${search}%` } },
+        { order_handled_by: { [Op.like]: `%${search}%` } },
+        { contact_number: { [Op.like]: `%${search}%` } },
+        { email_id: { [Op.like]: `%${search}%` } },
+        {assigned_designer: { [Op.like]: `%${search}%`} },
+    ];
+  }
+
+  if (query.delivery_from || query.delivery_to) {
+    where.delivery_date = {};
+
+    if (query.delivery_from) {
+      where.delivery_date[Op.gte] = new Date(query.delivery_from);
+    }
+
+    if (query.delivery_to) {
+      where.delivery_date[Op.lte] = new Date(query.delivery_to);
+    }
+  }
+
+  if (query.created_from || query.created_to) {
+    where.created_at = {};
+
+    if (query.created_from) {
+      where.created_at[Op.gte] = new Date(query.created_from);
+    }
+
+    if (query.created_to) {
+      where.created_at[Op.lte] = new Date(query.created_to);
+    }
+  }
+
+
+
+  return where;
+};
+
+
+
 /**
  * GET ALL JOB CARDS (with pagination & filters)
  */
 export const getAllJobCards = async (req, res) => {
   console.log("getAllJobCards called...");
   try {
-    const { status, page = 1, limit = 50 } = req.query;
+    const { page = 1, limit = 50 } = req.query;
+    console.log("req.query: ", req.query);
     const offset = (page - 1) * limit;
 
-    const whereClause = {};
-    if (status) {
-      whereClause.status = status;
-    }
+    const whereClause = buildWhereClause(req.query);
 
-    const jobCards = await JobCard.findAndCountAll({
+    // Count fast
+    const total = await JobCard.count({
       where: whereClause,
+    });
+
+
+    const jobCards = await JobCard.findAll({
+      where: whereClause,
+      // For items count
+            attributes: {
+              include: [
+                [
+                  db.sequelize.literal(`(
+                    SELECT COUNT(*)
+                    FROM jobfms_job_items ji
+                    WHERE ji.job_no = JobCard.job_no
+                  )`),
+                  "item_count",
+                ],
+              ],
+            },
       include: [
-        {
-          model: JobItem,
-          as: "items",
-          include: [
-            { model: PaperMaster, as: "selectedPaper" }, // <-- important
-            { model: PaperMaster, as: "selectedCoverPaper" },
-            { model: ItemMaster, as: "itemMaster" },
-          ],
-        },
-        { model: ClientApproval, as: "approval" },
-        { model: ProductionRecord, as: "production" },
+      //   { model: ClientApproval, 
+      //     as: "clientApprovals", 
+      //     separate: true,
+      //     limit: 1,
+      //     order: [["instance", "DESC"]],
+      //     required: false,
+      //   },
+      //   { model: ProductionRecord, as: "production" },
         { model: JobAssignment, as: "assignments" },
       ],
       limit: parseInt(limit),
@@ -405,10 +560,10 @@ export const getAllJobCards = async (req, res) => {
     });
 
     res.json({
-      total: jobCards.count,
+      total,
       page: parseInt(page),
       limit: parseInt(limit),
-      data: jobCards.rows,
+      data: jobCards,
     });
   } catch (error) {
     console.error("Error fetchig JobCards: ", error);
@@ -445,7 +600,7 @@ export const getJobCardByJobNo = async (req, res) => {
           ],
         },
         { model: FileAttachment, as: "attachments" },
-        { model: ClientApproval, as: "approval" },
+        { model: ClientApproval, as: "clientApprovals" },
         { model: ProductionRecord, as: "production" },
         { model: JobAssignment, as: "assignments" },
         { model: ActivityLog, as: "activities" },
@@ -473,7 +628,7 @@ export const getJobCardByJobNo = async (req, res) => {
  */
 export const updateJobCard = async (req, res) => {
   console.log("updateJobCard called...");
-  console.log("req.body: ", req.body);
+  // console.log("req.body: ", req.body);
   const t = await JobCard.sequelize.transaction();
   try {
     const { job_no } = req.params;
@@ -490,7 +645,112 @@ export const updateJobCard = async (req, res) => {
       });
     }
 
+    // ==============================
+    // STEP 1: SNAPSHOT OLD DATA
+    // ==============================
+
+    // Old JobCard snapshot (exclude status & current_stage later)
+    // const oldJobCard = jobCard.toJSON();
+
+    // Old JobItems snapshot
+    // const oldJobItems = jobCard.items.map(item => ({
+    //   id: item.id,
+    //   category: item.category,
+    //   enquiry_for: item.enquiry_for,
+    //   selected_paper_id: item.selected_paper_id,
+    //   inside_pages: item.inside_pages,
+    //   color_scheme: item.color_scheme,
+    //   selected_cover_paper_id: item.selected_cover_paper_id,
+    //   cover_pages: item.cover_pages,
+    //   cover_color_scheme: item.cover_color_scheme,
+    //   sides: item.sides,
+    //   size: item.size,
+    //   quantity: item.quantity,
+    //   binding_types: JSON.stringify(item.binding_types || []),
+    // }));
+
+
+    // 🔥 HANDLE READY → PRODUCTION TRANSITION
+    if (updates.is_direct_to_production === true && jobCard.is_direct_to_production === false) {
+      console.log("Job marked as Ready for Production");
+
+      updates.status = "production";
+      updates.current_stage = "production";
+
+      await advanceStage({
+        job_no,
+        new_stage: "production",
+        performed_by_id: req.user?.id || null,
+        started_at: new Date(),
+        remarks: "(Job updated → Direct to Production)",
+        transaction: t,
+      });
+    }
+
+    if(jobCard.delivery_date !== req.body.delivery_date){
+      console.log("Delivery date has changed. Recalculating deadline...");
+      const job_completion_deadline = calculateJobCompletionDeadline(req.body.delivery_date);
+      console.log("job completion deadline: ", job_completion_deadline);
+      updates.job_completion_deadline = job_completion_deadline;
+    }
+
     await jobCard.update(updates, { transaction: t });
+
+
+    // ==============================
+    // STEP 2: JOB CARD FIELD CHANGES
+    // ==============================
+
+    // function normalizeValue(value) {
+    //   if (value === null || value === undefined) return value;
+
+    //   // Dates → timestamp
+    //   if (value instanceof Date) {
+    //     return value.getTime();
+    //   }
+
+    //   // Numbers / decimals → Number
+    //   if (!isNaN(value)) {
+    //     return Number(value);
+    //   }
+
+    //   return value;
+    // }
+
+
+    // const jobCardChanges = {};
+
+    // const ignoredFields = ["status", "current_stage"];
+    // const ignoredFields = [
+    //   "status",
+    //   "current_stage",
+    //   "updatedAt",
+    //   "createdAt",
+    //   "items",
+    // ];
+
+    // Object.keys(updates).forEach(field => {
+    //   if (ignoredFields.includes(field)) return;
+
+    //   const oldValue = oldJobCard[field];
+    //   const newValue = jobCard[field];
+
+    //   const oldNormalized = normalizeValue(oldValue);
+    //   const newNormalized = normalizeValue(newValue);
+
+    //   if (oldNormalized !== newNormalized) {
+    //     jobCardChanges[field] = {
+    //       from: oldValue,
+    //       to: newValue,
+    //     };
+    //   }
+    // });
+
+
+    // console.log("🟡 JobCard changes:", jobCardChanges);
+
+
+
 
     // Handle JobItems changes
     const existingItems = jobCard.items.map((i) => i.id);
@@ -501,6 +761,8 @@ export const updateJobCard = async (req, res) => {
     const itemsToDelete = existingItems.filter(
       (id) => !updatedItemIds.includes(id)
     );
+
+
     if (itemsToDelete.length > 0) {
       await JobItem.destroy({
         where: { id: itemsToDelete },
@@ -520,57 +782,89 @@ export const updateJobCard = async (req, res) => {
           attributes: ["id"],
         });
 
-        if (!item_master_id) {
-          throw new Error(
-            `ItemMaster not found for ${item.category} - ${item.enquiry_for}`
-          );
-        }
-
         item.item_master_id = item_master_id.dataValues.id;
 
-        if (item.paper_type && item.paper_gsm && item.best_inside_sheet) {
-          const selected_paper_id = await PaperMaster.findOne({
-            where: {
-              paper_name: item.paper_type,
-              gsm: Number(item.paper_gsm),
-              size_name: item.best_inside_sheet,
-            },
-            attributes: ["id"],
-          });
-          if (selected_paper_id) {
-            item.selected_paper_id = selected_paper_id.dataValues.id;
-          }
-        }
 
-        // CLEAN FIELDS LIKE CREATE API
-        if (item.category !== "Multiple Sheet") {
+        if(item.category === "Wide Format") {
+          const wideMaterial = await WideFormatMaterial.findByPk(
+            item.material_info?.id,
+            { attributes: ["id"] }
+          );
+
+          if (!wideMaterial) {
+            throw new Error("Wide format material not found");
+          }
+
+          item.selected_wide_material_id = wideMaterial.dataValues.id;
+
+          // Clean unrelated fields
+          item.selected_paper_id = null;
+          item.selected_cover_paper_id = null;
           item.cover_paper_type = null;
           item.cover_paper_gsm = null;
           item.cover_color_scheme = null;
-        } else {
-          if (
-            item.cover_paper_type &&
-            item.cover_paper_gsm &&
-            item.best_cover_sheet
-          ) {
-            const selected_cover_paper_id = await PaperMaster.findOne({
+          item.color_scheme = "Multicolor";
+        }
+        else if (item.category === "Other") {
+          item.selected_wide_material_id = null;
+          item.selected_paper_id = null;
+          item.selected_cover_paper_id = null;
+
+          item.cover_paper_type = null;
+          item.cover_paper_gsm = null;
+          item.cover_color_scheme = null;
+
+          item.color_scheme = "Multicolor";
+          item.sides = null;
+        }
+        else{
+
+          if (item.paper_type && item.paper_gsm && item.best_inside_sheet) {
+            const selected_paper_id = await PaperMaster.findOne({
               where: {
-                paper_name: item.cover_paper_type,
-                gsm: Number(item.cover_paper_gsm),
-                size_name: item.best_cover_sheet,
+                paper_name: item.paper_type,
+                gsm: Number(item.paper_gsm),
+                size_name: item.best_inside_sheet,
               },
               attributes: ["id"],
             });
-
-            if (selected_cover_paper_id) {
-              item.selected_cover_paper_id =
-                selected_cover_paper_id.dataValues.id;
+            if (selected_paper_id) {
+              item.selected_paper_id = selected_paper_id.dataValues.id;
             }
           }
 
-          item.inside_pages = Number(item.inside_pages);
-          item.cover_pages = Number(item.cover_pages);
+          // CLEAN FIELDS LIKE CREATE API
+          if (item.category !== "Multiple Sheet") {
+            item.cover_paper_type = null;
+            item.cover_paper_gsm = null;
+            item.cover_color_scheme = null;
+          } else {
+            if (
+              item.cover_paper_type &&
+              item.cover_paper_gsm &&
+              item.best_cover_sheet
+            ) {
+              const selected_cover_paper_id = await PaperMaster.findOne({
+                where: {
+                  paper_name: item.cover_paper_type,
+                  gsm: Number(item.cover_paper_gsm),
+                  size_name: item.best_cover_sheet,
+                },
+                attributes: ["id"],
+              });
+
+              if (selected_cover_paper_id) {
+                item.selected_cover_paper_id =
+                  selected_cover_paper_id.dataValues.id;
+              }
+            }
+
+            item.inside_pages = Number(item.inside_pages);
+            item.cover_pages = Number(item.cover_pages);
+          }
+          
         }
+
 
         item.binding_types = Array.isArray(item.binding_types)
           ? item.binding_types
@@ -597,10 +891,12 @@ export const updateJobCard = async (req, res) => {
 
     // Add new items
     const newItems = job_items.filter((i) => !i.id);
+
     if (newItems.length > 0) {
+      console.log("adding new Job items: ", newItems);
       const newItemData = await Promise.all(
         newItems.map(async (i) => {
-          const item_master_id = await ItemMaster.findOne({
+          let item_master_id = await ItemMaster.findOne({
             where: {
               category: i.category,
               item_name: i.enquiry_for,
@@ -609,51 +905,87 @@ export const updateJobCard = async (req, res) => {
           });
 
           if (!item_master_id) {
-            throw new Error(
-              `ItemMaster not found for ${i.category} - ${i.enquiry_for}`
-            );
+            console.log("ItemMaster not found for: ", i.category, i.enquiry_for);
+            item_master_id = await ItemMaster.create({
+              category: i.category,
+              item_name: i.enquiry_for,
+            }, { transaction: t });
           }
 
           i.item_master_id = item_master_id.dataValues.id;
 
+          if(i.category === "Wide Format") {
+            const wideMaterial = await WideFormatMaterial.findByPk(
+              i.material_info?.id,
+              { attributes: ["id"] }
+            );
 
-          if (i.paper_type && i.paper_gsm && i.best_inside_sheet){
-            const selected_paper_id = await PaperMaster.findOne({
-              where: {
-                paper_name: i.paper_type,
-                gsm: Number(i.paper_gsm),
-                size_name: i.best_inside_sheet,
-              },
-              attributes: ["id"],
-            });
-            console.log("selected_paper_id: ", selected_paper_id.dataValues.id);
-
-            if(selected_paper_id){
-              i.selected_paper_id = selected_paper_id.dataValues.id;
+            if (!wideMaterial) {
+              throw new Error("Wide format material not found");
             }
-          }
 
+            i.selected_wide_material_id = wideMaterial.id;
+            i.selected_paper_id = null;
+            i.selected_cover_paper_id = null;
 
-          if (i.category !== "Multiple Sheet") {
             i.cover_paper_type = null;
             i.cover_paper_gsm = null;
             i.cover_color_scheme = null;
-          } else {
+            i.color_scheme = "Multicolor";
+          }
+          else if (i.category === "Other") {
+            i.selected_wide_material_id = null;
+            i.selected_paper_id = null;
+            i.selected_cover_paper_id = null;
 
-            if (i.cover_paper_type && i.cover_paper_gsm && i.best_cover_sheet){
-              const selected_cover_paper_id = await PaperMaster.findOne({
+            i.cover_paper_type = null;
+            i.cover_paper_gsm = null;
+            i.cover_color_scheme = null;
+
+            i.color_scheme = "Multicolor";
+            i.sides = null;
+          }
+          else{
+
+            if (i.paper_type && i.paper_gsm && i.best_inside_sheet){
+              const selected_paper_id = await PaperMaster.findOne({
                 where: {
-                  paper_name: i.cover_paper_type,
-                  gsm: Number(i.cover_paper_gsm),
-                  size_name: i.best_cover_sheet,
+                  paper_name: i.paper_type,
+                  gsm: Number(i.paper_gsm),
+                  size_name: i.best_inside_sheet,
                 },
                 attributes: ["id"],
               });
-              if(selected_cover_paper_id){
-                i.selected_cover_paper_id = selected_cover_paper_id.dataValues.id;
+              console.log("selected_paper_id: ", selected_paper_id.dataValues.id);
+
+              if(selected_paper_id){
+                i.selected_paper_id = selected_paper_id.dataValues.id;
               }
             }
-            
+
+
+            if (i.category !== "Multiple Sheet") {
+              i.cover_paper_type = null;
+              i.cover_paper_gsm = null;
+              i.cover_color_scheme = null;
+            } else {
+
+              if (i.cover_paper_type && i.cover_paper_gsm && i.best_cover_sheet){
+                const selected_cover_paper_id = await PaperMaster.findOne({
+                  where: {
+                    paper_name: i.cover_paper_type,
+                    gsm: Number(i.cover_paper_gsm),
+                    size_name: i.best_cover_sheet,
+                  },
+                  attributes: ["id"],
+                });
+                if(selected_cover_paper_id){
+                  i.selected_cover_paper_id = selected_cover_paper_id.dataValues.id;
+                }
+              }
+              
+            }
+
           }
 
           i.binding_types = Array.isArray(i.binding_types)
@@ -665,15 +997,96 @@ export const updateJobCard = async (req, res) => {
           return { ...i, job_no };
         })
       );
-
       await JobItem.bulkCreate(newItemData, { transaction: t });
     }
+
+
+    // ==============================
+    // STEP 3: FETCH NEW JOB ITEMS
+    // ==============================
+
+    // const newJobItems = await JobItem.findAll({
+    //   where: { job_no },
+    //   transaction: t,
+    // });
+
+    // ==============================
+    // STEP 4: JOB ITEM CHANGES
+    // ==============================
+
+    // const jobItemChanges = {
+    //   added: [],
+    //   removed: [],
+    //   modified: [],
+    // };
+
+    // const oldMap = new Map(oldJobItems.map(i => [i.id, i]));
+    // const newMap = new Map(
+    //   newJobItems.map(i => [
+    //     i.id,
+    //     {
+    //       id: i.id,
+    //       category: i.category,
+    //       enquiry_for: i.enquiry_for,
+    //       selected_paper_id: i.selected_paper_id,
+    //       inside_pages: i.inside_pages,
+    //       color_scheme: i.color_scheme,
+    //       selected_cover_paper_id: i.selected_cover_paper_id,
+    //       cover_pages: i.cover_pages,
+    //       cover_color_scheme: i.cover_color_scheme,
+    //       sides: i.sides,
+    //       size: i.size,
+    //       quantity: i.quantity,
+    //       binding_types: JSON.stringify(i.binding_types || []),
+    //     }
+    //   ])
+    // );
+
+    // // ➕ Added items
+    // newMap.forEach((item, id) => {
+    //   if (!oldMap.has(id)) {
+    //     jobItemChanges.added.push(item.enquiry_for);
+    //   }
+    // });
+
+    // // ➖ Removed items
+    // oldMap.forEach((item, id) => {
+    //   if (!newMap.has(id)) {
+    //     jobItemChanges.removed.push(item.enquiry_for);
+    //   }
+    // });
+
+    // // ✏️ Modified items (FIELD LEVEL)
+    // newMap.forEach((newItem, id) => {
+    //   if (!oldMap.has(id)) return;
+
+    //   const oldItem = oldMap.get(id);
+    //   const fieldChanges = {};
+
+    //   Object.keys(newItem).forEach((field) => {
+    //     if (newItem[field] !== oldItem[field]) {
+    //       fieldChanges[field] = {
+    //         from: oldItem[field],
+    //         to: newItem[field],
+    //       };
+    //     }
+    //   });
+
+    //   if (Object.keys(fieldChanges).length > 0) {
+    //     jobItemChanges.modified.push({
+    //       enquiry_for: newItem.enquiry_for,
+    //       changes: fieldChanges,
+    //     });
+    //   }
+    // });
+
+    // console.log("🟢 JobItem changes:", jobItemChanges);
 
     // Log activity
     await ActivityLog.create(
       {
         job_no,
-        action: "JobCard Updated",
+        action: updates.is_direct_to_production ? "Job marked Ready for Production" : "JobCard Updated",
         performed_by_id: req.user?.id || null,
         meta: updates,
       },
@@ -695,11 +1108,13 @@ export const updateJobCard = async (req, res) => {
     });
 
     // 🔔 Notify CRM + Coordinators + Designer
-    await sendJobNotificationEmail({
-      job: updatedJobCard,
-      subject: `JobCard Updated | Job No: ${job_no}`,
-      actionType: "Updated",
-    });
+    // await sendJobNotificationEmail({
+    //   job: updatedJobCard,
+    //   subject: `JobCard Updated | Job No: ${job_no}`,
+    //   actionType: "updated",
+    //   jobCardChanges,
+    //   jobItemChanges,
+    // });
   } catch (error) {
     await t.rollback();
     console.error("Error updating JobCard:", error);
@@ -791,10 +1206,124 @@ export const getEnquiryForItems = async (req, res) => {
   }
 };
 
+
+
+
+function renderCancelledEmail(job, color) {
+  return `
+    <h2 style="color:${color};">❌ JobCard Cancelled</h2>
+    <p>
+      The following job has been <strong>CANCELLED</strong>.
+      Please stop all further processing.
+    </p>
+  `;
+}
+
+
+function prettyFieldName(field) {
+  const FIELD_LABELS = {
+    execution_location: "Execution Location",
+    delivery_date: "Delivery Date",
+    task_priority: "Priority",
+    total_amount: "Total Amount",
+    advance_payment: "Advance Payment",
+    quantity: "Quantity",
+    size: "Size",
+    color_scheme: "Color Scheme",
+    binding_types: "Binding Type",
+  };
+
+  return FIELD_LABELS[field] || field.replace(/_/g, " ");
+}
+
+function formatValue(value) {
+  if (value === null || value === undefined) return "-";
+
+  if (value instanceof Date) {
+    return value.toLocaleDateString("en-IN");
+  }
+
+  if (typeof value === "number") {
+    return value;
+  }
+
+  return value;
+}
+
+
+function renderUpdatedChanges(jobCardChanges, jobItemChanges) {
+  const hasJobCardChanges = Object.keys(jobCardChanges).length > 0;
+  const hasItemChanges =
+    Array.isArray(jobItemChanges.modified) &&
+    jobItemChanges.modified.length > 0;
+
+  // If NOTHING meaningful changed
+  if (!hasJobCardChanges && !hasItemChanges) {
+    return `
+      <h3>ℹ️ No business-critical fields were changed</h3>
+      <p>
+        Minor or system-level updates were made.
+      </p>
+    `;
+  }
+
+  let html = `<h3>🔄 What was updated</h3>`;
+
+  // =====================
+  // JobCard Changes
+  // =====================
+  if (hasJobCardChanges) {
+    html += `<h4>Job Details</h4><ul>`;
+
+    Object.entries(jobCardChanges).forEach(([field, { from, to }]) => {
+      html += `
+        <li>
+          <strong>${prettyFieldName(field)}</strong>:
+          ${formatValue(from)} → ${formatValue(to)}
+        </li>
+      `;
+    });
+
+    html += `</ul>`;
+  }
+
+  // =====================
+  // JobItem Changes (MODIFIED ONLY)
+  // =====================
+  if (hasItemChanges) {
+    html += `<h4>Item Modifications</h4>`;
+
+    jobItemChanges.modified.forEach(item => {
+      html += `<p><strong>${item.enquiry_for}</strong></p><ul>`;
+
+      Object.entries(item.changes).forEach(([field, { from, to }]) => {
+        html += `
+          <li>
+            ${prettyFieldName(field)}:
+            ${formatValue(from)} → ${formatValue(to)}
+          </li>
+        `;
+      });
+
+      html += `</ul>`;
+    });
+  }
+
+  return html;
+}
+
+
+
+
+
+
+
+
+
 // =====================================================
-// ✉️ Helper: Sends notification mail to CRM, Coordinators, Designer
+// 4. ✉️ Helper: Sends notification mail to CRM, Coordinators, Designer for Updated / Cancelled Job
 // =====================================================
-async function sendJobNotificationEmail({ job, subject, actionType }) {
+async function sendJobNotificationEmail({ job, subject, actionType, jobCardChanges = {}, jobItemChanges = {}, }) {
   try {
     const {
       job_no,
@@ -806,9 +1335,13 @@ async function sendJobNotificationEmail({ job, subject, actionType }) {
       task_priority,
     } = job;
 
+    const isCancelled = actionType === "cancelled";
+    const isUpdated = actionType === "updated";
+
+
     // Fetch CRM
     const crmUser = await User.findOne({
-      where: { username: order_handled_by, department: "CRM" },
+      where: { username: order_handled_by},
     });
 
     // Fetch all Process Coordinators
@@ -821,7 +1354,7 @@ async function sendJobNotificationEmail({ job, subject, actionType }) {
       job.assignments.length > 0
         ? await User.findOne({
             where: {
-              id: job?.assignments?.designer_id,
+              id: job?.assignments[0]?.designer_id,
               department: "Designer",
             },
           })
@@ -838,62 +1371,125 @@ async function sendJobNotificationEmail({ job, subject, actionType }) {
       return;
     }
 
-    const actionLabel =
-      actionType === "cancelled"
-        ? "Cancelled"
-        : actionType === "deleted"
-        ? "Deleted"
-        : "Updated";
-    const color =
-      actionType === "cancelled"
-        ? "#ff4444"
-        : actionType === "deleted"
-        ? "#b71c1c"
-        : "#0000FF";
+    // ✅ Allowed actions only
+    const actionConfig = {
+      cancelled: {
+        label: "Cancelled",
+        color: "#ff4444",
+      },
+      updated: {
+        label: "Updated",
+        color: "#2563eb",
+      },
+    };
+
+    const action =
+      actionConfig[actionType] || actionConfig.updated;
+
+    const { label, color } = action;
+
+    // const emailHTML = `
+    //   <div style="font-family:Arial, sans-serif; color:#333; line-height:1.6">
+
+    //     <img src="cid:epo-logo" height="50" style="margin-bottom:20px" />
+
+    //     <h2 style="color:${color};">⚠️ JobCard ${label}</h2>
+
+    //     <p>
+    //       This is to inform you that the following job has been
+    //       <strong>${label.toUpperCase()}</strong> by the Job Writer.
+    //     </p>
+
+    //     <table border="1" cellpadding="8" cellspacing="0"
+    //       style="border-collapse:collapse; width:100%; font-size:14px;">
+    //       <tr><th align="left">Job No</th><td>${job_no}</td></tr>
+    //       <tr><th align="left">Client</th><td>${client_name}</td></tr>
+    //       <tr><th align="left">Order Type</th><td>${order_type}</td></tr>
+    //       <tr><th align="left">Handled By (CRM)</th><td>${order_handled_by}</td></tr>
+    //       <tr><th align="left">Execution Location</th><td>${execution_location}</td></tr>
+    //       <tr>
+    //         <th align="left">Delivery Date</th>
+    //         <td>${new Date(delivery_date).toLocaleString()}</td>
+    //       </tr>
+    //       <tr><th align="left">Priority</th><td>${task_priority}</td></tr>
+    //       <tr>
+    //         <th align="left">Action Performed By</th>
+    //         <td>${job.updatedBy || "Job Writer"}</td>
+    //       </tr>
+    //       <tr>
+    //         <th align="left">Status</th>
+    //         <td style="color:${color}; font-weight:bold;">
+    //           ${label}
+    //         </td>
+    //       </tr>
+    //     </table>
+
+    //     <p style="margin-top:20px; color:#555;">
+    //       Please update related records or notify relevant departments if needed.
+    //       This action is logged in the system for tracking purposes.
+    //     </p>
+
+    //     <hr style="border:none; border-top:1px solid #ccc; margin:20px 0;" />
+
+    //     <p style="font-size:13px; color:#888;">
+    //       — Automated Notification | Eastern Panorama Offset
+    //     </p>
+
+    //   </div>
+    // `;
+
+    const hasJobCardChanges = Object.keys(jobCardChanges).length > 0;
+    const hasItemChanges =
+      Array.isArray(jobItemChanges.modified) &&
+      jobItemChanges.modified.length > 0;
+
+
+    const mainContent = isCancelled ? renderCancelledEmail(job, color) : renderUpdatedChanges(jobCardChanges, jobItemChanges);
 
     const emailHTML = `
-      <div style="font-family:Arial, sans-serif; color:#333;">
-        <h2 style="color:${color};">⚠️ JobCard ${actionLabel}</h2>
-        <p>This is to inform you that the following job has been <strong>${actionLabel.toUpperCase()}</strong> by the Job Writer.</p>
+      <div style="font-family:Arial, sans-serif; color:#333; line-height:1.6">
 
-        <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; width:100%; font-size:14px;">
-          <tr><th align="left">Job No</th><td>${job_no}</td></tr>
-          <tr><th align="left">Client</th><td>${client_name}</td></tr>
-          <tr><th align="left">Order Type</th><td>${order_type}</td></tr>
-          <tr><th align="left">Handled By (CRM)</th><td>${order_handled_by}</td></tr>
-          <tr><th align="left">Execution Location</th><td>${execution_location}</td></tr>
-          <tr><th align="left">Delivery Date</th><td>${new Date(
-            delivery_date
-          ).toLocaleString()}</td></tr>
-          <tr><th align="left">Priority</th><td>${task_priority}</td></tr>
-          <tr><th align="left">Action Performed By</th><td>${
-            job.updatedBy || "Job Writer"
-          }</td></tr>
-          <tr><th align="left">Status</th><td style="color:${color}; font-weight:bold;">${actionLabel}</td></tr>
+        <img src="cid:epo-logo" height="50" style="margin-bottom:20px" />
+
+        ${mainContent}
+
+        <table border="1" cellpadding="8" cellspacing="0"
+          style="border-collapse:collapse; width:100%; font-size:14px; margin-top:20px;">
+          <tr><th align="left">Job No</th><td>${job.job_no}</td></tr>
+          <tr><th align="left">Client</th><td>${job.client_name}</td></tr>
+          <tr><th align="left">Order Type</th><td>${job.order_type}</td></tr>
+          <tr><th align="left">Handled By</th><td>${job.order_handled_by}</td></tr>
         </table>
 
-        <br/>
-        <p style="color:#555;">
-          Please update related records or notify relevant departments if needed.<br/>
-          This action is logged in the system for tracking purposes.
-        </p>
-
         <hr style="border:none; border-top:1px solid #ccc; margin:20px 0;" />
-        <p style="font-size:13px; color:#888;">-- Automated Notification | Eastern Panorama Offset</p>
+
+        <p style="font-size:13px; color:#888;">
+          — Automated Notification | Eastern Panorama Offset
+        </p>
       </div>
     `;
+
+   const attachments = [
+      {
+        filename: "epo-logo.jpg",
+        path: path.resolve("assets/epo-logo.jpg"),
+        cid: "epo-logo",
+      },
+    ];
 
     await sendMailForFMS({
       to: recipients,
       subject,
       html: emailHTML,
+      attachments,
     });
 
-    console.log(`📧 ${actionLabel} notification sent to:`, recipients);
+    console.log(`📧 Job ${label} notification sent to:`, recipients);
   } catch (err) {
     console.error("❌ Failed to send job notification email:", err.message);
   }
 }
+
 
 /**
  * DELETE JOB CARD
