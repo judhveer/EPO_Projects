@@ -24,12 +24,20 @@ export const sequelize = new Sequelize(
     dialect: 'mysql',
     dialectOptions,
     logging: false,
+    // pool: {
+    //   max: 30,        
+    //   min: 5,
+    //   acquire: 60000, // wait time before timeout
+    //   idle: 10000,
+    // },
+
     pool: {
-      max: 30,        
-      min: 5,
-      acquire: 60000, // wait time before timeout
+      max: 5,   // reduce from 30
+      min: 0,   // reduce from 5 — don't hold idle connections
+      acquire: 60000,
       idle: 10000,
     },
+
   }
 );
 
