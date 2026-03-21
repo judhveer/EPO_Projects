@@ -10,9 +10,11 @@ const PRESS_TYPES = [
   { value: "FLEX MACHINE", label: "Flex Machine" },
   { value: "DIGITAL BLACK WHITE", label: "Digital Black & White" },
   { value: "DIGITAL MULTICOLOR", label: "Digital Multicolor" },
-  { value: "HMT", label: "HMT Machine" },
+  { value: "HMT BLACK WHITE", label: "HMT Black & White" },
+  { value: "HMT MULTICOLOR", label: "HMT Multicolor" },
   { value: "AUTOPRINT", label: "Autoprint Machine" },
-  { value: "PLOTTER PRINTING", label: "Plotter Printing" },
+  { value: "PLOTTER BLACK WHITE", label: "Plotter Black & White" },
+  { value: "PLOTTER MULTICOLOR", label: "Plotter Multicolor" },
 ];
 
 const thicknessMaterials = [
@@ -20,6 +22,7 @@ const thicknessMaterials = [
   "Acrylic Indiana",
   "Sun Board",
   "ACP Board",
+  "Sun Board With Vinyl"
 ];
 
 const isBindingDisabled = (bindingName, selectedBindings = []) => {
@@ -56,34 +59,105 @@ const JobItem = React.memo(function JobItem({
     item.wide_material_name,
   );
 
+  const allowedCoverPressTypes = useMemo(() => {
+    if (category !== "Multiple Sheet") return [];
+
+    if (item.cover_color_scheme === "Black and White") {
+      return PRESS_TYPES.filter((p) =>
+        [
+          "DIGITAL BLACK WHITE",
+          "HMT BLACK WHITE",
+          "AUTOPRINT",
+        ].includes(p.value),
+      );
+    }
+    if (item.cover_color_scheme === "Multicolor") {
+      return PRESS_TYPES.filter((p) =>
+        [
+          "DIGITAL MULTICOLOR",
+          "HMT MULTICOLOR",
+        ].includes(p.value),
+      );
+    }
+
+    return [];
+  }, [category, item.cover_color_scheme]);
+
   // Inside your component:
   const allowedPressTypes = useMemo(() => {
     switch (category) {
       case "Single Sheet":
-        return PRESS_TYPES.filter((p) =>
-          [
-            "DIGITAL BLACK WHITE",
-            "DIGITAL MULTICOLOR",
-            "HMT",
-            "AUTOPRINT",
-            "PLOTTER PRINTING",
-          ].includes(p.value),
-        );
+
+      // Plotter papers → only plotter printing
+        if (
+          item.paper_type === "Maplitho Plotter Paper" ||
+          item.paper_type === "Photo Plotter Paper"
+        ) {
+          if(item.color_scheme === "Black and White"){
+            return PRESS_TYPES.filter(
+              (p) => p.value === "PLOTTER BLACK WHITE"
+            );
+          }
+          else if(item.color_scheme === "Multicolor"){
+            return PRESS_TYPES.filter(
+              (p) => p.value === "PLOTTER MULTICOLOR"
+            );
+          } 
+        }
+
+
+        if (item.color_scheme === "Black and White") {
+          return PRESS_TYPES.filter((p) =>
+            [
+              "DIGITAL BLACK WHITE",
+              "HMT BLACK WHITE",
+              "AUTOPRINT",
+              "PLOTTER PRINTING",
+            ].includes(p.value),
+          );
+        }
+
+        if (item.color_scheme === "Multicolor") {
+          return PRESS_TYPES.filter((p) =>
+            [
+              "DIGITAL MULTICOLOR",
+              "HMT MULTICOLOR",
+              "PLOTTER PRINTING",
+            ].includes(p.value),
+          );
+        }
+
+        return [];
+
       case "Multiple Sheet":
-        return PRESS_TYPES.filter((p) =>
-          [
-            "DIGITAL BLACK WHITE",
-            "DIGITAL MULTICOLOR",
-            "HMT",
-            "AUTOPRINT",
-          ].includes(p.value),
-        );
+        if (item.color_scheme === "Black and White") {
+          return PRESS_TYPES.filter((p) =>
+            [
+              "DIGITAL BLACK WHITE",
+              "HMT BLACK WHITE",
+              "AUTOPRINT",
+            ].includes(p.value),
+          );
+        }
+
+        if (item.color_scheme === "Multicolor") {
+          return PRESS_TYPES.filter((p) =>
+            [
+              "DIGITAL MULTICOLOR",
+              "HMT MULTICOLOR",
+            ].includes(p.value),
+          );
+        }
+        
+        return [];
+
       case "Wide Format":
         return PRESS_TYPES.filter((p) => p.value === "FLEX MACHINE");
+
       default:
         return [];
     }
-  }, [category]);
+  }, [category, item.color_scheme]);
 
   useEffect(() => {
     // If current press_type is not in allowed list, clear it
@@ -102,17 +176,21 @@ const JobItem = React.memo(function JobItem({
     }
 
     if (
+      category === "Multiple Sheet" &&
       item.cover_press_type &&
-      !allowedPressTypes.some((p) => p.value === item.cover_press_type)
+      !allowedCoverPressTypes.some((p) => p.value === item.cover_press_type)
     ) {
       handleItemChange(uniqueKey, "cover_press_type", "");
     }
   }, [
     category,
+    item.color_scheme,
+    item.cover_color_scheme,
     item.press_type,
     item.inside_press_type,
     item.cover_press_type,
     allowedPressTypes,
+    allowedCoverPressTypes,
     uniqueKey,
     handleItemChange,
   ]);
@@ -303,9 +381,10 @@ const JobItem = React.memo(function JobItem({
             <Field label="Inside Paper Color" required>
               <Select
                 value={item.color_scheme || ""}
-                onChange={(e) =>
+                onChange={(e) => {
                   handleItemChange(uniqueKey, "color_scheme", e.target.value)
-                }
+                  handleItemChange(uniqueKey, "inside_press_type", "");
+                }}
               >
                 <option value="">Select</option>
                 <option>Black and White</option>
@@ -397,13 +476,10 @@ const JobItem = React.memo(function JobItem({
             <Field label="Cover Paper Color" required>
               <Select
                 value={item.cover_color_scheme || ""}
-                onChange={(e) =>
-                  handleItemChange(
-                    uniqueKey,
-                    "cover_color_scheme",
-                    e.target.value,
-                  )
-                }
+                onChange={(e) =>{
+                  handleItemChange(uniqueKey, "cover_color_scheme", e.target.value);
+                  handleItemChange(uniqueKey, "cover_press_type", "");
+                }}
               >
                 <option value="">Select</option>
                 <option>Black and White</option>
@@ -460,9 +536,19 @@ const JobItem = React.memo(function JobItem({
             />
 
             <datalist id={`size-list-${index}`}>
-              {item.available_sizes?.map((opt) => (
-                <option key={opt.id} value={opt.name} />
-              ))}
+              {item.available_sizes
+                ?.filter((opt) => {
+                  if (
+                    item.paper_type === "Maplitho Plotter Paper" ||
+                    item.paper_type === "Photo Plotter Paper"
+                  ) {
+                    return ["A0", "A1", "A2"].includes(opt.name);
+                  }
+                  return true;
+                })
+                .map((opt) => (
+                  <option key={opt.id} value={opt.name} />
+                ))}
             </datalist>
           </div>
         </Field>
@@ -479,7 +565,7 @@ const JobItem = React.memo(function JobItem({
                 Select Press Machine
               </option>
 
-              {allowedPressTypes.map((press) => (
+              {allowedCoverPressTypes.map((press) => (
                 <option key={press.value} value={press.value}>
                   {press.label}
                 </option>
