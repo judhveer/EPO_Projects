@@ -64,11 +64,20 @@ import userRoutes from "./routes/jobFmsRoutes/users.routes.js";
 import itemMasterRoutes from "./routes/jobFmsRoutes/itemMaster.routes.js";
 import processCoordinatorRoutes from "./routes/jobFmsRoutes/processCoordinator.routes.js";
 import designerRoutes from "./routes/jobFmsRoutes/designer.routes.js";
-
+import crmJobsRoutes from "./routes/jobFmsRoutes/crmJobs.routes.js";
+import commonDashboardRoutes from "./routes/jobFmsRoutes/commonDashboard.routes.js"
 
 
 import notFound from './middlewares/salesPipeline/notFound.js';
 import errorHandler from './middlewares/salesPipeline/error.js';
+
+
+
+
+
+
+//  FOR PENDING BILLS FROM GOOGLE SHEET
+import billingRoutes from "./pendingBills-module/billing.routes.js";
 
 dotenv.config();
 
@@ -78,10 +87,16 @@ dotenv.config();
 const app = express();
 app.use(helmet());
 
+app.use((req, res, next) => {
+  console.log("Origin:", req.headers.origin);
+  next();
+});
+
+console.log("cors origin -->: ", process.env.CORS_ORIGIN);
 app.use(cors({
   // https://management.easternpanoramaoffset.com
   // http://localhost:5173
-  origin: 'https://management.easternpanoramaoffset.com', // change to frontend URL in production
+  origin: "https://management.easternpanoramaoffset.com", // change to frontend URL in production
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -179,7 +194,7 @@ app.use("/api/users",
   userRoutes);
 
 app.use("/api/fms/items", 
-  authenticate,
+  // authenticate,
   itemMasterRoutes
 );
 
@@ -195,6 +210,20 @@ app.use("/api/fms/designers",
   // requirePermission('fms.designers.view'),
   designerRoutes
 );
+
+app.use("/api/fms/crm",
+  authenticate,
+  // requirePermission('fms.crm.view'),
+  crmJobsRoutes
+);
+
+app.use("/api/fms/common-dashboard", commonDashboardRoutes);
+
+
+
+
+//  FOR PENDING BILLS FROM GOOGLE SHEET
+app.use("/api/billing", billingRoutes);
 
 
 
@@ -219,15 +248,15 @@ export async function init() {
     console.log("DB sync successful");
 
     // await attendanceBot.telegram.deleteWebhook();
-    await taskBot.telegram.deleteWebhook();
+    // await taskBot.telegram.deleteWebhook();
 
     // await attendanceBot.launch({ dropPendingUpdates: true });
     // console.log("Attendance bot is running");
     // attendanceBotRunning = true;
 
-    taskBot.launch();
-    console.log("Task bot is running");
-    taskBotRunning = true;
+    // taskBot.launch();
+    // console.log("Task bot is running");
+    // taskBotRunning = true;
 
     startWeeklyReportJob();
     startMonthlyReportJob();
