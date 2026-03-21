@@ -15,14 +15,16 @@ export default (sequelize) => {
           "FLEX MACHINE",
           "DIGITAL BLACK WHITE",
           "DIGITAL MULTICOLOR",
-          "HMT",
+          "HMT BLACK WHITE",
+          "HMT MULTICOLOR",
           "AUTOPRINT",
-          "PLOTTER PRINTING",
+          "PLOTTER BLACK WHITE",
+          "PLOTTER MULTICOLOR"
         ),
         allowNull: false,
       },
       rate_type: {
-        type: DataTypes.ENUM("per_sheet", "per_sqft", "slab"),
+        type: DataTypes.ENUM("per_sheet", "per_sqft", "slab", "per_size"),
         allowNull: false,
       },
 
