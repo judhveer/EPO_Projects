@@ -31,12 +31,12 @@ export const sequelize = new Sequelize(
     //   idle: 10000,
     // },
 
-    pool: {
-      max: 5,   // reduce from 30
-      min: 0,   // reduce from 5 — don't hold idle connections
-      acquire: 60000,
-      idle: 10000,
-    },
+    // pool: {
+    //   max: 5,   // reduce from 30
+    //   min: 0,   // reduce from 5 — don't hold idle connections
+    //   acquire: 60000,
+    //   idle: 10000,
+    // },
 
   }
 );
