@@ -239,6 +239,7 @@ const parseSize = (sizeStr) => {
 
 // ---------------------- UPS CALCULATION ----------------------
 const calculateUps = (sheet, job) => {
+  console.log("calculateUps called:")
   const normal =
     Math.floor(sheet.width / job.width) * Math.floor(sheet.height / job.height);
 
@@ -604,8 +605,6 @@ export const calculateItemController = async (req, res) => {
     ) {
       whereCondition.size_name = size.trim().toUpperCase();
     }
-
-    console.log("size: ", whereCondition.size_name);
 
     // ------------------- 2. Find paper rows for inside (or single) -------------------
     let insidePaperRows = await PaperMaster.findAll({
@@ -1298,8 +1297,11 @@ const calculatePrintingCost = async (pressType, colorScheme, sides, sheetCount, 
 
 // ---------------------- BEST SHEET PICKING ----------------------
 const pickBestSheet = (paperRows, jobSize) => {
+  console.log("Pick best sheet called:");
   let bestSheet = null;
   let bestUps = 0;
+  
+  console.log("paperRows: ", paperRows);
 
   for (const s of paperRows) {
     const ups = calculateUps({ width: s.width, height: s.height }, jobSize);
