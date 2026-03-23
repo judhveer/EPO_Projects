@@ -22,7 +22,7 @@ export const getAllCrms = async (req, res) => {
     const crms = await User.findAll({
       where: {
         department: {
-          [Op.in]: ["CRM", "Sales"], // department is either CRM or Sales
+          [Op.in]: ["CRM", "Sales dept"], // department is either CRM or Sales
         },
         role: {
           [Op.in]: ["Staff", "CRM"], // role is either Staff or CRM
