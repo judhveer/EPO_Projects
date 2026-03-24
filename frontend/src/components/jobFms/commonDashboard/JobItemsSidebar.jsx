@@ -263,22 +263,21 @@ export default function JobItemsSidebar({ jobNo, onClose }) {
                       </span>
                     </div>
 
-                  {item.selectedWideMaterial?.gsm && (
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
-                      <span className="font-medium shrink-0">GSM:</span>
-                      <span>{item.selectedWideMaterial.gsm}</span>
-                    </div>
-                  )}
+                    {item.selectedWideMaterial?.gsm && (
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                        <span className="font-medium shrink-0">GSM:</span>
+                        <span>{item.selectedWideMaterial.gsm}</span>
+                      </div>
+                    )}
 
-
-                  {item.selectedWideMaterial?.thickness_mm && (
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
-                      <span className="font-medium shrink-0">Thickness:</span>
-                      <span>{item.selectedWideMaterial?.thickness_mm} mm</span>
-                    </div>
-                  )}
-
-
+                    {item.selectedWideMaterial?.thickness_mm && (
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                        <span className="font-medium shrink-0">Thickness:</span>
+                        <span>
+                          {item.selectedWideMaterial?.thickness_mm} mm
+                        </span>
+                      </div>
+                    )}
 
                     {/* {item.selectedWideMaterial.roll_width_ft && (
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
@@ -307,6 +306,20 @@ export default function JobItemsSidebar({ jobNo, onClose }) {
                         </span>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {item.unit_rate && (
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                    <span className="font-medium shrink-0">Unit Rate:</span>
+                    <span>₹ {item.unit_rate}</span>
+                  </div>
+                )}
+
+                {item.item_total && (
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                    <span className="font-medium shrink-0">Item Total:</span>
+                    <span>₹ {item.item_total}</span>
                   </div>
                 )}
               </div>
