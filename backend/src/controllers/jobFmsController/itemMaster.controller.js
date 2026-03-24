@@ -231,10 +231,53 @@ const convertToInches = (value, unit) => {
 
 // Parse size "6x9" → { width: 6, height: 9 }
 // ---------------------- SIZE PARSER ----------------------
-const parseSize = (sizeStr) => {
+const parseSize = (sizeStr, category) => {
   if (!sizeStr) return null;
-  const [w, h] = sizeStr.toLowerCase().split("x").map(Number);
-  return { width: parseFloat(w), height: parseFloat(h) };
+
+  const regex = /^(\d+(\.\d+)?)x(\d+(\.\d+)?)\s?(mm|cm|in|ft)$/i;
+  const match = sizeStr.trim().toLowerCase().match(regex);
+
+  if (!match) return null;
+
+  let width = parseFloat(match[1]);
+  let height = parseFloat(match[3]);
+  const unit = match[5];
+
+  // STEP 1: convert input → inches
+  switch (unit) {
+    case "mm":
+      width /= 25.4;
+      height /= 25.4;
+      break;
+    case "cm":
+      width /= 2.54;
+      height /= 2.54;
+      break;
+    case "ft":
+      width *= 12;
+      height *= 12;
+      break;
+    case "in":
+      break;
+  }
+
+  // STEP 2: convert based on category
+  if (
+    category === "single-sheet" ||
+    category === "multiple-sheet"
+  ) {
+    return { width, height, unit: "inches" };
+  }
+
+  if (category === "wide-format") {
+    return {
+      width: width / 12,
+      height: height / 12,
+      unit: "feet"
+    };
+  }
+
+  return { width, height, unit: "inches" }; // fallback
 };
 
 // ---------------------- UPS CALCULATION ----------------------
@@ -279,7 +322,7 @@ export const calculateItemController = async (req, res) => {
       cover_pages = 0,
     } = item;
 
-    console.log("item: ", item);
+    // console.log("item: ", item);
 
     // console.log("Allitem: ", all_items);
 
@@ -297,13 +340,22 @@ export const calculateItemController = async (req, res) => {
 
 
     let jobSize = {};
-    if(sizeMasterRow){
-        const width = sizeMasterRow.width;
-        const height= sizeMasterRow.height;
-        jobSize = { width, height };
-    }
-    else{
-        jobSize = parseSize(size);
+
+    if (sizeMasterRow) {
+      let width = sizeMasterRow.width;
+      let height = sizeMasterRow.height;
+
+      // DB is in inches → convert if needed
+      if (category === "wide-format") {
+        width = width / 12;
+        height = height / 12;
+        jobSize = { width, height, unit: "feet" };
+      } else {
+        jobSize = { width, height, unit: "inches" };
+      }
+
+    } else {
+      jobSize = parseSize(size, category);
     }
 
     // ------------------- 1. Parse custom size -------------------
@@ -313,7 +365,7 @@ export const calculateItemController = async (req, res) => {
     }
 
     console.log("jobSize: ", jobSize);
-
+    
 
     if (category === "Wide Format") {
 
@@ -1300,8 +1352,6 @@ const pickBestSheet = (paperRows, jobSize) => {
   console.log("Pick best sheet called:");
   let bestSheet = null;
   let bestUps = 0;
-  
-  console.log("paperRows: ", paperRows);
 
   for (const s of paperRows) {
     const ups = calculateUps({ width: s.width, height: s.height }, jobSize);

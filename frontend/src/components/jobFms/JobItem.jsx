@@ -47,6 +47,20 @@ const isBindingDisabled = (bindingName, selectedBindings = []) => {
   return false;
 };
 
+
+
+const validateSize = (value, availableSizes) => {
+  const customRegex = /^(\d+(\.\d+)?)x(\d+(\.\d+)?)\s?(mm|cm|in|ft)$/i;
+
+  // 1. valid custom format
+  if (customRegex.test(value)) return true;
+
+  // 2. valid dropdown option
+  if (availableSizes?.some((opt) => opt.name === value)) return true;
+
+  return false;
+};
+
 const JobItem = React.memo(function JobItem({
   item,
   index,
@@ -527,11 +541,33 @@ const JobItem = React.memo(function JobItem({
             <input
               list={`size-list-${index}`}
               value={item.size || ""}
-              onChange={(e) =>
-                handleItemChange(uniqueKey, "size", e.target.value)
-              }
-              placeholder="Select size or type custom (6x9 inches)..."
-              className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
+              onChange={(e) => {
+                const value = e.target.value;
+
+                handleItemChange(uniqueKey, "size", value);
+
+                // 👉 Instant validation
+                if (!validateSize(value, item.available_sizes)) {
+                  e.target.setCustomValidity(
+                    "Invalid format. Use: 2x3 mm | 2x3 cm | 2x3 in | 2x3 ft OR select from list"
+                  );
+                } else {
+                  e.target.setCustomValidity("");
+                }
+              }}
+
+              onInvalid={(e) => {
+                e.target.setCustomValidity(
+                  "Invalid format. Use: 2x3 mm | 2x3 cm | 2x3 in | 2x3 ft OR select from list"
+                );
+              }}
+
+              placeholder="e.g. 2x3 cm, 4x6 in, or select A4"
+              className={`border rounded px-3 py-2 w-full text-sm ${
+                item.size && !validateSize(item.size, item.available_sizes)
+                  ? "border-red-500"
+                  : "border-slate-300"
+              }`}
               required
             />
 
