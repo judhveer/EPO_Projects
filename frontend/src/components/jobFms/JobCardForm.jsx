@@ -1146,7 +1146,7 @@ export default function JobCardForm({
 
         {form.delivery_location !== "EPO_TO_CUSTOMER_PICKUP" &&
           form.delivery_location !== "MM_TO_CUSTOMER_PICKUP" &&
-          form.delivery_location !== "MM_TO_EPO_CUSTOMER_PICKUP" && (
+          form.delivery_location !== "MM_TO_EPO_TO_CUSTOMER_PICKUP" && (
             <Field label="Delivery Address" required>
               <textarea
                 name="delivery_address"
