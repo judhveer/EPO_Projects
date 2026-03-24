@@ -39,7 +39,6 @@ export default function DashboardTable({
               <th className="border p-2">Client Name</th>
               <th className="border p-2">Client Type</th>
               <th className="border p-2">Order Type</th>
-              <th className="border p-2">Order Source</th>
               <th className="border p-2">Address</th>
               <th className="border p-2">Contact</th>
               <th className="border p-2">Email</th>
@@ -90,7 +89,6 @@ export default function DashboardTable({
                   <td className="border p-2">{job.client_name}</td>
                   <td className="border p-2">{job.client_type}</td>
                   <td className="border p-2 ">{job.order_type}</td>
-                  <td className="border p-2 ">{job.order_source}</td>
                   <td className="border p-2 ">{job.address}</td>
                   <td className="border p-2">{job.contact_number}</td>
                   <td className="border p-2">{job.email_id}</td>
