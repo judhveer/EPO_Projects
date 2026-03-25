@@ -49,14 +49,33 @@ const isBindingDisabled = (bindingName, selectedBindings = []) => {
 
 
 
-const validateSize = (value, availableSizes) => {
-  const customRegex = /^(\d+(\.\d+)?)x(\d+(\.\d+)?)\s?(mm|cm|in|ft)$/i;
+const validateSize = (value, availableSizes, category) => {
+  if (!value) return false;
 
-  // 1. valid custom format
-  if (customRegex.test(value)) return true;
+  const match = value
+    .trim()
+    .toLowerCase()
+    .match(/^(\d+(\.\d+)?)x(\d+(\.\d+)?)\s?(mm|cm|in|ft)$/);
 
-  // 2. valid dropdown option
-  if (availableSizes?.some((opt) => opt.name === value)) return true;
+  // ✅ If custom format
+  if (match) {
+    const unit = match[5];
+
+    // ❌ Restrict ft for non-wide categories
+    if (
+      (category !== "Wide Format") &&
+      unit === "ft"
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  // ✅ If dropdown value
+  if (availableSizes?.some((opt) => opt.name === value)) {
+    return true;
+  }
 
   return false;
 };
@@ -547,27 +566,35 @@ const JobItem = React.memo(function JobItem({
                 handleItemChange(uniqueKey, "size", value);
 
                 // 👉 Instant validation
-                if (!validateSize(value, item.available_sizes)) {
-                  e.target.setCustomValidity(
-                    "Invalid format. Use: 2x3 mm | 2x3 cm | 2x3 in | 2x3 ft OR select from list"
-                  );
-                } else {
-                  e.target.setCustomValidity("");
-                }
-              }}
+                if (!validateSize(value, item.available_sizes, item.category)) {
+                    e.target.setCustomValidity(
+                      item.category === "Wide Format"
+                        ? "Use format: 2x3 ft (or mm/cm/in)"
+                        : "Use format: 2x3 mm | 2x3 cm | 2x3 in (ft not allowed)"
+                    );
+                  } else {
+                    e.target.setCustomValidity("");
+                  }
+                }}
 
               onInvalid={(e) => {
                 e.target.setCustomValidity(
-                  "Invalid format. Use: 2x3 mm | 2x3 cm | 2x3 in | 2x3 ft OR select from list"
+                  item.category === "Wide Format"
+                    ? "Use format: 2x3 ft (or mm/cm/in)"
+                    : "Use format: 2x3 mm | 2x3 cm | 2x3 in (ft not allowed)"
                 );
               }}
-
-              placeholder="e.g. 2x3 cm, 4x6 in, or select A4"
+              placeholder={
+                item.category === "Wide Format"
+                  ? "e.g. 2x3 ft"
+                  : "e.g. 4x6 in or 2x3 cm or 2x3 mm"
+              }
               className={`border rounded px-3 py-2 w-full text-sm ${
-                item.size && !validateSize(item.size, item.available_sizes)
-                  ? "border-red-500"
-                  : "border-slate-300"
-              }`}
+                  item.size &&
+                  !validateSize(item.size, item.available_sizes, item.category)
+                    ? "border-red-500"
+                    : "border-slate-300"
+                }`}
               required
             />
 
