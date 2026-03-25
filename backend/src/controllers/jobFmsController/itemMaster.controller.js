@@ -263,13 +263,13 @@ const parseSize = (sizeStr, category) => {
 
   // STEP 2: convert based on category
   if (
-    category === "single-sheet" ||
-    category === "multiple-sheet"
+    category === "Single Sheet" ||
+    category === "Multiple Sheet"
   ) {
     return { width, height, unit: "inches" };
   }
 
-  if (category === "wide-format") {
+  if (category === "Wide Format") {
     return {
       width: width / 12,
       height: height / 12,
@@ -346,7 +346,7 @@ export const calculateItemController = async (req, res) => {
       let height = sizeMasterRow.height;
 
       // DB is in inches → convert if needed
-      if (category === "wide-format") {
+      if (category === "Wide Format") {
         width = width / 12;
         height = height / 12;
         jobSize = { width, height, unit: "feet" };
