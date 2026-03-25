@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useCallback } from "react";
 import FormCard from "../../components/salesPipeline/FormCard.jsx";
 import Field from "../../components/salesPipeline/Field.jsx";
 import Input from "../../components/salesPipeline/Input.jsx";
@@ -22,7 +22,7 @@ const thicknessMaterials = [
   "Acrylic Indiana",
   "Sun Board",
   "ACP Board",
-  "Sun Board With Vinyl"
+  "Sun Board With Vinyl",
 ];
 
 const isBindingDisabled = (bindingName, selectedBindings = []) => {
@@ -47,8 +47,7 @@ const isBindingDisabled = (bindingName, selectedBindings = []) => {
   return false;
 };
 
-
-
+// validate the size -> ft cannot be used in single sheet and multiple sheet else both have in, mm, cm and the format will be according to this -> 2x3 mm, 2x3 cm, 2x3 in, 2x3 mm or can be selected from drop down.
 const validateSize = (value, availableSizes, category) => {
   if (!value) return false;
 
@@ -62,10 +61,7 @@ const validateSize = (value, availableSizes, category) => {
     const unit = match[5];
 
     // ❌ Restrict ft for non-wide categories
-    if (
-      (category !== "Wide Format") &&
-      unit === "ft"
-    ) {
+    if (category !== "Wide Format" && unit === "ft") {
       return false;
     }
 
@@ -84,6 +80,8 @@ const JobItem = React.memo(function JobItem({
   item,
   index,
   handleItemChange,
+  batchItemChange,
+  resetItemFields,
   onRemove,
 }) {
   const category = item.category;
@@ -97,19 +95,14 @@ const JobItem = React.memo(function JobItem({
 
     if (item.cover_color_scheme === "Black and White") {
       return PRESS_TYPES.filter((p) =>
-        [
-          "DIGITAL BLACK WHITE",
-          "HMT BLACK WHITE",
-          "AUTOPRINT",
-        ].includes(p.value),
+        ["DIGITAL BLACK WHITE", "HMT BLACK WHITE", "AUTOPRINT"].includes(
+          p.value,
+        ),
       );
     }
     if (item.cover_color_scheme === "Multicolor") {
       return PRESS_TYPES.filter((p) =>
-        [
-          "DIGITAL MULTICOLOR",
-          "HMT MULTICOLOR",
-        ].includes(p.value),
+        ["DIGITAL MULTICOLOR", "HMT MULTICOLOR"].includes(p.value),
       );
     }
 
@@ -120,24 +113,17 @@ const JobItem = React.memo(function JobItem({
   const allowedPressTypes = useMemo(() => {
     switch (category) {
       case "Single Sheet":
-
-      // Plotter papers → only plotter printing
+        // Plotter papers → only plotter printing
         if (
           item.paper_type === "Maplitho Plotter Paper" ||
           item.paper_type === "Photo Plotter Paper"
         ) {
-          if(item.color_scheme === "Black and White"){
-            return PRESS_TYPES.filter(
-              (p) => p.value === "PLOTTER BLACK WHITE"
-            );
+          if (item.color_scheme === "Black and White") {
+            return PRESS_TYPES.filter((p) => p.value === "PLOTTER BLACK WHITE");
+          } else if (item.color_scheme === "Multicolor") {
+            return PRESS_TYPES.filter((p) => p.value === "PLOTTER MULTICOLOR");
           }
-          else if(item.color_scheme === "Multicolor"){
-            return PRESS_TYPES.filter(
-              (p) => p.value === "PLOTTER MULTICOLOR"
-            );
-          } 
         }
-
 
         if (item.color_scheme === "Black and White") {
           return PRESS_TYPES.filter((p) =>
@@ -165,23 +151,18 @@ const JobItem = React.memo(function JobItem({
       case "Multiple Sheet":
         if (item.color_scheme === "Black and White") {
           return PRESS_TYPES.filter((p) =>
-            [
-              "DIGITAL BLACK WHITE",
-              "HMT BLACK WHITE",
-              "AUTOPRINT",
-            ].includes(p.value),
+            ["DIGITAL BLACK WHITE", "HMT BLACK WHITE", "AUTOPRINT"].includes(
+              p.value,
+            ),
           );
         }
 
         if (item.color_scheme === "Multicolor") {
           return PRESS_TYPES.filter((p) =>
-            [
-              "DIGITAL MULTICOLOR",
-              "HMT MULTICOLOR",
-            ].includes(p.value),
+            ["DIGITAL MULTICOLOR", "HMT MULTICOLOR"].includes(p.value),
           );
         }
-        
+
         return [];
 
       case "Wide Format":
@@ -193,19 +174,21 @@ const JobItem = React.memo(function JobItem({
   }, [category, item.color_scheme]);
 
   useEffect(() => {
+    const resets = {};
+
     // If current press_type is not in allowed list, clear it
     if (
       item.press_type &&
       !allowedPressTypes.some((p) => p.value === item.press_type)
     ) {
-      handleItemChange(uniqueKey, "press_type", "");
+      resets.press_type = "";
     }
 
     if (
       item.inside_press_type &&
       !allowedPressTypes.some((p) => p.value === item.inside_press_type)
     ) {
-      handleItemChange(uniqueKey, "inside_press_type", "");
+      resets.inside_press_type = "";
     }
 
     if (
@@ -213,7 +196,11 @@ const JobItem = React.memo(function JobItem({
       item.cover_press_type &&
       !allowedCoverPressTypes.some((p) => p.value === item.cover_press_type)
     ) {
-      handleItemChange(uniqueKey, "cover_press_type", "");
+      resets.cover_press_type = "";
+    }
+
+    if (Object.keys(resets).length > 0) {
+      resetItemFields(uniqueKey, resets); // ← single state update = single render
     }
   }, [
     category,
@@ -226,7 +213,26 @@ const JobItem = React.memo(function JobItem({
     allowedCoverPressTypes,
     uniqueKey,
     handleItemChange,
+    resetItemFields,
   ]);
+
+  // a stable binding handler
+  const handleBindingChange = useCallback(
+    (bindingName, checked) => {
+      const prev = item.binding_types ?? [];
+      const updated = checked
+        ? [...prev, bindingName]
+        : prev.filter((x) => x !== bindingName);
+
+      handleItemChange(uniqueKey, "binding_types", updated);
+
+      if (!checked && bindingName === "Creasing")
+        handleItemChange(uniqueKey, "no_of_crease", "");
+      if (!checked && bindingName === "Folding")
+        handleItemChange(uniqueKey, "no_of_folding", "");
+    },
+    [item.binding_types, uniqueKey, handleItemChange],
+  );
 
   return (
     <FormCard>
@@ -414,10 +420,12 @@ const JobItem = React.memo(function JobItem({
             <Field label="Inside Paper Color" required>
               <Select
                 value={item.color_scheme || ""}
-                onChange={(e) => {
-                  handleItemChange(uniqueKey, "color_scheme", e.target.value)
-                  handleItemChange(uniqueKey, "inside_press_type", "");
-                }}
+                onChange={(e) =>
+                  batchItemChange(uniqueKey, {
+                    color_scheme: e.target.value,
+                    inside_press_type: "",
+                  })
+                }
               >
                 <option value="">Select</option>
                 <option>Black and White</option>
@@ -509,10 +517,12 @@ const JobItem = React.memo(function JobItem({
             <Field label="Cover Paper Color" required>
               <Select
                 value={item.cover_color_scheme || ""}
-                onChange={(e) =>{
-                  handleItemChange(uniqueKey, "cover_color_scheme", e.target.value);
-                  handleItemChange(uniqueKey, "cover_press_type", "");
-                }}
+                onChange={(e) =>
+                  batchItemChange(uniqueKey, {
+                    cover_color_scheme: e.target.value,
+                    cover_press_type: "",
+                  })
+                }
               >
                 <option value="">Select</option>
                 <option>Black and White</option>
@@ -567,21 +577,20 @@ const JobItem = React.memo(function JobItem({
 
                 // 👉 Instant validation
                 if (!validateSize(value, item.available_sizes, item.category)) {
-                    e.target.setCustomValidity(
-                      item.category === "Wide Format"
-                        ? "Use format: 2x3 ft (or mm/cm/in)"
-                        : "Use format: 2x3 mm | 2x3 cm | 2x3 in (ft not allowed)"
-                    );
-                  } else {
-                    e.target.setCustomValidity("");
-                  }
-                }}
-
+                  e.target.setCustomValidity(
+                    item.category === "Wide Format"
+                      ? "Use format: 2x3 ft (or mm/cm/in)"
+                      : "Use format: 2x3 mm | 2x3 cm | 2x3 in (ft not allowed)",
+                  );
+                } else {
+                  e.target.setCustomValidity("");
+                }
+              }}
               onInvalid={(e) => {
                 e.target.setCustomValidity(
                   item.category === "Wide Format"
                     ? "Use format: 2x3 ft (or mm/cm/in)"
-                    : "Use format: 2x3 mm | 2x3 cm | 2x3 in (ft not allowed)"
+                    : "Use format: 2x3 mm | 2x3 cm | 2x3 in (ft not allowed)",
                 );
               }}
               placeholder={
@@ -590,11 +599,11 @@ const JobItem = React.memo(function JobItem({
                   : "e.g. 4x6 in or 2x3 cm or 2x3 mm"
               }
               className={`border rounded px-3 py-2 w-full text-sm ${
-                  item.size &&
-                  !validateSize(item.size, item.available_sizes, item.category)
-                    ? "border-red-500"
-                    : "border-slate-300"
-                }`}
+                item.size &&
+                !validateSize(item.size, item.available_sizes, item.category)
+                  ? "border-red-500"
+                  : "border-slate-300"
+              }`}
               required
             />
 
@@ -692,26 +701,9 @@ const JobItem = React.memo(function JobItem({
                         b.binding_name,
                         item.binding_types,
                       )}
-                      onChange={(e) => {
-                        const prev = item.binding_types ?? [];
-                        const updated = e.target.checked
-                          ? [...prev, b.binding_name]
-                          : prev.filter((x) => x !== b.binding_name);
-
-                        handleItemChange(uniqueKey, "binding_types", updated);
-
-                        // Clear extra fields if unchecked
-                        if (
-                          !e.target.checked &&
-                          b.binding_name === "Creasing"
-                        ) {
-                          handleItemChange(uniqueKey, "no_of_crease", "");
-                        }
-
-                        if (!e.target.checked && b.binding_name === "Folding") {
-                          handleItemChange(uniqueKey, "no_of_folding", "");
-                        }
-                      }}
+                      onChange={(e) =>
+                        handleBindingChange(b.binding_name, e.target.checked)
+                      }
                     />
                     {b.binding_name}
                   </label>
