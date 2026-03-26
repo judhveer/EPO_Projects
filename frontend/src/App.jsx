@@ -36,7 +36,9 @@ import ProcessCoordinatorDashboard from "./pages/jobFms/ProcessCoordinatorDashbo
 import DesignerDashboard from "./pages/jobFms/DesignerDashboard.jsx";
 import CrmDashboard from "./pages/jobFms/CrmDashboard.jsx";
 import CommonDashboard from "./pages/jobFms/CommonDashboard.jsx";
+import ProductionDashboard from "./pages/jobFms/ProductionDashboard.jsx"
 import PendingBillingDashboard from "./components/jobFms/accounts/PendingBillingDashboard.jsx";
+
 
 
 export default function App() {
@@ -236,6 +238,18 @@ export default function App() {
                   fallback={<div className="p-6">Not Authorized</div>}
                 >
                   <CrmDashboard />
+                </Gate>
+              }
+            />
+
+            <Route
+              path="production"
+              element={
+                <Gate
+                  perm="jobfms.production.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
+                  <ProductionDashboard />
                 </Gate>
               }
             />
