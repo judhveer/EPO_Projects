@@ -39,7 +39,6 @@ export default (sequelize) => {
       order_type: {
         type: DataTypes.ENUM(
           "Work Order",
-          "Bulk Order",
           "Project Based Order",
           "Job Order"
         ),
@@ -184,26 +183,12 @@ export default (sequelize) => {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         default: 0.0
+      },
+      completed_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
       }
 
-
-
-
-      // // NEW: Quotation / costing fields
-      // quotation_subtotal: {
-      //   type: DataTypes.DECIMAL(12, 2),
-      //   defaultValue: 0,
-      // },
-
-      // quotation_final_amount: {
-      //   type: DataTypes.DECIMAL(12, 2),
-      //   defaultValue: 0,
-      // },
-
-      // profit_margin_percent: {
-      //   type: DataTypes.FLOAT,
-      //   defaultValue: 0,
-      // },
     },
     {
       tableName: "jobfms_job_cards",
