@@ -78,7 +78,7 @@ const calculateJobCompletionDeadline = (deliveryDateInput) => {
  */
 export const createJobCard = async (req, res) => {
   console.log("createJobCard called...");
-  const t = await JobCard.sequelize.transaction();
+  const t = await db.sequelize.transaction();
   try {
     // console.log("req.body: ", req.body);
     const {
@@ -325,7 +325,6 @@ export const createJobCard = async (req, res) => {
         job_no,
         new_stage: initialStage,
         performed_by_id: req.user?.id || null,
-        started_at: new Date(),
         remarks: is_direct_to_production ? "(Job created -> Direct to Production) Job sent directly to production" : "(Job created -> Coordinator review) Job sent for coordinator review",
         transaction: t,
       });
@@ -629,7 +628,7 @@ export const getJobCardByJobNo = async (req, res) => {
 export const updateJobCard = async (req, res) => {
   console.log("updateJobCard called...");
   // console.log("req.body: ", req.body);
-  const t = await JobCard.sequelize.transaction();
+  const t = await db.sequelize.transaction();
   try {
     const { job_no } = req.params;
     const { job_items = [], ...updates } = req.body;
@@ -681,7 +680,6 @@ export const updateJobCard = async (req, res) => {
         job_no,
         new_stage: "production",
         performed_by_id: req.user?.id || null,
-        started_at: new Date(),
         remarks: "(Job updated → Direct to Production)",
         transaction: t,
       });
@@ -1129,7 +1127,7 @@ export const updateJobCard = async (req, res) => {
  * CANCEL JOB
  */
 export const cancelJobCard = async (req, res) => {
-  const t = await JobCard.sequelize.transaction();
+  const t = await db.sequelize.transaction();
   try {
     const { job_no } = req.params;
     if (!job_no) {
@@ -1158,7 +1156,6 @@ export const cancelJobCard = async (req, res) => {
       job_no,
       new_stage: "cancelled",
       performed_by_id: req.user?.id || null,
-      started_at: new Date(),
       remarks: "(Job cancelled) Job has been cancelled by Job Writer",
       transaction: t,
     });
