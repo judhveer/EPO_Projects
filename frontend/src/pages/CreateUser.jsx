@@ -4,8 +4,8 @@ import api from '../lib/api';
 import PasswordField, { checkPassword } from '../components/forms/PasswordField'
 
 const DEPARTMENTS = [
-  'Accounts', 'Admin', 'CRM', 'Designer', 'EA', 'Foundation', 'HR', 'MIS',
-  'Office Assistant', 'Process Coordinator', 'Receptionist', 'Sales dept', 'Tender Executive', 'Job Writer'
+  'Accounts', 'Admin', 'CRM', 'Designer', 'EA', 'Foundation', 'HR', 'Job Writer', 'MIS',
+  'Office Assistant', 'Process Coordinator', 'Production Coordinator', 'Receptionist', 'Sales dept', 'Tender Executive', 
 ];
 
 // Full catalog (frontend); we'll filter based on department.

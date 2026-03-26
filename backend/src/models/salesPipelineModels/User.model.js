@@ -1,7 +1,7 @@
 import { DataTypes } from 'sequelize';
 import bcrypt from 'bcryptjs';
 
-export const DEPARTMENTS = ["Job Writer", "Accounts", "Admin", "CRM", "Designer", "EA", "Foundation", "HR", "MIS", "Office Assistant", "Process Coordinator", "Receptionist", "Sales dept", "Tender Executive", ["OWNER"]];
+export const DEPARTMENTS = ["Job Writer", "Accounts", "Admin", "CRM", "Designer", "EA", "Foundation", "HR", "MIS", "Office Assistant", "Process Coordinator", "Receptionist", "Sales dept", "Tender Executive", ["OWNER"], "Production Coordinator"];
 
 export const ROLES = [
   "BOSS", "ADMIN", "STAFF",
