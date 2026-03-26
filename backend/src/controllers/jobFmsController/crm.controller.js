@@ -73,7 +73,7 @@ export const getAllJobsForCRM = async (req, res) => {
  * 📤 PATCH - Sent to Client
  */
 export const sendToClient = async (req, res) => {
-  const t = await JobCard.sequelize.transaction();
+  const t = await db.sequelize.transaction();
   const { job_no } = req.params;
 
   if (!job_no) {
@@ -97,7 +97,6 @@ export const sendToClient = async (req, res) => {
       job_no,
       new_stage: "awaiting_client_response",
       performed_by_id: req.user?.id || null,
-      started_at: new Date(),
       remarks: "( CRM ) Sent to client for approval",
       transaction: t,
     });
@@ -189,7 +188,7 @@ export const sendToClient = async (req, res) => {
  * ✅ PATCH - Client Approved
  */
 export const approveJobByClient = async (req, res) => {
-  const t = await JobCard.sequelize.transaction();
+  const t = await db.sequelize.transaction();
   const { job_no } = req.params;
 
   if (!job_no) {
@@ -235,7 +234,6 @@ export const approveJobByClient = async (req, res) => {
       job_no,
       new_stage: "approved",
       performed_by_id: req.user?.id || null,
-      started_at: new Date(),
       remarks: "( CRM ) Client approved the job",
       transaction: t,
     });
@@ -328,7 +326,7 @@ export const approveJobByClient = async (req, res) => {
  */
 export const clientChanges = async (req, res) => {
   console.log("Client Changes api called");
-  const t = await JobCard.sequelize.transaction();
+  const t = await db.sequelize.transaction();
   const { job_no } = req.params;
   const { client_feedback } = req.body;
 
@@ -409,7 +407,6 @@ export const clientChanges = async (req, res) => {
       job_no,
       new_stage: "client_changes",
       performed_by_id: req.user?.id || null,
-      started_at: new Date(),
       remarks: "( CRM ) Client requested changes",
       transaction: t,
     });
