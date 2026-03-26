@@ -147,7 +147,7 @@ export const setEstimatedTime = async (req, res) => {
 
 // Designer's API to START TASK
 export const designerStartTask = async (req, res) => {
-  const t = await JobCard.sequelize.transaction();
+  const t = await db.sequelize.transaction();
 
   try {
     const { job_no } = req.params;
@@ -183,7 +183,6 @@ export const designerStartTask = async (req, res) => {
       job_no,
       new_stage: "design_in_progress",
       performed_by_id: req.user?.id || null,
-      started_at: new Date(),
       remarks: "( Designer ) Task started",
       transaction: t,
     });
@@ -360,7 +359,7 @@ export const designerResumeTask = async (req, res) => {
 
 // Designer API to END TASK
 export const designerEndTask = async (req, res) => {
-  const t = await JobCard.sequelize.transaction();
+  const t = await db.sequelize.transaction();
 
   try {
     const { job_no } = req.params;
@@ -416,7 +415,6 @@ export const designerEndTask = async (req, res) => {
       job_no,
       new_stage: "sent_for_approval",
       performed_by_id: req.user?.id || null,
-      started_at: new Date(),
       remarks:
         "( Designer -> CRM ) Task completed and CRM has to send for approval",
       transaction: t,
