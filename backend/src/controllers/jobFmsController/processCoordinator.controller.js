@@ -1,6 +1,6 @@
 import { Op } from "sequelize";
-import models from "../../models/index.js";
-const { JobCard, JobAssignment, StageTracking, ActivityLog, User } = models;
+import db from "../../models/index.js";
+const { JobCard, JobAssignment, StageTracking, ActivityLog, User } = db;
 import { advanceStage } from "../../utils/jobFms/stageTracking.js";
 import { sendMailForFMS } from "../../email/sendMail.js";
 
@@ -43,7 +43,7 @@ export const getAllJobsForProcessCoordinator = async (req, res) => {
 // process coordinator api to assigns designer to a job
 
 export const assignDesigner = async (req, res) => {
-  const t = await JobCard.sequelize.transaction();
+  const t = await db.sequelize.transaction();
 
   try {
     const { job_no } = req.params;
@@ -84,7 +84,6 @@ export const assignDesigner = async (req, res) => {
       job_no,
       new_stage: "assigned_to_designer",
       performed_by_id: req.user?.id || null,
-      started_at: new Date(),
       remarks: "(Process Coordinator -> Designer) Job assigned to designer",
       transaction: t,
     });
