@@ -61,6 +61,10 @@ export default function ProductionTable() {
 
   const handleMarkCompleted = async (job) => {
     setCompleting(true);
+    // Capture current state for rollback
+    const previousJobs = [...jobs];
+    const previousTotal = totalJobs;
+
     try {
       await api.patch(`/api/fms/production/${job.job_no}/complete`);
       // Optimistic update: remove the completed job from list
@@ -70,6 +74,9 @@ export default function ProductionTable() {
       setConfirmComplete(null);
       // fetchJobs(); // refresh table
     } catch (err) {
+      // Rollback on error
+      setJobs(previousJobs);
+      setTotalJobs(previousTotal);
       console.error("Failed to mark job as completed:",err);
       alert("Error marking job as completed: " + (err?.response?.data?.message ?? "Unknown error"));
     } finally {
