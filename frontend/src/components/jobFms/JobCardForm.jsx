@@ -905,6 +905,7 @@ export default function JobCardForm({
       return {
         ...item,
         enquiry_for: item.enquiry_for,
+        available_sizes: [],
         // Rebuild paper fields from selectedPaper
         paper_type: item.selectedPaper?.paper_name || "",
         paper_gsm: item.selectedPaper?.gsm || "",

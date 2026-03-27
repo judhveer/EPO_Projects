@@ -59,7 +59,6 @@ const validateSize = (value, availableSizes, category) => {
   // ✅ If custom format
   if (match) {
     const unit = match[5];
-
     // ❌ Restrict ft for non-wide categories
     if (category !== "Wide Format" && unit === "ft") {
       return false;
@@ -69,7 +68,10 @@ const validateSize = (value, availableSizes, category) => {
   }
 
   // ✅ If dropdown value
-  if (availableSizes?.some((opt) => opt.name === value)) {
+  if (
+    Array.isArray(availableSizes) &&
+    availableSizes.some((opt) => opt.name === value)
+  ) {
     return true;
   }
 
@@ -179,6 +181,7 @@ const JobItem = React.memo(function JobItem({
     // If current press_type is not in allowed list, clear it
     if (
       item.press_type &&
+      Array.isArray(allowedPressTypes) &&
       !allowedPressTypes.some((p) => p.value === item.press_type)
     ) {
       resets.press_type = "";
@@ -186,6 +189,7 @@ const JobItem = React.memo(function JobItem({
 
     if (
       item.inside_press_type &&
+      Array.isArray(allowedPressTypes) &&
       !allowedPressTypes.some((p) => p.value === item.inside_press_type)
     ) {
       resets.inside_press_type = "";
@@ -194,6 +198,7 @@ const JobItem = React.memo(function JobItem({
     if (
       category === "Multiple Sheet" &&
       item.cover_press_type &&
+      Array.isArray(allowedCoverPressTypes) &&
       !allowedCoverPressTypes.some((p) => p.value === item.cover_press_type)
     ) {
       resets.cover_press_type = "";
@@ -367,6 +372,7 @@ const JobItem = React.memo(function JobItem({
 
             {/* GSM / THICKNESS */}
             {item.wide_material_name &&
+              Array.isArray(item.available_wide_gsm) &&
               item.available_wide_gsm?.some(
                 (m) => m.gsm !== null || m.thickness_mm !== null,
               ) && (
