@@ -47,6 +47,73 @@ const EMPTY_FORM = {
   job_items: [],
 };
 
+// module level — pure function, zero cost, never recreated
+// O(1) lookup instead of array.includes() on every keystroke
+const CALC_TRIGGER_FIELDS = new Set([
+  // Common across all categories
+  "quantity",
+  "size",
+  "uom",
+  "enquiry_for",
+  "sides",
+  "sides",
+
+  // Single Sheet + Multiple Sheet
+  "paper_type",
+  "paper_gsm",
+  "press_type",
+
+  // Multiple Sheet specific
+  "inside_pages",
+  "cover_paper_type",
+  "cover_paper_gsm",
+  "cover_pages",
+  "cover_press_type",
+  "inside_press_type",
+
+  // Wide Format
+  "wide_material_name",
+  "wide_material_gsm",
+  "wide_material_thickness",
+
+  // Binding specific
+  "binding_types",
+  "creases_per_sheet",
+  "folds_per_sheet",
+]);
+
+// Returns true only when all fields needed for a backend calculation are present
+const isItemReady = (item) => {
+  // "Other" is calculated inline — never hits backend
+  if (item.category === "Other") return false;
+
+  // These are required for every non-Other category
+  if (!item.quantity || !item.size || !item.enquiry_for) return false;
+
+  switch (item.category) {
+    case "Single Sheet":
+      return !!(item.paper_type && item.paper_gsm);
+
+    case "Multiple Sheet":
+      return !!(
+        item.paper_type &&
+        item.paper_gsm &&
+        item.inside_pages &&
+        item.cover_paper_type &&
+        item.cover_paper_gsm &&
+        item.cover_pages
+      );
+
+    case "Wide Format":
+      // wide_material_gsm/thickness are optional for some materials (e.g. Standee)
+      // so only hard-require material name
+      return !!item.wide_material_name;
+
+    default:
+      return false;
+  }
+};
+
 // Highlight the part of text that matches the query
 const highlightMatch = (text, query) => {
   if (!query) return text;
@@ -130,6 +197,15 @@ export default function JobCardForm({
   const [form, setForm] = useState(EMPTY_FORM);
 
   const formRef = useRef(form);
+
+  // It wraps setForm to always keep formRef in sync instantly
+  const setFormAndRef = useCallback((updater) => {
+    setForm((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      formRef.current = next; // sync immediately, before any setTimeout fires
+      return next;
+    });
+  }, []);
 
   const [clientSuggestions, setClientSuggestions] = useState([]);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -216,14 +292,14 @@ export default function JobCardForm({
     setActiveIndex(-1);
   }, [clientSuggestions]);
 
-  useEffect(() => {
-    formRef.current = form;
-  }, [form]);
+  // useEffect(() => {
+  //   formRef.current = form;
+  // }, [form]);
 
   const onChange = useCallback(
     (e) => {
       const { name, value } = e.target;
-      setForm((f) => {
+      setFormAndRef((f) => {
         if (name === "execution_location" && value !== "Out-Bound") {
           return {
             ...f,
@@ -240,7 +316,7 @@ export default function JobCardForm({
         searchClients(value);
       }
     },
-    [searchClients],
+    [searchClients, setFormAndRef],
   );
 
   const loadCategoryItems = useCallback(
@@ -250,7 +326,7 @@ export default function JobCardForm({
           `/api/fms/items/by-category?category=${category}`,
         );
 
-        setForm((prev) => {
+        setFormAndRef((prev) => {
           const index = findItemIndexById(prev.job_items, itemId);
           if (index === -1) return prev;
           const items = [...prev.job_items];
@@ -299,7 +375,7 @@ export default function JobCardForm({
         showSoftError("Failed to load category items. Please try again.");
       }
     },
-    [findItemIndexById, showSoftError],
+    [findItemIndexById, showSoftError, setFormAndRef],
   );
 
   const loadCategoryBindings = useCallback(
@@ -309,7 +385,7 @@ export default function JobCardForm({
           `/api/fms/items/bindings?category=${category}`,
         );
 
-        setForm((prev) => {
+        setFormAndRef((prev) => {
           const index = findItemIndexById(prev.job_items, itemId);
           if (index === -1) return prev;
           const items = [...prev.job_items];
@@ -325,7 +401,7 @@ export default function JobCardForm({
         showSoftError("Failed to load category bindings. Please try again.");
       }
     },
-    [findItemIndexById, showSoftError],
+    [findItemIndexById, showSoftError, setFormAndRef],
   );
 
   const loadItemPapers = useCallback(
@@ -333,7 +409,7 @@ export default function JobCardForm({
       try {
         const { data } = await api.get(`/api/fms/items/paper-types`);
 
-        setForm((prev) => {
+        setFormAndRef((prev) => {
           const index = findItemIndexById(prev.job_items, itemId);
           if (index === -1) return prev;
           const items = [...prev.job_items];
@@ -348,7 +424,7 @@ export default function JobCardForm({
         showSoftError("Failed to load papers. Please try again.");
       }
     },
-    [findItemIndexById, showSoftError],
+    [findItemIndexById, showSoftError, setFormAndRef],
   );
 
   const loadWideMaterials = useCallback(
@@ -356,7 +432,7 @@ export default function JobCardForm({
       try {
         const { data } = await api.get("/api/fms/items/wide-materials");
 
-        setForm((prev) => {
+        setFormAndRef((prev) => {
           const index = findItemIndexById(prev.job_items, itemId);
           if (index === -1) return prev;
           const items = [...prev.job_items];
@@ -367,7 +443,7 @@ export default function JobCardForm({
         console.error("Failed to load wide materials", err);
       }
     },
-    [findItemIndexById, showSoftError],
+    [findItemIndexById, showSoftError, setFormAndRef],
   );
 
   const loadWideMaterialGsm = useCallback(
@@ -377,7 +453,7 @@ export default function JobCardForm({
           `/api/fms/items/wide-materials/gsm?materialName=${materialName}`,
         );
 
-        setForm((prev) => {
+        setFormAndRef((prev) => {
           const index = findItemIndexById(prev.job_items, itemId);
           if (index === -1) return prev;
           const items = [...prev.job_items];
@@ -388,7 +464,7 @@ export default function JobCardForm({
         console.error("Failed to load wide GSM");
       }
     },
-    [findItemIndexById, showSoftError],
+    [findItemIndexById, showSoftError, setFormAndRef],
   );
 
   const loadItemPapersGsm = useCallback(
@@ -398,7 +474,7 @@ export default function JobCardForm({
           `/api/fms/items/paper-types/gsm?paperName=${paperName}`,
         );
 
-        setForm((prev) => {
+        setFormAndRef((prev) => {
           const index = findItemIndexById(prev.job_items, itemId);
           if (index === -1) return prev;
           const items = [...prev.job_items];
@@ -419,7 +495,7 @@ export default function JobCardForm({
         showSoftError("Failed to load paper GSM. Please try again.");
       }
     },
-    [findItemIndexById, showSoftError],
+    [findItemIndexById, showSoftError, setFormAndRef],
   );
 
   const loadSizes = useCallback(
@@ -427,7 +503,7 @@ export default function JobCardForm({
       try {
         const { data } = await api.get(`/api/fms/items/sizes?search=${search}`);
 
-        setForm((prev) => {
+        setFormAndRef((prev) => {
           const index = findItemIndexById(prev.job_items, itemId);
           if (index === -1) return prev;
           const items = [...prev.job_items];
@@ -442,88 +518,56 @@ export default function JobCardForm({
         showSoftError("Failed to load sizes. Please try again.");
       }
     },
-    [findItemIndexById, showSoftError],
+    [findItemIndexById, showSoftError, setFormAndRef],
   );
 
   const calculateItemBackend = useCallback(
     async (index) => {
       console.log("calculateItemBackend Triggered:");
+
+      const item = formRef.current.job_items[index];
+      if (!item || !isItemReady(item)) return; // safety net — isItemReady already checked in handleItemChange
+
+      // Clean the items before sending
+      const cleanedItems = cleanJobItems(formRef.current.job_items);
+      // const cleanedItem = cleanJobItems([item])[0];
+      const cleanedItem = cleanJobItems([
+        { ...item, unit_rate: null, item_total: null },
+      ])[0];
+
+      // Send all required fields to backend
+      const payload = {
+        item: cleanedItem,
+        all_items: cleanedItems, // send all items so backend can recalc total_amount
+      };
+
       try {
-        // const item = form.job_items[index];
-        const item = formRef.current.job_items[index];
-
-        // basic guard
-        // if (!item.quantity || !item.paper_type || !item.paper_gsm) {
-        //   showSoftError("Please fill all required fields before calculating");
-        //   return;
-        // }
-
-        if (!item.quantity) return;
-
-        if (item.category === "Wide Format") {
-          if (!item.enquiry_for || !item.wide_material_name || !item.size) {
-            showSoftError(
-              "Please fill all required fields before calculating wide format",
-            );
-            return;
-          }
-          // if ( item.wide_material_name !== "Standee" && !item.wide_material_gsm && !item.wide_material_thickness) {
-          //   return;
-          // }
-        } else if (item.category === "Other") {
-          return; // handled separately
-        } else {
-          if (
-            !item.enquiry_for ||
-            !item.paper_type ||
-            !item.paper_gsm ||
-            !item.size
-          ) {
-            showSoftError("Please fill all required fields before calculating");
-            return;
-          }
-        }
-
-        // Clean the items before sending
-        const cleanedItems = cleanJobItems(formRef.current.job_items);
-        // const cleanedItem = cleanJobItems([item])[0];
-        const cleanedItem = cleanJobItems([
-          { ...item, unit_rate: null, item_total: null },
-        ])[0];
-
-        // Send all required fields to backend
-        const payload = {
-          item: cleanedItem,
-          all_items: cleanedItems, // send all items so backend can recalc total_amount
-        };
-
         const { data } = await api.post(
           `/api/fms/items/calculate-item`,
           payload,
         );
         // Backend returns: { unit_rate, item_total, total_amount }
         console.log("Backend response:", data);
-        setForm((prev) => {
+        setFormAndRef((prev) => {
           const updatedItems = [...prev.job_items];
 
           updatedItems[index] = {
             ...updatedItems[index],
-
-            // 🔥 Store unit & item total
+            // Store unit & item total
             unit_rate: data.totals.unit_rate,
             item_total: data.totals.item_total,
 
-            // 🔥 Store inside best-sheet details
+            // Store inside best-sheet details
             best_inside_sheet: data.inside.sheet_selected,
             best_inside_dimensions: data.inside.sheet_dimensions,
             best_inside_ups: data.inside.ups,
             best_inside_sheet_name: data.inside.sheet_name,
-            // 🔥 Store cover best-sheet details (may be null for Single Sheet)
+            // Store cover best-sheet details (may be null for Single Sheet)
             best_cover_sheet: data.cover.sheet_selected,
             best_cover_dimensions: data.cover.sheet_dimensions,
             best_cover_ups: data.cover.ups,
 
-            // 🔥 wide format fields
+            // wide format fields
             selected_material: data.wide?.selected_material,
             calculation_type: data.wide?.calculation_type,
             rolls_or_boards_used: data.wide?.details?.rolls_or_boards_used,
@@ -552,7 +596,7 @@ export default function JobCardForm({
   const handleItemChange = useCallback(
     (id, field, value) => {
       // 1. Update the field (and handle "Other" calculation)
-      setForm((prev) => {
+      setFormAndRef((prev) => {
         const index = findItemIndexById(prev.job_items, id);
         if (index === -1) return prev;
 
@@ -622,25 +666,18 @@ export default function JobCardForm({
         loadSizes(id, value);
       }
 
-      // 3. Backend calculation (using ref to get latest state)
-      const triggerFields = [
-        "quantity",
-        "paper_type",
-        "paper_gsm",
-        "size",
-        "uom",
-        "wide_material_name",
-        "wide_material_gsm",
-        "wide_material_thickness",
-      ];
-
-      if (triggerFields.includes(field)) {
+      if (CALC_TRIGGER_FIELDS.has(field)) {
+        // formRef is now updated synchronously inside setFormAndRef above,
+        // so by the time this setTimeout fires, formRef.current is already current
         setTimeout(() => {
           const latestIndex = findItemIndexById(formRef.current.job_items, id);
           if (latestIndex === -1) return;
           const latestItem = formRef.current.job_items[latestIndex];
-          if (latestItem?.category !== "Other") {
-            calculateItemBackend(latestIndex); // still need index for this function – keep as is
+
+          // Only fire if ALL required fields for this category are filled
+          // No wasted API calls, no mid-fill error messages
+          if (isItemReady(latestItem)) {
+            calculateItemBackend(latestIndex);
           }
         }, 0);
       }
@@ -648,6 +685,7 @@ export default function JobCardForm({
     // Dependencies: only stable functions (no form.job_items)
     [
       findItemIndexById,
+      setFormAndRef,
       loadCategoryItems,
       loadCategoryBindings,
       loadWideMaterials,
@@ -687,14 +725,14 @@ export default function JobCardForm({
   );
 
   const addItem = useCallback(() => {
-    setForm((prev) => ({
+    setFormAndRef((prev) => ({
       ...prev,
       job_items: [...prev.job_items, createEmptyItem()],
     }));
-  }, [createEmptyItem]);
+  }, [createEmptyItem, setFormAndRef]);
 
   const removeItem = useCallback((id) => {
-    setForm((prev) => {
+    setFormAndRef((prev) => {
       const updatedItems = prev.job_items.filter(
         (item) => (item.id ?? item._temp_id) !== id,
       );
@@ -755,7 +793,7 @@ export default function JobCardForm({
           onCreated?.(res.data);
 
           // 🧹 Reset form after creation only
-          setForm(EMPTY_FORM);
+          setFormAndRef(EMPTY_FORM);
         }
 
         // 🕒 Auto-hide popup after 2 seconds
@@ -788,7 +826,7 @@ export default function JobCardForm({
       const suggestions = clientSuggestionsRef.current;
       const currentIndex = activeIndexRef.current;
 
-      if (clientSuggestions.length === 0) return;
+      if (suggestions.length === 0) return;
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -803,13 +841,13 @@ export default function JobCardForm({
       } else if (e.key === "Enter" && currentIndex >= 0) {
         e.preventDefault();
         const selectedName = suggestions[currentIndex];
-        setForm((f) => ({ ...f, client_name: selectedName }));
+        setFormAndRef((f) => ({ ...f, client_name: selectedName }));
         setClientSuggestions([]);
         setActiveIndex(-1);
 
         try {
           const { data } = await api.get(`/api/clients/${selectedName}`);
-          setForm((f) => ({
+          setFormAndRef((f) => ({
             ...f,
             client_name: selectedName,
             client_type: data.client_type,
@@ -833,7 +871,7 @@ export default function JobCardForm({
   // resetItemFields in Jobitem.jsx
   const resetItemFields = useCallback(
     (id, fields) => {
-      setForm((prev) => {
+      setFormAndRef((prev) => {
         const index = findItemIndexById(prev.job_items, id);
         if (index === -1) return prev;
         const items = [...prev.job_items];
@@ -841,13 +879,13 @@ export default function JobCardForm({
         return { ...prev, job_items: items };
       });
     },
-    [findItemIndexById],
+    [findItemIndexById, setFormAndRef],
   );
 
   // After resetItemFields...
   const batchItemChange = useCallback(
     (id, updates) => {
-      setForm((prev) => {
+      setFormAndRef((prev) => {
         const index = findItemIndexById(prev.job_items, id);
         if (index === -1) return prev;
 
@@ -874,7 +912,7 @@ export default function JobCardForm({
         return { ...prev, job_items: items, total_amount: grandTotal };
       });
     },
-    [findItemIndexById],
+    [findItemIndexById, setFormAndRef],
   );
 
   useEffect(() => {
@@ -940,7 +978,7 @@ export default function JobCardForm({
       };
     });
 
-    setForm({
+    setFormAndRef({
       ...existingJob,
       delivery_date: formatDateTimeLocal(existingJob.delivery_date),
       proof_date: formatDateOnly(existingJob.proof_date),
@@ -1021,13 +1059,13 @@ export default function JobCardForm({
                   <li
                     key={name}
                     onClick={async () => {
-                      setForm((f) => ({ ...f, client_name: name }));
+                      setFormAndRef((f) => ({ ...f, client_name: name }));
                       setClientSuggestions([]);
                       setActiveIndex(-1);
 
                       try {
                         const { data } = await api.get(`/api/clients/${name}`);
-                        setForm((f) => ({
+                        setFormAndRef((f) => ({
                           ...f,
                           client_name: name,
                           department: data.department || "",
@@ -1311,7 +1349,7 @@ export default function JobCardForm({
               type="checkbox"
               checked={form.is_direct_to_production}
               onChange={(e) =>
-                setForm((f) => ({
+                setFormAndRef((f) => ({
                   ...f,
                   is_direct_to_production: e.target.checked,
                 }))
