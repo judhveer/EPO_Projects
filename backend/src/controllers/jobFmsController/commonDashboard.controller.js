@@ -207,7 +207,26 @@ export const getJobItemsByJobNo = async (req, res) => {
       order: [["id", "ASC"]],
     });
 
-    res.json(items);
+    const normalizeBindingTypes = (value) => {
+      if (Array.isArray(value)) return value;
+      if (typeof value === "string") {
+        try {
+          return JSON.parse(value);
+        } catch {
+          return [];
+        }
+      }
+      return [];
+    };
+
+    const cleanedItems = items.map(item => ({
+      ...item.toJSON(),
+      binding_types: normalizeBindingTypes(item.binding_types),
+    }));
+
+    console.log("Fetched job items: ", cleanedItems);
+
+    res.json(cleanedItems);
   } catch (err) {
     console.error("Job items fetch error:", err);
     res.status(500).json({ message: "Failed to load job items" });
