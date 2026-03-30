@@ -47,6 +47,13 @@ const EMPTY_FORM = {
   job_items: [],
 };
 
+const sanitize = (obj) =>
+  Object.fromEntries(
+    Object.entries(obj).map(([k, v]) => [k, v ?? ""])
+  );
+
+
+
 // module level — pure function, zero cost, never recreated
 // O(1) lookup instead of array.includes() on every keystroke
 const CALC_TRIGGER_FIELDS = new Set([
@@ -979,7 +986,7 @@ export default function JobCardForm({
     });
 
     setFormAndRef({
-      ...existingJob,
+      ...sanitize(existingJob),
       delivery_date: formatDateTimeLocal(existingJob.delivery_date),
       proof_date: formatDateOnly(existingJob.proof_date),
       receiving_date_for_mm: formatDateOnly(existingJob.receiving_date_for_mm),
@@ -1408,7 +1415,7 @@ export default function JobCardForm({
           <Input
             type="number"
             name="total_amount"
-            value={form.total_amount}
+            value={form.total_amount || 0}
             onChange={onChange}
             readOnly
           />
@@ -1429,7 +1436,7 @@ export default function JobCardForm({
             type="number"
             min="0"
             name="advance_payment"
-            value={form.advance_payment}
+            value={form.advance_payment || 0}
             onChange={onChange}
             step="0.01"
           />
