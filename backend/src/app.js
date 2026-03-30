@@ -66,6 +66,7 @@ import processCoordinatorRoutes from "./routes/jobFmsRoutes/processCoordinator.r
 import designerRoutes from "./routes/jobFmsRoutes/designer.routes.js";
 import crmJobsRoutes from "./routes/jobFmsRoutes/crmJobs.routes.js";
 import commonDashboardRoutes from "./routes/jobFmsRoutes/commonDashboard.routes.js"
+import productionDashboardRoutes from "./routes/jobFmsRoutes/production.routes.js";
 
 
 import notFound from './middlewares/salesPipeline/notFound.js';
@@ -158,8 +159,8 @@ app.use('/api/sales/coordinator', authenticate, coordinatorRoutes);
 
 // Attendance route define
 app.use('/api/attendance',
-  authenticate,
-  requirePermission('attendance.view'),
+  // authenticate,
+  // requirePermission('attendance.view'),
   attendanceRoutes
 );
 
@@ -212,8 +213,13 @@ app.use("/api/fms/crm",
   crmJobsRoutes
 );
 
-app.use("/api/fms/common-dashboard", commonDashboardRoutes);
+app.use("/api/fms/common-dashboard", 
+  authenticate,
+  commonDashboardRoutes);
 
+app.use("/api/fms/production", 
+  authenticate,
+  productionDashboardRoutes);
 
 
 
