@@ -228,9 +228,7 @@ export const getJobItemsByJobNo = async (req, res) => {
       const costing = json.costing
         ? {
             ...json.costing,
-            ms_inside_costing: Array.isArray(json.costing.ms_inside_costing)
-              ? json.costing.ms_inside_costing
-              : [],
+            ms_inside_costing: normalizeFields(json.costing.ms_inside_costing),
           }
         : null;
 
