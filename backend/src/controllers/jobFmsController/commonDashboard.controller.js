@@ -209,7 +209,7 @@ export const getJobItemsByJobNo = async (req, res) => {
       order: [["id", "ASC"]],
     });
 
-    const normalizeBindingTypes = (value) => {
+    const normalizeFields = (value) => {
       if (Array.isArray(value)) return value;
       if (typeof value === "string") {
         try {
@@ -236,8 +236,8 @@ export const getJobItemsByJobNo = async (req, res) => {
 
         return {
           ...json,
-          binding_types:  normalizeBindingTypes(json.binding_types),
-          inside_papers:  Array.isArray(json.inside_papers) ? json.inside_papers : [],
+          binding_types:  normalizeFields(json.binding_types),
+          inside_papers:  normalizeFields(json.inside_papers),
           cover_to_print: json.cover_to_print !== false, // normalize to boolean
           costing,
         }
