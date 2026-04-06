@@ -14,7 +14,7 @@ import Select from "../../components/salesPipeline/Select.jsx";
 import Button from "../../components/salesPipeline/Button.jsx";
 import JobItem from "./JobItem.jsx";
 
-// ✅ At module level, outside the component empty the form
+// At module level, outside the component empty the form
 const EMPTY_FORM = {
   client_type: "",
   order_source: "",
@@ -48,11 +48,26 @@ const EMPTY_FORM = {
 };
 
 const sanitize = (obj) =>
-  Object.fromEntries(
-    Object.entries(obj).map(([k, v]) => [k, v ?? ""])
-  );
+  Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, v ?? ""]));
 
+// Creates one empty inside-paper row for Multiple Sheet category.
+// Each inside paper tracks its own paper type, GSM, whether to print,
+// and if printing — its color scheme and press machine.
+export const createEmptyInsidePaper = () => ({
+  _id:
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : Date.now().toString() + Math.random(),
+  paper_type: "",
+  paper_gsm: "",
+  to_print: false, // checkbox: does this paper get sent to press?
+  color_scheme: "", // only matters when to_print = true
+  press_type: "", // only matters when to_print = true
+  available_gsm: [], // UI-only: GSM options for this paper's paper_type
+});
 
+// Fields that, when changed via handleItemChange, trigger a backend calculation.
+// NOTE: paper_type / paper_gsm / inside_press_type for Multiple Sheet are now inside inside_papers[] and handled by handleInsidePaperChange, so they no longer appear here for that category. paper_type stays because Single Sheet still uses it at item level.
 
 // module level — pure function, zero cost, never recreated
 // O(1) lookup instead of array.includes() on every keystroke
@@ -63,13 +78,10 @@ const CALC_TRIGGER_FIELDS = new Set([
   "uom",
   "enquiry_for",
   "sides",
-  "sides",
-
   // Single Sheet + Multiple Sheet
   "paper_type",
   "paper_gsm",
   "press_type",
-
   // Multiple Sheet specific
   "inside_pages",
   "cover_paper_type",
@@ -77,23 +89,31 @@ const CALC_TRIGGER_FIELDS = new Set([
   "cover_pages",
   "cover_press_type",
   "inside_press_type",
-
+  "cover_to_print",     // toggling print/no-print changes total cost
   // Wide Format
   "wide_material_name",
   "wide_material_gsm",
   "wide_material_thickness",
-
   // Binding specific
   "binding_types",
   "creases_per_sheet",
   "folds_per_sheet",
 ]);
 
+
+// [FIX 1B] Fields inside an inside_paper that should trigger recalculation.
+const INSIDE_PAPER_CALC_TRIGGER_FIELDS = new Set([
+  "paper_type",
+  "paper_gsm",
+  "to_print",
+  "color_scheme",
+  "press_type",
+]);
+
 // Returns true only when all fields needed for a backend calculation are present
 const isItemReady = (item) => {
   // "Other" is calculated inline — never hits backend
   if (item.category === "Other") return false;
-
   // These are required for every non-Other category
   if (!item.quantity || !item.size || !item.enquiry_for) return false;
 
@@ -101,16 +121,19 @@ const isItemReady = (item) => {
     case "Single Sheet":
       return !!(item.paper_type && item.paper_gsm);
 
-    case "Multiple Sheet":
+    case "Multiple Sheet": {
+      // Use the first inside paper for backward-compat backend calculation.
+      // Backend will be updated later to handle all inside_papers.
+      const firstPaper = item.inside_papers?.[0];
       return !!(
-        item.paper_type &&
-        item.paper_gsm &&
+        firstPaper?.paper_type &&
+        firstPaper?.paper_gsm &&
         item.inside_pages &&
         item.cover_paper_type &&
         item.cover_paper_gsm &&
         item.cover_pages
       );
-
+    }
     case "Wide Format":
       // wide_material_gsm/thickness are optional for some materials (e.g. Standee)
       // so only hard-require material name
@@ -124,10 +147,8 @@ const isItemReady = (item) => {
 // Highlight the part of text that matches the query
 const highlightMatch = (text, query) => {
   if (!query) return text;
-
   const regex = new RegExp(`(${query})`, "i"); // Case-insensitive match
   const parts = text.split(regex);
-
   return parts.map((part, i) =>
     regex.test(part) ? (
       <span key={i} className="font-semibold text-blue-600">
@@ -169,7 +190,6 @@ const normalizePayload = (payload) => {
       wide_material_gsm: item.wide_material_gsm
         ? Number(item.wide_material_gsm)
         : null,
-
       wide_material_thickness: item.wide_material_thickness
         ? Number(item.wide_material_thickness)
         : null,
@@ -178,6 +198,7 @@ const normalizePayload = (payload) => {
   return emptyToNull(normalizedPayload);
 };
 
+// Strips all UI-only dropdown data before sending to backend. Backend only needs the selected value for each field, it doesn't need the full list of options used to populate dropdowns. This keeps the payload clean and small.
 const cleanJobItems = (items) => {
   return items.map((item) => {
     const {
@@ -189,11 +210,126 @@ const cleanJobItems = (items) => {
       available_sizes,
       available_wide_materials,
       available_wide_gsm,
+      best_inside_sheet, best_inside_sheet_name, best_inside_dimensions, best_inside_ups,
+      best_cover_sheet, best_cover_dimensions, best_cover_ups,
+      selected_material, calculation_type, rolls_or_boards_used,
+      wastage_sqft, wide_ups, material_info,
       ...cleaned
     } = item;
+
+    // Strip available_gsm from each inside_paper before sending to backend
+    if (Array.isArray(cleaned.inside_papers)) {
+      cleaned.inside_papers = cleaned.inside_papers.map(({
+        available_gsm:        _ag,
+        // Strip calc output — goes to JobItemCosting, not stored in JobItem.inside_papers
+        ups:                  _ups,
+        effective_ups:        _eups,
+        sheets:               _sh,
+        sheets_with_wastage:  _shw,
+        sheet_rate:           _shr,
+        sheet_cost:           _shc,
+        printing_cost:        _pc,
+        // Strip display-only text (derivable from selected_paper_id JOIN)
+        best_sheet_size_name: _bssn,
+        best_sheet_name:      _bsn,
+        best_sheet_dims:      _bsd,
+        // Keep: _id, selected_paper_id, paper_type, paper_gsm,
+        //        to_print, color_scheme, press_type
+        ...rest
+      }) => rest);
+    }
     return cleaned;
   });
 };
+
+
+
+// ── buildCostingSnapshot ──────────────────────────────────────────────────────
+// Maps the calculation API response into the costing_snapshot object that
+// createJobCard/updateJobCard uses to create/upsert JobItemCosting.
+const buildCostingSnapshot = (category, data, qty) => {
+  if (category === "Single Sheet") {
+    return {
+      ss_paper_id:            data.inside.selected_paper_id,
+      ss_ups:                 data.inside.ups,
+      ss_sheets:              data.inside.sheets,
+      ss_sheets_with_wastage: data.inside.sheets_with_wastage,
+      ss_sheet_rate:          data.inside.sheet_rate,
+      ss_sheet_cost:          data.inside.total_sheet_cost,
+      ss_printing_cost:       data.inside.printing_cost_total,
+      binding_cost:           data.totals.total_binding_cost    || 0,
+      binding_cost_per_copy:  data.totals.binding_cost_per_copy || 0,
+      total_sheet_cost:       data.totals.total_sheet_cost,
+      total_printing_cost:    data.totals.total_printing_cost,
+      sheet_cost_per_copy:    data.totals.sheet_cost_per_copy,
+      printing_cost_per_copy: data.totals.printing_cost_per_copy,
+      unit_rate:              data.totals.unit_rate,
+      item_total:             data.totals.item_total,
+    };
+  }
+  if (category === "Multiple Sheet") {
+    return {
+      ms_inside_costing: (data.inside_papers_results || []).map(p => ({
+        paper_id:            p.selected_paper_id,
+        paper_name:          p.paper_type          || null,
+        gsm:                 p.paper_gsm           || null,
+        size_name:           p.best_sheet_size_name || null,
+        sheet_dimensions:    p.best_sheet_dims      || null,
+        ups:                 p.ups,
+        effective_ups:       p.effective_ups,
+        sheets:              p.sheets,
+        sheets_with_wastage: p.sheets_with_wastage,
+        sheet_rate:          p.sheet_rate,
+        sheet_cost:          p.sheet_cost,
+        printing_cost:       p.printing_cost,
+        to_print:            p.to_print,
+        color_scheme:        p.color_scheme,
+        press_type:          p.press_type,
+      })),
+      ms_total_inside_sheet_cost:    data.totals.total_inside_sheet_cost    || 0,
+      ms_total_inside_printing_cost: data.totals.total_inside_printing_cost || 0,
+      ms_cover_paper_id:             data.cover?.selected_paper_id,
+      ms_cover_ups:                  data.cover?.ups,
+      ms_cover_sheets:               data.cover?.sheets,
+      ms_cover_sheets_with_wastage:  data.cover?.sheets_with_wastage,
+      ms_cover_sheet_rate:           data.cover?.sheet_rate,
+      ms_cover_sheet_cost:           data.cover?.total_sheet_cost,
+      ms_cover_printing_cost:        data.cover?.printing_cost_total,
+      ms_cover_to_print:             data.cover?.to_print ?? true,  // default to true since cover is printed by default
+      binding_cost:                  data.totals.total_binding_cost    || 0,
+      binding_cost_per_copy:         data.totals.binding_cost_per_copy || 0,
+      total_sheet_cost:              data.totals.total_sheet_cost,
+      total_printing_cost:           data.totals.total_printing_cost,
+      sheet_cost_per_copy:           data.totals.sheet_cost_per_copy,
+      printing_cost_per_copy:        data.totals.printing_cost_per_copy,
+      unit_rate:                     data.totals.unit_rate,
+      item_total:                    data.totals.item_total,
+    };
+  }
+  if (category === "Wide Format") {
+    return {
+      // wf_material_id is set server-side (from selected_wide_material_id)
+      wf_material_id:          data.wide?.selected_wide_material_id,  // ← CRITICAL FIX
+      wf_calculation_type:     data.wide?.calculation_type,
+      wf_rolls_or_boards_used: data.wide?.details?.rolls_or_boards_used,
+      wf_wastage_sqft:         data.wide?.details?.wastage_sqft,
+      wf_ups:                  data.wide?.details?.ups,
+      wf_material_cost:        data.totals.material_cost  || 0,
+      wf_printing_cost:        data.totals.printing_cost  || 0,
+      binding_cost:            data.totals.total_binding_cost    || 0,
+      binding_cost_per_copy:   qty > 0 ? (data.totals.total_binding_cost || 0) / qty : 0,
+      unit_rate:               data.totals.unit_rate,
+      item_total:              data.totals.item_total,
+      // WF has no sheets, so sheet totals are 0
+      total_sheet_cost:    0,
+      total_printing_cost: data.totals.printing_cost || 0,
+      sheet_cost_per_copy: 0,
+      printing_cost_per_copy: qty > 0 ? (data.totals.printing_cost || 0) / qty : 0,
+    };
+  }
+  return null;
+};
+
 
 export default function JobCardForm({
   onCreated,
@@ -226,7 +362,6 @@ export default function JobCardForm({
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ✅ Add a cleanup ref at component top
   const timeoutsRef = useRef([]);
 
   // Helper to register timeouts
@@ -299,10 +434,6 @@ export default function JobCardForm({
     setActiveIndex(-1);
   }, [clientSuggestions]);
 
-  // useEffect(() => {
-  //   formRef.current = form;
-  // }, [form]);
-
   const onChange = useCallback(
     (e) => {
       const { name, value } = e.target;
@@ -326,19 +457,26 @@ export default function JobCardForm({
     [searchClients, setFormAndRef],
   );
 
+
+  // ── Dropdown loaders ─────────────────────────────────────────────────────────
+  const patchItem = useCallback((itemId, patch) => {
+    setFormAndRef((prev) => {
+      const idx = findItemIndexById(prev.job_items, itemId);
+      if (idx === -1) return prev;
+      const items = [...prev.job_items];
+      items[idx] = { ...items[idx], ...patch };
+      return { ...prev, job_items: items };
+    });
+  }, [findItemIndexById, setFormAndRef]);
+
+  // Added inside_papers reset so switching category starts fresh.
   const loadCategoryItems = useCallback(
     async (itemId, category) => {
       try {
         const { data } = await api.get(
           `/api/fms/items/by-category?category=${category}`,
         );
-
-        setFormAndRef((prev) => {
-          const index = findItemIndexById(prev.job_items, itemId);
-          if (index === -1) return prev;
-          const items = [...prev.job_items];
-          items[index] = {
-            ...items[index],
+          patchItem(itemId, {
             available_items: data, // store category items
             enquiry_for: "",
             size: "",
@@ -360,6 +498,8 @@ export default function JobCardForm({
             cover_paper_type: "",
             cover_paper_gsm: "",
             cover_color_scheme: "",
+            cover_press_type: "",
+            cover_to_print: true,        
             unit_rate: "",
             item_total: "",
             best_inside_sheet: "",
@@ -374,15 +514,15 @@ export default function JobCardForm({
             folds_per_sheet: "",
             creases_per_sheet: "",
             press_type: "",
-          };
-          return { ...prev, job_items: items };
-        });
+            // reset inside papers to a single empty paper 
+            inside_papers: [createEmptyInsidePaper()],
+          });
       } catch (err) {
         console.error("Failed to load category items", err);
         showSoftError("Failed to load category items. Please try again.");
       }
     },
-    [findItemIndexById, showSoftError, setFormAndRef],
+    [patchItem, showSoftError],
   );
 
   const loadCategoryBindings = useCallback(
@@ -392,46 +532,32 @@ export default function JobCardForm({
           `/api/fms/items/bindings?category=${category}`,
         );
 
-        setFormAndRef((prev) => {
-          const index = findItemIndexById(prev.job_items, itemId);
-          if (index === -1) return prev;
-          const items = [...prev.job_items];
-          items[index] = {
-            ...items[index],
-            available_bindings: data, // store category items
-          };
-
-          return { ...prev, job_items: items };
+        patchItem(itemId, { 
+          available_bindings: data 
         });
       } catch (err) {
         console.error("Failed to load category bindings", err);
         showSoftError("Failed to load category bindings. Please try again.");
       }
     },
-    [findItemIndexById, showSoftError, setFormAndRef],
+    [patchItem, showSoftError],
   );
-
+  // Loads available paper types list — shared across ALL inside papers in
+  // the item, stored at item level (available_papers).
   const loadItemPapers = useCallback(
-    async (itemId, itemName) => {
+    async (itemId) => {
       try {
         const { data } = await api.get(`/api/fms/items/paper-types`);
 
-        setFormAndRef((prev) => {
-          const index = findItemIndexById(prev.job_items, itemId);
-          if (index === -1) return prev;
-          const items = [...prev.job_items];
-          items[index] = {
-            ...items[index],
-            available_papers: data,
-          }; // store all papers
-          return { ...prev, job_items: items };
+        patchItem(itemId, { 
+          available_papers: data 
         });
       } catch (err) {
         console.error("Failed to load papers:", err);
         showSoftError("Failed to load papers. Please try again.");
       }
     },
-    [findItemIndexById, showSoftError, setFormAndRef],
+    [patchItem, showSoftError],
   );
 
   const loadWideMaterials = useCallback(
@@ -439,18 +565,13 @@ export default function JobCardForm({
       try {
         const { data } = await api.get("/api/fms/items/wide-materials");
 
-        setFormAndRef((prev) => {
-          const index = findItemIndexById(prev.job_items, itemId);
-          if (index === -1) return prev;
-          const items = [...prev.job_items];
-          items[index] = { ...items[index], available_wide_materials: data }; // store wide format materials
-          return { ...prev, job_items: items };
-        });
+        patchItem(itemId, { available_wide_materials: data }); 
       } catch (err) {
         console.error("Failed to load wide materials", err);
+        showSoftError("Failed to load wide materials. Please try again.");
       }
     },
-    [findItemIndexById, showSoftError, setFormAndRef],
+    [patchItem, showSoftError],
   );
 
   const loadWideMaterialGsm = useCallback(
@@ -460,20 +581,18 @@ export default function JobCardForm({
           `/api/fms/items/wide-materials/gsm?materialName=${materialName}`,
         );
 
-        setFormAndRef((prev) => {
-          const index = findItemIndexById(prev.job_items, itemId);
-          if (index === -1) return prev;
-          const items = [...prev.job_items];
-          items[index] = { ...items[index], available_wide_gsm: data };
-          return { ...prev, job_items: items };
+        patchItem(itemId, { 
+          available_wide_gsm: data 
         });
       } catch (err) {
         console.error("Failed to load wide GSM");
+        showSoftError("Failed to load wide GSM. Please try again.");
       }
     },
-    [findItemIndexById, showSoftError, setFormAndRef],
+    [patchItem, showSoftError],
   );
 
+  // Used for Single Sheet paper GSM (stored at item level: available_gsm / available_gsm_cover).
   const loadItemPapersGsm = useCallback(
     async (itemId, paperName, type = "inside") => {
       try {
@@ -481,28 +600,52 @@ export default function JobCardForm({
           `/api/fms/items/paper-types/gsm?paperName=${paperName}`,
         );
 
-        setFormAndRef((prev) => {
-          const index = findItemIndexById(prev.job_items, itemId);
-          if (index === -1) return prev;
-          const items = [...prev.job_items];
-
-          if (type === "inside") {
-            items[index] = {
-              ...items[index],
-              available_gsm: data,
-            };
-          } else {
-            items[index] = { ...items[index], available_gsm_cover: data };
-          }
-
-          return { ...prev, job_items: items };
-        });
+        patchItem(itemId, type === "inside" ? { available_gsm: data } : { available_gsm_cover: data });
+        
       } catch (err) {
         console.error("Failed to load paper gsm:", err);
         showSoftError("Failed to load paper GSM. Please try again.");
       }
     },
-    [findItemIndexById, showSoftError, setFormAndRef],
+    [patchItem, showSoftError],
+  );
+
+
+  // Loads GSM options for a SPECIFIC inside paper (by its _id).
+  // This is separate from loadItemPapersGsm because each inside paper can
+  // have a different paper_type, so each needs its own GSM list.
+  const loadInsidePaperGsm = useCallback(
+    async (itemId, paperId, paperName, clearGsm = true) => {
+      try {
+        const { data } = await api.get(
+          `/api/fms/items/paper-types/gsm?paperName=${paperName}`
+        );
+        setFormAndRef((prev) => {
+          const itemIndex = findItemIndexById(prev.job_items, itemId);
+          if (itemIndex === -1) return prev;
+          const items = [...prev.job_items];
+          const item = { ...items[itemIndex] };
+          const papers = [...(item.inside_papers || [])];
+          const paperIndex = papers.findIndex((p) => p._id === paperId);
+          if (paperIndex === -1) return prev;
+          // Update only this paper's available_gsm and clear its previous GSM selection
+          papers[paperIndex] = {
+            ...papers[paperIndex],
+            available_gsm: data,
+            // Only wipe the saved selection when the user actively changes paper_type.
+            // In edit-mode initial load, preserve whatever was saved in the DB.
+            ...(clearGsm ? { paper_gsm: "" } : {}),
+          };
+          item.inside_papers = papers;
+          items[itemIndex] = item;
+          return { ...prev, job_items: items };
+        });
+      } catch (err) {
+        console.error("Failed to load inside paper GSM:", err);
+        showSoftError("Failed to load paper GSM. Please try again.");
+      }
+    },
+    [findItemIndexById, showSoftError, setFormAndRef]
   );
 
   const loadSizes = useCallback(
@@ -510,22 +653,15 @@ export default function JobCardForm({
       try {
         const { data } = await api.get(`/api/fms/items/sizes?search=${search}`);
 
-        setFormAndRef((prev) => {
-          const index = findItemIndexById(prev.job_items, itemId);
-          if (index === -1) return prev;
-          const items = [...prev.job_items];
-          items[index] = {
-            ...items[index],
-            available_sizes: data,
-          };
-          return { ...prev, job_items: items };
+        patchItem(itemId, { 
+          available_sizes: data 
         });
       } catch (err) {
         console.error("Failed to load sizes", err);
         showSoftError("Failed to load sizes. Please try again.");
       }
     },
-    [findItemIndexById, showSoftError, setFormAndRef],
+    [patchItem, showSoftError],
   );
 
   const calculateItemBackend = useCallback(
@@ -537,10 +673,26 @@ export default function JobCardForm({
 
       // Clean the items before sending
       const cleanedItems = cleanJobItems(formRef.current.job_items);
+
+      // For Multiple Sheet: pass first inside paper's data at item level
+      // so backend (unchanged) can still calculate. Remove when backend updated.
+      let itemToSend = { ...item, unit_rate: null, item_total: null };
+      if (item.category === "Multiple Sheet" && item.inside_papers?.length > 0) {
+        const firstPaper = item.inside_papers[0];
+        itemToSend = {
+          ...itemToSend,
+          paper_type: firstPaper.paper_type,
+          paper_gsm: firstPaper.paper_gsm,
+          color_scheme: firstPaper.to_print ? firstPaper.color_scheme : "",
+          inside_press_type: firstPaper.to_print ? firstPaper.press_type : "",
+        };
+      }
+      const cleanedItem = cleanJobItems([itemToSend])[0];
+
       // const cleanedItem = cleanJobItems([item])[0];
-      const cleanedItem = cleanJobItems([
-        { ...item, unit_rate: null, item_total: null },
-      ])[0];
+      // const cleanedItem = cleanJobItems([
+      //   { ...item, unit_rate: null, item_total: null },
+      // ])[0];
 
       // Send all required fields to backend
       const payload = {
@@ -555,14 +707,50 @@ export default function JobCardForm({
         );
         // Backend returns: { unit_rate, item_total, total_amount }
         console.log("Backend response:", data);
+
+        const qty = Number(formRef.current.job_items[index].quantity || 1);
+
+      // Build costing_snapshot from the API response
+      const costingSnapshot = buildCostingSnapshot(item.category, data, qty);
+
+        // [FIX 1A] Merge inside_papers_results back into item.inside_papers        
         setFormAndRef((prev) => {
           const updatedItems = [...prev.job_items];
+          const currentInsidePapers = updatedItems[index].inside_papers || [];
+
+
+          const mergedInsidePapers =
+            data.inside_papers_results?.length
+              ? currentInsidePapers.map((paper, pIdx) => {
+                  const result = data.inside_papers_results[pIdx];
+                  if (!result) return paper;
+                  // Merge calc result fields but preserve frontend-only fields (_id, available_gsm)
+                  return {
+                    ...paper,
+                    selected_paper_id:    result.selected_paper_id   ?? paper.selected_paper_id,
+                    ups:                  result.ups,
+                    effective_ups:        result.effective_ups,
+                    sheets:               result.sheets,
+                    sheets_with_wastage:  result.sheets_with_wastage,
+                    sheet_rate:           result.sheet_rate,
+                    sheet_cost:           result.sheet_cost,
+                    printing_cost:        result.printing_cost,
+                    best_sheet_size_name: result.best_sheet_size_name,
+                    best_sheet_name:      result.best_sheet_name,
+                    best_sheet_dims:      result.best_sheet_dims,
+                  };
+                })
+              : currentInsidePapers;
 
           updatedItems[index] = {
             ...updatedItems[index],
             // Store unit & item total
             unit_rate: data.totals.unit_rate,
             item_total: data.totals.item_total,
+            costing_snapshot: costingSnapshot,// ← sent to backend for JobItemCosting
+
+            // ← NEW: inside papers now carry per-paper calc results
+            inside_papers: mergedInsidePapers,
 
             // Store inside best-sheet details
             best_inside_sheet: data.inside.sheet_selected,
@@ -597,7 +785,7 @@ export default function JobCardForm({
         showSoftError("Calculation failed: " + err?.response?.data?.message);
       }
     },
-    [showSoftError],
+    [showSoftError, setFormAndRef],
   );
 
   const handleItemChange = useCallback(
@@ -617,6 +805,14 @@ export default function JobCardForm({
             wide_material_gsm: "",
             wide_material_thickness: "",
             available_wide_gsm: [],
+          };
+        }
+        // ── NEW: When cover is marked "not printed", clear related fields ──────
+        if (field === "cover_to_print" && !value) {
+          updatedItem = {
+            ...updatedItem,
+            cover_color_scheme: "",
+            cover_press_type: "",
           };
         }
 
@@ -660,7 +856,7 @@ export default function JobCardForm({
       if (field === "enquiry_for") {
         loadItemPapers(id);
       }
-
+      // paper_type at item level is only for Single Sheet now
       if (field === "paper_type") {
         loadItemPapersGsm(id, value);
       }
@@ -701,8 +897,115 @@ export default function JobCardForm({
       loadItemPapersGsm,
       loadSizes,
       calculateItemBackend,
-      showSoftError,
     ],
+  );
+
+  // Handles changes to an individual inside paper within a Multiple Sheet item.
+  // itemId  → identifies the job item (via id or _temp_id)
+  // paperId → identifies the specific inside paper (via _id)
+  // field   → which field changed (paper_type, paper_gsm, to_print, color_scheme, press_type)
+  // value   → new value
+
+  // [FIX 1B] Handles changes to an individual inside paper within a Multiple Sheet item.
+  // Now also triggers backend recalculation when calc-relevant fields change.
+  const handleInsidePaperChange = useCallback(
+    (itemId, paperId, field, value) => {
+      setFormAndRef((prev) => {
+        const itemIndex = findItemIndexById(prev.job_items, itemId);
+        if (itemIndex === -1) return prev;
+
+        const items = [...prev.job_items];
+        const item = { ...items[itemIndex] };
+        const papers = [...(item.inside_papers || [])];
+        const paperIndex = papers.findIndex((p) => p._id === paperId);
+        if (paperIndex === -1) return prev;
+
+        let updatedPaper = { ...papers[paperIndex], [field]: value };
+
+        // When paper_type changes → clear GSM since it's no longer valid
+        if (field === "paper_type") {
+          updatedPaper.paper_gsm = "";
+          updatedPaper.available_gsm = [];
+        }
+
+        // When color_scheme changes → clear press_type (it may no longer be valid)
+        if (field === "color_scheme") {
+          updatedPaper.press_type = "";
+        }
+
+        // When to_print is unchecked → clear color and press fields
+        if (field === "to_print" && !value) {
+          updatedPaper.color_scheme = "";
+          updatedPaper.press_type = "";
+        }
+
+        papers[paperIndex] = updatedPaper;
+        item.inside_papers = papers;
+        items[itemIndex] = item;
+        return { ...prev, job_items: items };
+      });
+
+      // Load GSM list for this specific inside paper when its paper_type changes
+      if (field === "paper_type" && value) {
+        loadInsidePaperGsm(itemId, paperId, value, true);
+      }
+
+      // [FIX 1B] Trigger backend recalculation when a calc-relevant inside paper
+      // field changes (paper_type triggers recalc only after GSM is also filled,
+      // so isItemReady naturally guards that).
+      if (INSIDE_PAPER_CALC_TRIGGER_FIELDS.has(field)) {
+        setTimeout(() => {
+          const latestIndex = findItemIndexById(formRef.current.job_items, itemId);
+          if (latestIndex === -1) return;
+          const latestItem = formRef.current.job_items[latestIndex];
+          if (isItemReady(latestItem)) {
+            calculateItemBackend(latestIndex);
+          }
+        }, 0);
+      }
+
+
+    },
+    [findItemIndexById, setFormAndRef, loadInsidePaperGsm, calculateItemBackend],
+  );
+
+  // Adds a new empty inside paper to a Multiple Sheet item (max 4).
+  const addInsidePaper = useCallback(
+    (itemId) => {
+      setFormAndRef((prev) => {
+        const index = findItemIndexById(prev.job_items, itemId);
+        if (index === -1) return prev;
+        const items = [...prev.job_items];
+        const item = { ...items[index] };
+        if ((item.inside_papers || []).length >= 4) return prev; // max 4
+        item.inside_papers = [
+          ...(item.inside_papers || []),
+          createEmptyInsidePaper(),
+        ];
+        items[index] = item;
+        return { ...prev, job_items: items };
+      });
+    },
+    [findItemIndexById, setFormAndRef]
+  );
+
+  // Removes an inside paper from a Multiple Sheet item (min 1 must remain).
+  const removeInsidePaper = useCallback(
+    (itemId, paperId) => {
+      setFormAndRef((prev) => {
+        const index = findItemIndexById(prev.job_items, itemId);
+        if (index === -1) return prev;
+        const items = [...prev.job_items];
+        const item = { ...items[index] };
+        if ((item.inside_papers || []).length <= 1) return prev; // min 1
+        item.inside_papers = item.inside_papers.filter(
+          (p) => p._id !== paperId
+        );
+        items[index] = item;
+        return { ...prev, job_items: items };
+      });
+    },
+    [findItemIndexById, setFormAndRef]
   );
 
   const createEmptyItem = React.useCallback(
@@ -718,9 +1021,23 @@ export default function JobCardForm({
       quantity: "",
       uom: "",
       binding_types: [],
+      // Multiple Sheet: starts with one empty inside paper
+      inside_papers: [createEmptyInsidePaper()],
+      // Single Sheet: paper fields stay at item level
+      paper_type: "",
+      paper_gsm: "",
+      color_scheme: "",
+      press_type: "",
+      // ── Cover fields ──
+      cover_paper_type: "",
+      cover_paper_gsm: "",
+      cover_color_scheme: "",
+      cover_press_type: "",
+      cover_to_print: true,         // ← ADD: cover is printed by default
+      // Shared dropdowns
       available_items: [],
-      available_papers: [],
-      available_gsm: [],
+      available_papers: [],   // shared across all inside papers
+      available_gsm: [],      // for Single Sheet item-level paper
       available_gsm_cover: [],
       available_bindings: [],
       available_wide_materials: [],
@@ -812,7 +1129,7 @@ export default function JobCardForm({
         setLoading(false);
       }
     },
-    [isEditMode, existingJob, onCreated, onUpdated],
+    [isEditMode, existingJob, onCreated, onUpdated, safeTimeout, setFormAndRef],
   );
 
   // ✅ Add refs that shadow the state for use inside the callback
@@ -872,7 +1189,7 @@ export default function JobCardForm({
         setActiveIndex(-1);
       }
     },
-    [showSoftError],
+    [showSoftError, setFormAndRef],
   );
 
   // resetItemFields in Jobitem.jsx
@@ -922,6 +1239,7 @@ export default function JobCardForm({
     [findItemIndexById, setFormAndRef],
   );
 
+    // Edit mode: map existing DB job items to the new inside_papers structure.
   useEffect(() => {
     if (!existingJob) return;
 
@@ -947,15 +1265,49 @@ export default function JobCardForm({
 
     const mappedItems = safeItems.map((item, index) => {
       console.log("existing item: ", item);
+
+      // For Multiple Sheet: rebuild inside_papers from the saved paper data.
+      // Old records only have one inside paper — we map it to inside_papers[0].
+      // New records saved with inside_papers will have the array already.
+      let insidePapers;
+      if (item.category === "Multiple Sheet") {
+        if (Array.isArray(item.inside_papers) && item.inside_papers.length > 0) {
+          // Already in new format — just ensure _id and available_gsm exist
+          insidePapers = item.inside_papers.map((p) => ({
+            ...p,
+            _id: p._id || crypto.randomUUID?.() || Date.now().toString(),
+            available_gsm: [],
+          }));
+        } else {
+          // Old format: single paper stored at item level
+          insidePapers = [
+            {
+              _id: crypto.randomUUID?.() ?? Date.now().toString(),
+              paper_type: item.selectedPaper?.paper_name || "",
+              paper_gsm: item.selectedPaper?.gsm || "",
+              to_print: !!item.selectedPaper,
+              color_scheme: item.color_scheme || "",
+              press_type: item.inside_press_type || "",
+              available_gsm: [],
+            },
+          ];
+        }
+      } else {
+        insidePapers = [createEmptyInsidePaper()];
+      }
+
+
       return {
         ...item,
-        enquiry_for: item.enquiry_for,
+        // enquiry_for: item.enquiry_for,
         available_sizes: [],
+        // Single Sheet paper fields (still at item level)
         // Rebuild paper fields from selectedPaper
         paper_type: item.selectedPaper?.paper_name || "",
         paper_gsm: item.selectedPaper?.gsm || "",
 
         // Rebuild cover fields if available
+        cover_to_print: item.cover_to_print !== undefined ? item.cover_to_print : true,
         cover_paper_type: item.selectedCoverPaper?.paper_name || "",
         cover_paper_gsm: item.selectedCoverPaper?.gsm || "",
 
@@ -982,6 +1334,8 @@ export default function JobCardForm({
         // Wide format specific dropdown data
         available_wide_materials: [],
         available_wide_gsm: [],
+        inside_papers: insidePapers,
+        costing_snapshot: null, // will be rebuilt if user recalculates
       };
     });
 
@@ -1009,8 +1363,17 @@ export default function JobCardForm({
         loadItemPapers(itemId, item.enquiry_for);
       }
 
-      if (item.paper_type) {
+      // For Single Sheet: load GSM at item level (unchanged behaviour)
+      if (item.category === "Single Sheet" && item.paper_type) {
         loadItemPapersGsm(itemId, item.paper_type, "inside");
+      }
+      // For Multiple Sheet: load GSM per inside paper
+      if (item.category === "Multiple Sheet") {
+        item.inside_papers?.forEach((paper) => {
+          if (paper.paper_type) {
+            loadInsidePaperGsm(itemId, paper._id, paper.paper_type, false);
+          }
+        });
       }
 
       if (item.cover_paper_type) {
@@ -1027,6 +1390,7 @@ export default function JobCardForm({
     loadWideMaterials,
     loadItemPapers,
     loadItemPapersGsm,
+    loadInsidePaperGsm,
     loadWideMaterialGsm,
   ]);
 
@@ -1180,7 +1544,6 @@ export default function JobCardForm({
           >
             <option value="">Select</option>
             <option>Work Order</option>
-            <option>Bulk Order</option>
             <option>Project Based Order</option>
             <option>Job Order</option>
           </Select>
@@ -1399,6 +1762,10 @@ export default function JobCardForm({
               batchItemChange={batchItemChange}
               resetItemFields={resetItemFields}
               onRemove={removeItem}
+               // NEW props for inside papers in Multiple Sheet
+              handleInsidePaperChange={handleInsidePaperChange}
+              addInsidePaper={addInsidePaper}
+              removeInsidePaper={removeInsidePaper}
             />
           ))}
 
@@ -1487,3 +1854,4 @@ export default function JobCardForm({
     </FormCard>
   );
 }
+
