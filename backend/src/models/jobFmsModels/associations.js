@@ -18,7 +18,8 @@ export default function associateJobFmsModels(models) {
     BindingMaster,
     PaperMaster,
     SizeMaster,
-    WideFormatMaterial
+    WideFormatMaterial,
+    JobItemCosting
   } = models;
 
   // 🔗 JobCard ↔ JobItem
@@ -73,20 +74,6 @@ export default function associateJobFmsModels(models) {
   JobAssignment.belongsTo(User, { as: "assignedBy", foreignKey: "assigned_by_id" });
 
 
-  // 🔗 JobCard ↔ Quotation
-  JobCard.hasOne(Quotation, { as: "quotation", foreignKey: "job_no" });
-  Quotation.belongsTo(JobCard, { as: "jobCard", foreignKey: "job_no" });
-
-
-
-  // 🔗 JobCard ↔ JobCosting
-  JobCard.hasOne(JobCosting, { as: "costing", foreignKey: "job_card_id" });
-  JobCosting.belongsTo(JobCard, {
-    as: "jobCard",
-    foreignKey: "job_card_id",
-    targetKey: "job_no",
-  });
-
 
   // 🔗 ClientApproval
   if (ClientApproval) {
@@ -132,5 +119,11 @@ export default function associateJobFmsModels(models) {
   if (Notification) {
     Notification.belongsTo(User, { as: "user", foreignKey: "user_id" });
   }
+
+  JobItem.hasOne(models.JobItemCosting, {
+    as: "costing",
+    foreignKey: "job_item_id",
+    onDelete: "CASCADE",
+  });  
 
 }
