@@ -13,7 +13,6 @@ export default (sequelize) => {
       item_name: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true
       },
       category: {
         type: DataTypes.STRING, // Single Sheet, Wide Format, Multi Sheet, Other
