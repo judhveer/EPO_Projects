@@ -10,6 +10,7 @@ const {
   PaperMaster,
   ItemMaster,
   WideFormatMaterial,
+  JobItemCosting,
 } = db;
 
 const buildWhereClause = (query) => {
@@ -203,6 +204,7 @@ export const getJobItemsByJobNo = async (req, res) => {
         { model: PaperMaster, as: "selectedCoverPaper" },
         { model: ItemMaster, as: "itemMaster" },
         { model: WideFormatMaterial, as: "selectedWideMaterial" },
+        { model: JobItemCosting, as: "costing" }, 
       ],
       order: [["id", "ASC"]],
     });
@@ -219,10 +221,27 @@ export const getJobItemsByJobNo = async (req, res) => {
       return [];
     };
 
-    const cleanedItems = items.map(item => ({
-      ...item.toJSON(),
-      binding_types: normalizeBindingTypes(item.binding_types),
-    }));
+    const cleanedItems = items.map(item => {
+      const json = item.toJSON();
+
+      // Normalize costing JSON sub-fields so sidebar never crashes on null
+      const costing = json.costing
+        ? {
+            ...json.costing,
+            ms_inside_costing: Array.isArray(json.costing.ms_inside_costing)
+              ? json.costing.ms_inside_costing
+              : [],
+          }
+        : null;
+
+        return {
+          ...json,
+          binding_types:  normalizeBindingTypes(json.binding_types),
+          inside_papers:  Array.isArray(json.inside_papers) ? json.inside_papers : [],
+          cover_to_print: json.cover_to_print !== false, // normalize to boolean
+          costing,
+        }
+    });
 
     console.log("Fetched job items: ", cleanedItems);
 
