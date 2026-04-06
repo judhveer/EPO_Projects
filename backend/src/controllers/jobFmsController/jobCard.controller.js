@@ -4,7 +4,7 @@ import { advanceStage } from "../../utils/jobFms/stageTracking.js";
 import { sendMailForFMS } from "../../email/sendMail.js";
 import { DateTime } from "luxon";
 import { orderConfirmationTemplate, crmJobAssignmentTemplate, coordinatorJobReviewTemplate } from "../../email/templates/emailTemplates.js";
-import path from "path";
+import path, { resolve } from "path";
 
 
 const {
@@ -19,7 +19,8 @@ const {
   User,
   ItemMaster,
   PaperMaster,
-  WideFormatMaterial
+  WideFormatMaterial,
+  JobItemCosting
 } = db;
 
 
@@ -80,7 +81,8 @@ export const createJobCard = async (req, res) => {
   console.log("createJobCard called...");
   const t = await db.sequelize.transaction();
   try {
-    // console.log("req.body: ", req.body);
+    console.log("req.body: ", req.body.job_items);
+
     const {
       client_type,
       order_source,
@@ -96,7 +98,7 @@ export const createJobCard = async (req, res) => {
       outbound_sent_to = null,       // if outbound then this fields will be required
       paper_ordered_from = null,     // if outbound then this fields will be required
       receiving_date_for_mm = null,   // if outbound then this fields will be required
-      delivery_location, // ✅ fixed spelling
+      delivery_location, 
       delivery_address,
       delivery_date,
       proof_date,
@@ -112,9 +114,6 @@ export const createJobCard = async (req, res) => {
       discount = 0,
       job_items = [], // ✅ default empty array
     } = req.body;
-
-
-    console.log("required details: ", client_type, order_source, client_name, order_type, order_handled_by, execution_location, delivery_location, delivery_date, proof_date, task_priority, total_amount, advance_payment, mode_of_payment, contact_number, payment_status, job_items);
 
     if (
       !client_type ||
@@ -151,14 +150,6 @@ export const createJobCard = async (req, res) => {
         message: "No of files should be same as job items.",
       });
     }
-
-    // if (delivery_location === "Delivery Address") {
-    //   if (!delivery_address) {
-    //     return res.status(400).json({
-    //       message: "Delivery Address is required.",
-    //     });
-    //   }
-    // }
 
     // calculate job completion deadline
     const job_completion_deadline = calculateJobCompletionDeadline(delivery_date);
@@ -218,7 +209,7 @@ export const createJobCard = async (req, res) => {
         });
 
         if (!item_master_id) {
-          console.log("ItemMaster not found for: ", item.category, item.enquiry_for);
+          console.log("ItemMaster not found for: ", item.category, item.enquiry_for, item_master_id);
           item_master_id = await ItemMaster.create({
               category: item.category,
               item_name: item.enquiry_for,
@@ -227,69 +218,74 @@ export const createJobCard = async (req, res) => {
 
         item.item_master_id = item_master_id.dataValues.id;
 
-          /* ===================================================== WIDE FORMAT CASE ===================================================== */
+        const cs = item.costing_snapshot;
 
+        /* ── WIDE FORMAT ── */
         if(item.category === "Wide Format") {
-          const wideMaterial = await WideFormatMaterial.findByPk(item.material_info.id, { attributes: ["id"] });
-          if (!wideMaterial) {
-            throw new Error("Wide format material not found");
+          if (!cs?.wf_material_id) {
+            throw new Error(
+              `Wide Format material ID missing for item "${item.enquiry_for}". ` +
+              `Please recalculate before saving.`
+            );
           }
-          item.selected_wide_material_id = wideMaterial.dataValues.id;
+          item.selected_wide_material_id = Number(cs.wf_material_id);
           // Clean unrelated fields          
-          item.cover_paper_type = null;
-          item.cover_paper_gsm = null;
-          item.cover_color_scheme = null;
-          item.color_scheme = "Multicolor";
+          item.selected_paper_id         = null;
+          item.selected_cover_paper_id   = null;
+          item.cover_paper_type          = null;
+          item.cover_paper_gsm           = null;
+          item.cover_color_scheme        = null;
+          item.cover_press_type          = null;
+          item.color_scheme              = "Multicolor";
         }
+        /* ── OTHER ── */
         else if(item.category === "Other"){
           item.selected_wide_material_id = null;
-          item.cover_paper_type = null;
-          item.cover_paper_gsm = null;
-          item.cover_color_scheme = null;
-          item.color_scheme = "Multicolor";
-          item.sides = null;
+          item.selected_paper_id         = null;
+          item.selected_cover_paper_id   = null;
+          item.cover_paper_type          = null;
+          item.cover_paper_gsm           = null;
+          item.cover_color_scheme        = null;
+          item.cover_press_type          = null;
+          item.color_scheme              = "Multicolor";
+          item.sides                     = null;
         }
-        /* =========================================== SINGLE SHEET AND MULTIPLE SHEET CASE ============================================ */
-        else{
+        /* ── SINGLE SHEET & MULTIPLE SHEET ── */
+        else if(item.category === "Single Sheet"){
+          if (!cs?.ss_paper_id) {
+            throw new Error(
+              `Paper ID missing for Single Sheet item "${item.enquiry_for}". ` +
+              `Please recalculate before saving.`
+            );
+          }
+          // Use selected_paper_id from costing_snapshot (resolved during calculation)
+          item.selected_paper_id = Number(cs.ss_paper_id);
           item.selected_wide_material_id = null;
-
-          const selected_paper_id = await PaperMaster.findOne({
-            where: {
-              paper_name: item.paper_type,
-              gsm: Number(item.paper_gsm),
-              size_name: item.best_inside_sheet,
-            },
-            attributes: ["id"],
-          });
-
-          if (!selected_paper_id) {
-            throw new Error(`Paper not found: ${item.paper_type}, ${item.paper_gsm}, ${item.best_inside_sheet}`);
+          item.selected_cover_paper_id   = null;
+          item.cover_paper_type          = null;
+          item.cover_paper_gsm           = null;
+          item.cover_color_scheme        = null;
+          item.cover_press_type          = null;
+        } else if(item.category === "Multiple Sheet"){
+          if (!cs?.ms_cover_paper_id) {
+            throw new Error(
+              `Cover paper ID missing for Multiple Sheet item "${item.enquiry_for}". ` +
+              `Please recalculate before saving.`
+            );
           }
-
-          item.selected_paper_id = selected_paper_id.dataValues.id;
-
-          if (item.category !== "Multiple Sheet") {
-            item.cover_paper_type = null;
-            item.cover_paper_gsm = null;
-            item.cover_color_scheme = null;
-          } else {
-            const selected_cover_paper_id = await PaperMaster.findOne({
-              where: {
-                paper_name: item.cover_paper_type,
-                gsm: Number(item.cover_paper_gsm),
-                size_name: item.best_cover_sheet,
-              },
-              attributes: ["id"],
-            });
-            item.selected_cover_paper_id = selected_cover_paper_id.dataValues.id;
-          }
-
+          // selected_paper_id is NULL for Multiple Sheet — papers are in inside_papers[]
+          item.selected_paper_id         = null;  // papers live in inside_papers[] JSON
+          item.selected_wide_material_id = null;
+          item.selected_cover_paper_id   = Number(cs.ms_cover_paper_id);
+          item.inside_pages              = Number(item.inside_pages);
+          item.cover_pages               = Number(item.cover_pages);
         }
 
+        // Create JobItem
 
-        await JobItem.create(
+        const createdItem = await JobItem.create(
           {
-            job_no: jobCard.job_no,
+            job_no,
             ...item,
             selected_paper_id: item.selected_paper_id ?? null,
             selected_cover_paper_id: item.selected_cover_paper_id ?? null,
@@ -300,16 +296,75 @@ export const createJobCard = async (req, res) => {
               : [],
             inside_pages: item.inside_pages ? Number(item.inside_pages) : null,
             cover_pages: item.cover_pages ? Number(item.cover_pages) : null,
+            cover_to_print: item.cover_to_print !== false,  // default true
             no_of_foldings: item.folds_per_sheet ? Number(item.folds_per_sheet) : null,
             no_of_creases: item.creases_per_sheet ? Number(item.creases_per_sheet) : null,
             press_type: item.press_type === '' || item.press_type === undefined ? null : item.press_type,
+            cover_press_type: item.cover_press_type === "" || item.cover_press_type === undefined ? null : item.cover_press_type,
+            cover_color_scheme: item.cover_color_scheme === "" || item.cover_color_scheme === undefined ? null : item.cover_color_scheme,
+            color_scheme: item.color_scheme?.trim() ? item.color_scheme : null,
+            // Strip frontend-only / calc fields that have no column in JobItem
+            costing_snapshot:    undefined,
+            best_inside_sheet:   undefined,
+            best_cover_sheet:    undefined,
+            material_info:       undefined,
           },
           { transaction: t }
         );
+
+        if(cs && item.category !== "Other"){
+          // For Wide Format, set wf_material_id from the resolved FK
+          if(item.category === "Wide Format"){
+            cs.wf_material_id = item.selected_wide_material_id;
+          }
+          await JobItemCosting.create({
+            job_no,
+            job_item_id: createdItem.id,
+            category: item.category,
+            // Single Sheet fields
+            ss_paper_id: cs.ss_paper_id || null,
+            ss_ups: cs.ss_ups || null,
+            ss_sheets: cs.ss_sheets || null,
+            ss_sheets_with_wastage: cs.ss_sheets_with_wastage || null,
+            ss_sheet_rate: cs.ss_sheet_rate || null,
+            ss_sheet_cost: cs.ss_sheet_cost || null,
+            ss_printing_cost: cs.ss_printing_cost || null,
+            // Multiple Sheet inside fields
+            ms_inside_costing:              cs.ms_inside_costing              ?? null,
+            ms_total_inside_sheet_cost:     cs.ms_total_inside_sheet_cost     ?? null,
+            ms_total_inside_printing_cost:  cs.ms_total_inside_printing_cost  ?? null,
+            // Multiple Sheet cover fields
+            ms_cover_paper_id:            cs.ms_cover_paper_id             ?? null,
+            ms_cover_ups:                 cs.ms_cover_ups                  ?? null,
+            ms_cover_sheets:              cs.ms_cover_sheets               ?? null,
+            ms_cover_sheets_with_wastage: cs.ms_cover_sheets_with_wastage  ?? null,
+            ms_cover_sheet_rate:          cs.ms_cover_sheet_rate            ?? null,
+            ms_cover_sheet_cost:          cs.ms_cover_sheet_cost            ?? null,
+            ms_cover_printing_cost:       cs.ms_cover_printing_cost         ?? null,
+            // Wide Format fields
+            wf_material_id:         cs.wf_material_id          ?? null,
+            wf_calculation_type:    cs.wf_calculation_type      ?? null,
+            wf_rolls_or_boards_used: cs.wf_rolls_or_boards_used ?? null,
+            wf_wastage_sqft:        cs.wf_wastage_sqft          ?? null,
+            wf_ups:                 cs.wf_ups                   ?? null,
+            wf_material_cost:       cs.wf_material_cost         ?? null,
+            wf_printing_cost:       cs.wf_printing_cost         ?? null,
+            // Binding
+            binding_cost:           cs.binding_cost          ?? 0,
+            binding_cost_per_copy:  cs.binding_cost_per_copy ?? 0,
+            // Summary
+            total_sheet_cost:       cs.total_sheet_cost       ?? 0,
+            total_printing_cost:    cs.total_printing_cost    ?? 0,
+            sheet_cost_per_copy:    cs.sheet_cost_per_copy    ?? 0,
+            printing_cost_per_copy: cs.printing_cost_per_copy ?? 0,
+            unit_rate:              cs.unit_rate               ?? 0,
+            item_total:             cs.item_total              ?? 0, 
+          }, { transaction: t });
+        }
       }
     }
 
-    // Log activity
+      // Log activity
     await ActivityLog.create(
       {
         job_no: job_no,
@@ -669,7 +724,7 @@ export const updateJobCard = async (req, res) => {
     // }));
 
 
-    // 🔥 HANDLE READY → PRODUCTION TRANSITION
+    // ── Handle Ready → Production transition ──
     if (updates.is_direct_to_production === true && jobCard.is_direct_to_production === false) {
       console.log("Job marked as Ready for Production");
 
@@ -748,143 +803,189 @@ export const updateJobCard = async (req, res) => {
     // console.log("🟡 JobCard changes:", jobCardChanges);
 
 
+    // ── Resolve paper IDs — shared helper ──────────────────────────────────
+    // [FIX 2] Centralised so the same logic applies to both update-existing
+    // and add-new paths, keeping both DRY.
+    async function resolvePaperIds(item) {
+      const cs = item.costing_snapshot;
+      if (item.category === "Wide Format") {
+        if (!cs?.wf_material_id) {
+          throw new Error(
+            `Wide Format material ID missing for item "${item.enquiry_for}". ` +
+            `Please recalculate before saving.`
+          );
+        }
+        item.selected_wide_material_id = Number(cs.wf_material_id);
+        item.selected_paper_id         = null;
+        item.selected_cover_paper_id   = null;
+        item.cover_paper_type          = null;
+        item.cover_paper_gsm           = null;
+        item.cover_color_scheme        = null;
+        item.cover_press_type          = null;
+        item.color_scheme              = "Multicolor";
+        return;
+      }
 
-
-    // Handle JobItems changes
-    const existingItems = jobCard.items.map((i) => i.id);
-
-    const updatedItemIds = job_items.filter((i) => i.id).map((i) => i.id);
-
-    // 1️ Delete items that are removed
-    const itemsToDelete = existingItems.filter(
-      (id) => !updatedItemIds.includes(id)
-    );
-
-
-    if (itemsToDelete.length > 0) {
-      await JobItem.destroy({
-        where: { id: itemsToDelete },
-        transaction: t,
-      });
+      if (item.category === "Other") {
+        item.selected_wide_material_id = null;
+        item.selected_paper_id         = null;
+        item.selected_cover_paper_id   = null;
+        item.cover_paper_type          = null;
+        item.cover_paper_gsm           = null;
+        item.cover_color_scheme        = null;
+        item.cover_press_type          = null;
+        item.color_scheme              = "Multicolor";
+        item.sides                     = null;
+        return;
+      }
+      if(item.category === "Single Sheet"){
+        if (!cs?.ss_paper_id) {
+          throw new Error(
+            `Paper ID missing for Single Sheet item "${item.enquiry_for}". ` +
+            `Please recalculate before saving.`
+          );
+        }
+        item.selected_paper_id         = Number(cs.ss_paper_id);
+        item.selected_wide_material_id = null;
+        item.selected_cover_paper_id   = null;
+        item.cover_paper_type          = null;
+        item.cover_paper_gsm           = null;
+        item.cover_color_scheme        = null;
+        item.cover_press_type          = null;
+        return;
+      }
+      if(item.category === "Multiple Sheet"){
+        if (!cs?.ms_cover_paper_id) {
+          throw new Error(
+            `Cover paper ID missing for Multiple Sheet item "${item.enquiry_for}". ` +
+            `Please recalculate before saving.`
+          );
+        }
+        item.selected_paper_id         = null;    // Multiple Sheet doesn't have single selected_paper_id — papers are in inside_papers[]
+        item.selected_wide_material_id = null;
+        item.selected_cover_paper_id   = Number(cs.ms_cover_paper_id);
+        item.inside_pages              = Number(item.inside_pages);
+        item.cover_pages               = Number(item.cover_pages);
+        return;
+      }
     }
 
-    // Update existing items
-    for (const item of job_items) {
-      console.log("Processing item: ", item);
-      if (item.id && existingItems.includes(item.id)) {
-        const item_master_id = await ItemMaster.findOne({
-          where: {
-            category: item.category,
-            item_name: item.enquiry_for,
-          },
-          attributes: ["id"],
-        });
+    // ── Shared: upsert JobItemCosting ──
+    async function upsertCosting(jobItemId, item) {
+      const cs = item.costing_snapshot;
+      if (!cs || item.category === "Other") return;
+      if (item.category === "Wide Format") cs.wf_material_id = item.selected_wide_material_id;
 
-        item.item_master_id = item_master_id.dataValues.id;
+      const costingData = {
+        job_no, job_item_id: jobItemId, category: item.category,
+        ss_paper_id:            cs.ss_paper_id            ?? null,
+        ss_ups:                 cs.ss_ups                  ?? null,
+        ss_sheets:              cs.ss_sheets               ?? null,
+        ss_sheets_with_wastage: cs.ss_sheets_with_wastage  ?? null,
+        ss_sheet_rate:          cs.ss_sheet_rate            ?? null,
+        ss_sheet_cost:          cs.ss_sheet_cost            ?? null,
+        ss_printing_cost:       cs.ss_printing_cost         ?? null,
+        ms_inside_costing:              cs.ms_inside_costing              ?? null,
+        ms_total_inside_sheet_cost:     cs.ms_total_inside_sheet_cost     ?? null,
+        ms_total_inside_printing_cost:  cs.ms_total_inside_printing_cost  ?? null,
+        ms_cover_paper_id:            cs.ms_cover_paper_id             ?? null,
+        ms_cover_ups:                 cs.ms_cover_ups                  ?? null,
+        ms_cover_sheets:              cs.ms_cover_sheets               ?? null,
+        ms_cover_sheets_with_wastage: cs.ms_cover_sheets_with_wastage  ?? null,
+        ms_cover_sheet_rate:          cs.ms_cover_sheet_rate            ?? null,
+        ms_cover_sheet_cost:          cs.ms_cover_sheet_cost            ?? null,
+        ms_cover_printing_cost:       cs.ms_cover_printing_cost         ?? null,
+        wf_material_id:          cs.wf_material_id          ?? null,
+        wf_calculation_type:     cs.wf_calculation_type      ?? null,
+        wf_rolls_or_boards_used: cs.wf_rolls_or_boards_used  ?? null,
+        wf_wastage_sqft:         cs.wf_wastage_sqft           ?? null,
+        wf_ups:                  cs.wf_ups                    ?? null,
+        wf_material_cost:        cs.wf_material_cost          ?? null,
+        wf_printing_cost:        cs.wf_printing_cost          ?? null,
+        binding_cost:            cs.binding_cost           ?? 0,
+        binding_cost_per_copy:   cs.binding_cost_per_copy  ?? 0,
+        total_sheet_cost:        cs.total_sheet_cost        ?? 0,
+        total_printing_cost:     cs.total_printing_cost     ?? 0,
+        sheet_cost_per_copy:     cs.sheet_cost_per_copy     ?? 0,
+        printing_cost_per_copy:  cs.printing_cost_per_copy  ?? 0,
+        unit_rate:               cs.unit_rate               ?? 0,
+        item_total:              cs.item_total              ?? 0,
+      };
 
-
-        if(item.category === "Wide Format") {
-          const wideMaterial = await WideFormatMaterial.findByPk(
-            item.material_info?.id,
-            { attributes: ["id"] }
-          );
-
-          if (!wideMaterial) {
-            throw new Error("Wide format material not found");
-          }
-
-          item.selected_wide_material_id = wideMaterial.dataValues.id;
-
-          // Clean unrelated fields
-          item.selected_paper_id = null;
-          item.selected_cover_paper_id = null;
-          item.cover_paper_type = null;
-          item.cover_paper_gsm = null;
-          item.cover_color_scheme = null;
-          item.color_scheme = "Multicolor";
-        }
-        else if (item.category === "Other") {
-          item.selected_wide_material_id = null;
-          item.selected_paper_id = null;
-          item.selected_cover_paper_id = null;
-
-          item.cover_paper_type = null;
-          item.cover_paper_gsm = null;
-          item.cover_color_scheme = null;
-
-          item.color_scheme = "Multicolor";
-          item.sides = null;
-        }
-        else{
-
-          if (item.paper_type && item.paper_gsm && item.best_inside_sheet) {
-            const selected_paper_id = await PaperMaster.findOne({
-              where: {
-                paper_name: item.paper_type,
-                gsm: Number(item.paper_gsm),
-                size_name: item.best_inside_sheet,
-              },
-              attributes: ["id"],
-            });
-            if (selected_paper_id) {
-              item.selected_paper_id = selected_paper_id.dataValues.id;
-            }
-          }
-
-          // CLEAN FIELDS LIKE CREATE API
-          if (item.category !== "Multiple Sheet") {
-            item.cover_paper_type = null;
-            item.cover_paper_gsm = null;
-            item.cover_color_scheme = null;
-          } else {
-            if (
-              item.cover_paper_type &&
-              item.cover_paper_gsm &&
-              item.best_cover_sheet
-            ) {
-              const selected_cover_paper_id = await PaperMaster.findOne({
-                where: {
-                  paper_name: item.cover_paper_type,
-                  gsm: Number(item.cover_paper_gsm),
-                  size_name: item.best_cover_sheet,
-                },
-                attributes: ["id"],
-              });
-
-              if (selected_cover_paper_id) {
-                item.selected_cover_paper_id =
-                  selected_cover_paper_id.dataValues.id;
-              }
-            }
-
-            item.inside_pages = Number(item.inside_pages);
-            item.cover_pages = Number(item.cover_pages);
-          }
-          
-        }
-
-
-        item.binding_types = Array.isArray(item.binding_types)
-          ? item.binding_types
-          : [];
-
-        const {
-          selectedPaper,
-          selectedCoverPaper,
-          itemMaster,
-          available_items,
-          available_papers,
-          available_gsm,
-          available_gsm_cover,
-          available_bindings,
-          ...safeItem
-        } = item;
-
-        await JobItem.update(safeItem, {
-          where: { id: item.id },
-          transaction: t,
-        });
+      // Upsert via unique constraint on job_item_id
+      const existing = await JobItemCosting.findOne({ where: { job_item_id: jobItemId }, transaction: t });
+      if (existing) {
+        await existing.update(costingData, { transaction: t });
+      } else {
+        await JobItemCosting.create(costingData, { transaction: t });
       }
+    }
+
+    // ── Strip DB-unknown fields helper ──
+    const toSafeItem = (item) => {
+      const {
+        selectedPaper, selectedCoverPaper, itemMaster, selectedWideMaterial,
+        available_items, available_papers, available_gsm, available_gsm_cover,
+        available_bindings, available_sizes, available_wide_materials, available_wide_gsm,
+        costing_snapshot, best_inside_sheet, best_cover_sheet, material_info,
+        // display-only fields
+        best_inside_dimensions, best_inside_ups, best_inside_sheet_name,
+        best_cover_dimensions, best_cover_ups,
+        selected_material, calculation_type, rolls_or_boards_used, wastage_sqft,
+        wide_ups,
+        ...safe
+      } = item;
+      return safe;
+    };    
+
+
+    // ── Delete removed items ──
+    const existingItemIds = jobCard.items.map((i) => i.id);
+    const updatedItemIds  = job_items.filter((i) => i.id).map((i) => i.id);
+    const itemsToDelete   = existingItemIds.filter(
+      (id) => !updatedItemIds.includes(id),
+    );
+
+    if (itemsToDelete.length > 0) {
+      await JobItem.destroy({ where: { id: itemsToDelete }, transaction: t });
+    }
+
+    // Sanitizes fields that are MySQL ENUMs — empty string is not a valid ENUM value.
+    // Applies to both update-existing and add-new item paths.
+    const sanitizeItemEnums = (item) => ({
+      ...item,
+      press_type:        item.press_type        || null,
+      color_scheme:      item.color_scheme?.trim() ? item.color_scheme : null,
+      cover_press_type:  item.cover_press_type   || null,
+      cover_color_scheme: item.cover_color_scheme || null,
+      cover_to_print:    item.cover_to_print !== false, // ensure boolean, never undefined
+      no_of_foldings:    item.folds_per_sheet  ? Number(item.folds_per_sheet)  : null,
+      no_of_creases:     item.creases_per_sheet ? Number(item.creases_per_sheet) : null,
+    });
+
+    // ── Update existing items ──
+    for (const item of job_items) {
+      if (!item.id || !existingItemIds.includes(item.id)) continue;
+
+      let item_master_id = await ItemMaster.findOne({
+        where: { category: item.category, item_name: item.enquiry_for },
+        attributes: ["id"],
+      });
+      item.item_master_id = item_master_id?.dataValues.id;
+
+      await resolvePaperIds(item);
+
+      item.binding_types = Array.isArray(item.binding_types)
+        ? item.binding_types
+        : [];
+      // ── sanitize before update — prevents ENUM validation errors ──
+      await JobItem.update(
+        sanitizeItemEnums(toSafeItem(item)), {
+        where: { id: item.id },
+        transaction: t,
+      });
+
+      await upsertCosting(item.id, item);
     }
 
     // Add new items
@@ -892,110 +993,41 @@ export const updateJobCard = async (req, res) => {
 
     if (newItems.length > 0) {
       console.log("adding new Job items: ", newItems);
-      const newItemData = await Promise.all(
-        newItems.map(async (i) => {
-          let item_master_id = await ItemMaster.findOne({
-            where: {
-              category: i.category,
-              item_name: i.enquiry_for,
-            },
-            attributes: ["id"],
-          });
 
-          if (!item_master_id) {
-            console.log("ItemMaster not found for: ", i.category, i.enquiry_for);
-            item_master_id = await ItemMaster.create({
-              category: i.category,
-              item_name: i.enquiry_for,
-            }, { transaction: t });
-          }
+      for (const item of newItems) {
+        let item_master_id = await ItemMaster.findOne({
+          where: {
+            category: item.category,
+            item_name: item.enquiry_for,
+          },
+          attributes: ["id"],
+        });
 
-          i.item_master_id = item_master_id.dataValues.id;
+        if (!item_master_id) {
+          console.log("ItemMaster not found for: ", item.category, item.enquiry_for);
+          item_master_id = await ItemMaster.create({
+            category: item.category,
+            item_name: item.enquiry_for,
+          }, { transaction: t });
+        }
+        item.item_master_id = item_master_id.dataValues.id;
 
-          if(i.category === "Wide Format") {
-            const wideMaterial = await WideFormatMaterial.findByPk(
-              i.material_info?.id,
-              { attributes: ["id"] }
-            );
-
-            if (!wideMaterial) {
-              throw new Error("Wide format material not found");
-            }
-
-            i.selected_wide_material_id = wideMaterial.id;
-            i.selected_paper_id = null;
-            i.selected_cover_paper_id = null;
-
-            i.cover_paper_type = null;
-            i.cover_paper_gsm = null;
-            i.cover_color_scheme = null;
-            i.color_scheme = "Multicolor";
-          }
-          else if (i.category === "Other") {
-            i.selected_wide_material_id = null;
-            i.selected_paper_id = null;
-            i.selected_cover_paper_id = null;
-
-            i.cover_paper_type = null;
-            i.cover_paper_gsm = null;
-            i.cover_color_scheme = null;
-
-            i.color_scheme = "Multicolor";
-            i.sides = null;
-          }
-          else{
-
-            if (i.paper_type && i.paper_gsm && i.best_inside_sheet){
-              const selected_paper_id = await PaperMaster.findOne({
-                where: {
-                  paper_name: i.paper_type,
-                  gsm: Number(i.paper_gsm),
-                  size_name: i.best_inside_sheet,
-                },
-                attributes: ["id"],
-              });
-              console.log("selected_paper_id: ", selected_paper_id.dataValues.id);
-
-              if(selected_paper_id){
-                i.selected_paper_id = selected_paper_id.dataValues.id;
-              }
-            }
-
-
-            if (i.category !== "Multiple Sheet") {
-              i.cover_paper_type = null;
-              i.cover_paper_gsm = null;
-              i.cover_color_scheme = null;
-            } else {
-
-              if (i.cover_paper_type && i.cover_paper_gsm && i.best_cover_sheet){
-                const selected_cover_paper_id = await PaperMaster.findOne({
-                  where: {
-                    paper_name: i.cover_paper_type,
-                    gsm: Number(i.cover_paper_gsm),
-                    size_name: i.best_cover_sheet,
-                  },
-                  attributes: ["id"],
-                });
-                if(selected_cover_paper_id){
-                  i.selected_cover_paper_id = selected_cover_paper_id.dataValues.id;
-                }
-              }
-              
-            }
-
-          }
-
-          i.binding_types = Array.isArray(i.binding_types)
-            ? i.binding_types
+        await resolvePaperIds(item);
+        item.binding_types = Array.isArray(item.binding_types)
+            ? item.binding_types
             : [];
-          i.inside_pages = i.inside_pages ? Number(i.inside_pages) : null;
-          i.cover_pages = i.cover_pages ? Number(i.cover_pages) : null;
+        item.inside_pages = item.inside_pages ? Number(item.inside_pages) : null;
+        item.cover_pages = item.cover_pages ? Number(item.cover_pages) : null;
 
-          return { ...i, job_no };
-        })
-      );
-      await JobItem.bulkCreate(newItemData, { transaction: t });
+        const safeItem = sanitizeItemEnums(toSafeItem(item));
+        const created = await JobItem.create({
+          ...safeItem,
+          job_no
+        }, { transaction: t });
+
+        await upsertCosting(created.id, item);
+        
+      }
     }
 
 
