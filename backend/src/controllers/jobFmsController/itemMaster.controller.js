@@ -199,38 +199,12 @@ export const getSizes = async (req, res) => {
 
 
 
-
-
-
-
-
-
-
-
-
-const convertToInches = (value, unit) => {
-  switch (unit) {
-    case "mm":
-      return value / 25.4;
-
-    case "cm":
-      return value / 2.54;
-
-    case "ft":
-      return value * 12;
-
-    case "in":
-    default:
-      return value;
-  }
-};
-
-
-
 // calculations:
 
-// Parse size "6x9" → { width: 6, height: 9 }
-// ---------------------- SIZE PARSER ----------------------
+// SIZE PARSER
+// Converts "6x9 in", "15x21 cm", "3x4 ft" → { width, height, unit }
+// Output unit is always "inches" for Single/Multiple Sheet, "feet" for Wide Format
+//
 const parseSize = (sizeStr, category) => {
   if (!sizeStr) return null;
 
@@ -261,14 +235,6 @@ const parseSize = (sizeStr, category) => {
       break;
   }
 
-  // STEP 2: convert based on category
-  if (
-    category === "Single Sheet" ||
-    category === "Multiple Sheet"
-  ) {
-    return { width, height, unit: "inches" };
-  }
-
   if (category === "Wide Format") {
     return {
       width: width / 12,
@@ -281,6 +247,7 @@ const parseSize = (sizeStr, category) => {
 };
 
 // ---------------------- UPS CALCULATION ----------------------
+// How many job-size pieces fit on one sheet (try normal + rotated orientation)
 const calculateUps = (sheet, job) => {
   console.log("calculateUps called:")
   const normal =
@@ -294,25 +261,87 @@ const calculateUps = (sheet, job) => {
   return ups;
 };
 
+// ---------------------- BEST SHEET PICKING ----------------------
+// Given a list of paper rows and the job size, returns the sheet with the highest UPS (most efficient fit).
+const pickBestSheet = (paperRows, jobSize) => {
+  console.log("Pick best sheet called:");
+  let bestSheet = null;
+  let bestUps = 0;
+
+  for (const s of paperRows) {
+    const ups = calculateUps({ width: s.width, height: s.height }, jobSize);
+    if (ups > bestUps) {
+      bestUps = ups;
+      bestSheet = s;
+    }
+  }
+
+  return { bestSheet, bestUps };
+};
+
+// FOLDS FROM FORMA
+// calculate number of folds from forma (e.g. A4 → 0, A5 → 1, A6 → 2, etc.)
+const calculateFoldsFromForma = (forma) => {
+  if (forma <= 0) return 0;
+
+  // ensure it's power of 2
+  if ((forma & (forma - 1)) !== 0) {
+    console.warn("Forma is not power of 2. Folding may be incorrect.");
+  }
+
+  return Math.log2(forma/2); 
+};
+
+
+// ── GRAND TOTAL HELPER ────────────────────────────────────────────────────────
+const calcGrandTotal = (item, all_items, finalItemTotal) => {
+  let grand = 0;
+  if (Array.isArray(all_items)) {
+    for (const it of all_items) {
+      if (!it) continue;
+      if (it.id       && item.id       && it.id       === item.id)       continue;
+      if (it._temp_id && item._temp_id && it._temp_id === item._temp_id) continue;
+      if (it.item_total) grand += Number(it.item_total);
+    }
+  }
+  return grand + finalItemTotal;
+};
+
+
+
+// ── NULL SHEET HELPER ─────────────────────────────────────────────────────────
+const nullSheet = () => ({
+  sheet_selected: null, 
+  sheet_dimensions: null, 
+  ups: null,
+  sheets: null, 
+  sheets_with_wastage: null, 
+  sheet_rate: null,
+  total_sheet_cost: null, 
+  printing_cost_total: null,
+  printing_rate_per_sheet: null,
+});
+
+
+
+
+// MAIN CONTROLLER
 export const calculateItemController = async (req, res) => {
   console.log("calculateItemController called:");
 
   try {
     const { item, all_items } = req.body;
 
+    console.log("item received for calculation: ", item);
     if (!item) {
       return res.status(400).json({ message: "Missing item data" });
     }
 
     // extract fields
     const {
-      paper_type,
-      paper_gsm,
       cover_paper_type,
       cover_paper_gsm,
       size,
-      color_scheme, // for single-sheet or used for inside/cover separately if provided
-      // for multiple-sheet you may have inside_color_scheme and cover_color_scheme
       cover_color_scheme,
       sides, // "Single Side" or "Both Side" — applies to printing multiplication
       category,
@@ -322,16 +351,9 @@ export const calculateItemController = async (req, res) => {
       cover_pages = 0,
     } = item;
 
-    // console.log("item: ", item);
-
-    // console.log("Allitem: ", all_items);
-
-    // if (!paper_type || !paper_gsm || !size || !quantity) {
-    //   return res.status(400).json({ message: "Required fields missing" });
-    // }
-
     const qty = Number(quantity);
 
+    // ── 1. Resolve job size ───
     const sizeMasterRow = await SizeMaster.findOne({
       where: {
         name: size
@@ -359,19 +381,16 @@ export const calculateItemController = async (req, res) => {
     }
 
     // ------------------- 1. Parse custom size -------------------
-    // const jobSize = parseSize(size);
     if (!jobSize) {
       return res.status(400).json({ message: "Invalid size format" });
     }
-
-    console.log("jobSize: ", jobSize);
     
 
+    // WIDE FORMAT — find best material and calculate cost based on area or rate per pc
     if (category === "Wide Format") {
 
-      const { wide_material_name, wide_material_gsm, wide_material_thickness } = item;
+      const { wide_material_name, wide_material_gsm, wide_material_thickness, color_scheme } = item;
       const { width, height } = jobSize; // assume already in FEET
-      const qty = Number(quantity);
 
       if (!width || !height || !qty || !wide_material_name) {
         return res.status(400).json({ message: "Missing required fields for Wide Format"  });
@@ -417,7 +436,6 @@ export const calculateItemController = async (req, res) => {
         }
 
         //  2️. ROLL MATERIAL (FLEX/VINYL)
-        // console.log("Evaluating roll material: ", mat.dataValues);
         if (mat.roll_width_ft && mat.rate_per_sqft) {
 
           const rate = Number(mat.rate_per_sqft);
@@ -437,7 +455,6 @@ export const calculateItemController = async (req, res) => {
 
           if (!bestOption || option.totalCost < bestOption.totalCost) {   
             bestOption = option;
-            // console.log("New best option (roll): ", bestOption);
           }
         }
 
@@ -455,7 +472,7 @@ export const calculateItemController = async (req, res) => {
 
           const boardsNeeded = Math.ceil(qty / ups);
           const totalAreaUsed = board.width * board.height * boardsNeeded; // sqft consumed
-          const artworkArea = width * height * qty;                      // billable sqft
+          const artworkArea = width * height * qty;       // billable sqft
           const wastage = totalAreaUsed - artworkArea;
 
           // Customer price is based on printed area × rate_per_sqft
@@ -474,7 +491,6 @@ export const calculateItemController = async (req, res) => {
 
           if (!bestOption || option.ups > bestOption.ups || (option.wastage < bestOption.wastage)) {
             bestOption = option;
-            // console.log("New best option (board): ", bestOption.material);
           }
         }
       }
@@ -484,9 +500,6 @@ export const calculateItemController = async (req, res) => {
           message: "No suitable roll/board found for given size"
         });
       }
-
-      // ------------------- Printing cost for wide format -------------------
-      let printingCost = 0;
 
       // Jin materials pe calculation NAHI karni hai, unki list
       const noCalcMaterials = [
@@ -503,6 +516,9 @@ export const calculateItemController = async (req, res) => {
         'Cloth Banner',
         'ACP Board'
       ];
+
+      // ------------------- Printing cost for wide format -------------------
+      let printingCost = 0;
 
       // Agar material name is list ke andar mojood hai
       if (!noCalcMaterials.includes(bestOption.material.material_name)) {
@@ -553,53 +569,15 @@ export const calculateItemController = async (req, res) => {
 
 
       // 🔥 calculate grand total same like normal flow
-      let grandTotal = 0;
-
-      if (Array.isArray(all_items)) {
-        for (const it of all_items) {
-          if (!it) continue;
-
-          if (it.id && item.id && it.id === item.id) continue;
-          if (it._temp_id && item._temp_id && it._temp_id === item._temp_id) continue;
-
-          if (it.item_total) {
-            grandTotal += Number(it.item_total);
-          }
-        }
-      }
-
-      grandTotal += finalItemTotal;
+      const grandTotal = calcGrandTotal(item, all_items, finalItemTotal);
 
       console.log("bestOption: ", bestOption);
-      // ✅ RETURN SAME SHAPE AS OTHER CATEGORIES
 
       console.log("bindingCostTotal: ", bindingCostTotal);
       console.log("printingCost: ", printingCost);
       return res.json({
-        inside: {
-          sheet_selected: null,
-          sheet_dimensions: null,
-          ups: null,
-          sheets: null,
-          sheets_with_wastage: null,
-          sheet_rate: null,
-          total_sheet_cost: null,
-          printing_rate_per_sheet: null,
-          printing_cost_total: null,
-        },
-
-        cover: {
-          sheet_selected: null,
-          sheet_dimensions: null,
-          ups: null,
-          sheets: null,
-          sheets_with_wastage: null,
-          sheet_rate: null,
-          total_sheet_cost: null,
-          printing_rate_per_sheet: null,
-          printing_cost_total: null,
-        },
-
+        inside: nullSheet(), // not applicable for wide format
+        cover: nullSheet(),  // not applicable for wide format
         wide: {
           // wide-format specific info
           selected_material: bestOption.material.material_name,
@@ -619,106 +597,347 @@ export const calculateItemController = async (req, res) => {
           unit_rate: finalUnitRate,
           item_total: finalItemTotal,
           grand_total: grandTotal,
-          // Binding cost
-          total_binding_cost: bindingCostTotal,
+          // [CHANGE] expose separately so frontend can populate costing_snapshot
+          material_cost:          materialCost,
+          printing_cost:          printingCost,
+          total_binding_cost:     bindingCostTotal,
+          binding_cost_per_copy:  qty > 0 ? bindingCostTotal / qty : 0,
+        },
+      });
+    }
+    // SINGLE SHEET — only inside, no separate cover, no wide format
+    if (category === "Single Sheet") {
+      const { paper_type, paper_gsm, color_scheme } = item;
+
+      if (paper_type === "Maplitho Plotter Paper" || paper_type === "Photo Plotter Paper"){
+        if (item.press_type !== "PLOTTER BLACK WHITE" && item.press_type !== "PLOTTER MULTICOLOR") {
+          return res.status(400).json({
+            message: "Plotter paper must use Plotter Printing press"
+          });
+        }
+        if (!["A0", "A1", "A2"].includes(size)) {
+          return res.status(400).json({
+            message: "Plotter paper only supports A0, A1, A2 sizes"
+          });
+        }
+      }
+
+      let whereCondition = { paper_name: paper_type, gsm: paper_gsm };
+
+
+      // For plotter papers also match sheet size
+      if ( paper_type === "Maplitho Plotter Paper" || paper_type === "Photo Plotter Paper") {
+        whereCondition.size_name = size.trim().toUpperCase();
+      }
+      
+      // ----- 2. Find paper rows for inside (or single) -----
+      let insidePaperRows = await PaperMaster.findAll({
+        where: whereCondition,
+      });
+
+      if (!insidePaperRows || insidePaperRows.length === 0) {
+        return res.status(404).json({ 
+          message: "Inside paper not found" 
+        });
+      }
+
+      const pressType = (item.press_type || "").toUpperCase();  
+
+      const isDigital = pressType === "DIGITAL MULTICOLOR" || pressType === "DIGITAL BLACK WHITE";
+      // DIGITAL PRESS → only allow 12x18 and 13x19
+      if (isDigital) {
+        insidePaperRows = insidePaperRows.filter(
+          s =>
+            (Number(s.width) === 12 && Number(s.height) === 18) ||
+            (Number(s.width) === 13 && Number(s.height) === 19)
+        );
+      }
+      
+      const { bestSheet: bestInsideSheet, bestUps: bestUpsInside } = pickBestSheet(insidePaperRows, jobSize);
+
+
+      if (!bestInsideSheet || !bestUpsInside) {
+        return res.status(500).json({ 
+          message: "Inside sheet / UPS selection failed" 
+        });
+      }
+
+      // ------ 4. Compute sheets required ------
+      // UPS NEVER changes for Single Sheet
+      let insideSheets = Math.ceil(qty / bestUpsInside);
+      // For plotter papers there will be no wastage
+      const isPlotterPaper =
+        paper_type === "Maplitho Plotter Paper" ||
+        paper_type === "Photo Plotter Paper";
+
+      const insideSheetsWithWastage = isPlotterPaper ? insideSheets : Math.ceil(insideSheets * 1.05);
+      const insideSheetRate = Number(bestInsideSheet.rate_per_sheet || 0);
+      const insideTotalSheetCost = insideSheetsWithWastage * insideSheetRate;
+
+      // --- 6. Printing cost (using press rates) ---
+      const insidePrintingCostTotal = await calculatePrintingCost(
+        pressType,
+        color_scheme,        // color scheme for inside
+        sides,
+        insideSheetsWithWastage, // total sheets to print
+        jobSize,
+        qty,
+        bestUpsInside,
+        category
+      );
+
+      let bindingCostTotal = 0;
+      if (binding_types && binding_types.length > 0) {
+        // fetch all binding rows matching selected names
+        const bindingRows = await BindingMaster.findAll({
+          where: { 
+            binding_name: binding_types,
+            category
+          },
+        });
+
+        // Build context for binding calculation
+        const bindingContext = {
+          insidePages: Number(item.inside_pages || 0),
+          coverPages: 0,
+          insideSheets: insideSheetsWithWastage,  // total inside sheets for all copies
+          coverSheets: 0,
+          ups: bestUpsInside,     // copies per sheet (forma)
+          size: jobSize,    // { width, height } in inches (or feet for wide)
+          sides: sides,
+          itemName: item.enquiry_for || '',               // to detect school copy
+          creasesPerSheet: Number(item.creases_per_sheet || 0),
+          foldsPersheet: Number(item.folds_per_sheet || 0),
+        };
+
+        bindingCostTotal = calculateBindingCost(bindingRows, item, qty, bindingContext);
+      }
+
+      const sheetCostPerCopy = insideTotalSheetCost / qty;
+      const printingCostPerCopy = insidePrintingCostTotal / qty;
+      const bindingCostPerCopy = bindingCostTotal / qty;
+      const unitRate = sheetCostPerCopy + printingCostPerCopy + bindingCostPerCopy;
+      const itemTotal = unitRate * qty;
+
+      const grandTotal = calcGrandTotal(item, all_items, itemTotal);
+
+      return res.json({
+        inside: {
+          selected_paper_id:   bestInsideSheet.id,
+          sheet_selected:    bestInsideSheet.size_name,
+          sheet_name:        bestInsideSheet.paper_name + " " + (bestInsideSheet.size_category || ""),
+          sheet_dimensions:  `${bestInsideSheet.width}x${bestInsideSheet.height}`,
+          ups:               bestUpsInside,
+          sheets:            insideSheets,
+          sheets_with_wastage: insideSheetsWithWastage,
+          sheet_rate:        insideSheetRate,
+          total_sheet_cost:  insideTotalSheetCost,
+          printing_cost_total: insidePrintingCostTotal,
+        },
+        cover: nullSheet(),
+        wide:  null,
+        totals: {
+          total_sheet_cost:      insideTotalSheetCost,
+          total_printing_cost:   insidePrintingCostTotal,
+          total_binding_cost:    bindingCostTotal,
+          sheet_cost_per_copy:   sheetCostPerCopy,
+          printing_cost_per_copy: printingCostPerCopy,
+          binding_cost_per_copy: bindingCostPerCopy,
+          unit_rate:             unitRate,
+          item_total:            itemTotal,
+          grand_total:           grandTotal,
         },
       });
     }
 
-    if (
-      category === "Single Sheet" &&
-      (paper_type === "Maplitho Plotter Paper" ||
-        paper_type === "Photo Plotter Paper")
-    ) {
 
-      if (item.press_type !== "PLOTTER BLACK WHITE" && item.press_type !== "PLOTTER MULTICOLOR") {
-        return res.status(400).json({
-          message: "Plotter paper must use Plotter Printing press"
+    // MULTIPLE SHEET
+    // WHAT CHANGED vs original:
+    //   Before → one inside paper: paper_type + paper_gsm at item level.
+    //   Now    → item.inside_papers[] (array of 1–4 papers), each with its own paper_type, paper_gsm, to_print, color_scheme, press_type.
+    //   We loop through every inside paper and:
+    //     1. Look up PaperMaster rows for that paper
+    //     2. Pick best sheet (highest UPS)
+    //     3. Calculate sheets needed  (same formula: inside_pages × qty / ups)
+    //     4. Apply 5% wastage
+    //     5. Calculate sheet cost     (sheets × rate_per_sheet)
+    //     6. If to_print → calculate printing cost for that paper
+    //   Then sum ALL papers' sheet costs + printing costs for totalInsideCost.
+    //   Cover calculation stays exactly the same as before.
+    // 
+
+    if(category === "Multiple Sheet") {
+      // ── Resolve inside_papers ──
+      // Support old single-paper payload (backward compat during transition)
+      // as well as the new inside_papers[] array from the frontend.
+
+      const insidePapers = Array.isArray(item.inside_papers) && item.inside_papers.length > 0 ? item.inside_papers : [
+        // Old format fallback — map item-level fields to a single paper
+            {
+              paper_type:   item.paper_type,
+              paper_gsm:    item.paper_gsm,
+              to_print:     true,
+              color_scheme: item.color_scheme,
+              press_type:   item.inside_press_type || item.press_type,
+            },
+          ];
+
+      console.log("insidePapers: ", insidePapers);
+
+      const coverPressType = (item.cover_press_type  || "").toUpperCase();
+
+      // ── Accumulators ───
+
+      let totalInsideSheetCost    = 0;
+      let totalInsidePrintingCost = 0;
+      let primaryUps              = 0;   // ups of first paper — used for binding context
+      let primaryInsideSheets     = 0;   // sheets of first paper — used for binding context
+      let totalInsideSheetsAllPapers = 0; // sum of all papers' sheets — used for cutting binding
+      // This array is stored back in the DB (inside_papers JSON column) and returned to the frontend for display in the sidebar.
+      const insidePapersResults = [];
+
+      // ── Loop: calculate every inside paper ───
+      for (let i = 0; i < insidePapers.length; i++) {
+        const paper = insidePapers[i];
+
+        if (!paper.paper_type || !paper.paper_gsm) {
+          // Skip incomplete papers — shouldn't happen if frontend validates,
+          // but guard just in case.
+          console.warn(`Inside paper ${i + 1} is missing paper_type or paper_gsm — skipping.`);
+          continue;
+        }
+
+        // 1. Fetch matching paper rows from PaperMaster
+        let paperRows = await PaperMaster.findAll({
+          where: { 
+            paper_name: paper.paper_type, 
+            gsm: paper.paper_gsm 
+          },
+        });
+
+        if (!paperRows || paperRows.length === 0) {
+          return res.status(404).json({
+            message: `Inside paper ${i + 1} (${paper.paper_type} ${paper.paper_gsm} GSM) not found in paper master`,
+          });
+        }
+
+        // 2. Digital press → restrict to 12×18 or 13×19 sheets
+        const paperPressType = (paper.press_type || "").toUpperCase();
+        const isDigitalForPaper = paperPressType === "DIGITAL MULTICOLOR" || paperPressType === "DIGITAL BLACK WHITE";
+
+        if (paper.to_print && isDigitalForPaper) {
+          paperRows = paperRows.filter(
+            s =>
+              (Number(s.width) === 12 && Number(s.height) === 18) ||
+              (Number(s.width) === 13 && Number(s.height) === 19)
+          );
+          if (paperRows.length === 0) {
+            return res.status(404).json({
+              message: `No 12x18 / 13x19 sheet found for inside paper ${i + 1} with digital press`,
+            });
+          }
+        }
+
+        // 3. Pick best sheet
+        let { bestSheet, bestUps } = pickBestSheet(paperRows, jobSize);
+        if (!bestSheet || !bestUps) {
+          return res.status(500).json({
+            message: `Sheet / UPS selection failed for inside paper ${i + 1} (${paper.paper_type})`,
+          });
+        }
+
+        // 4. Adjust UPS for Both Side printing (same logic as original)
+        //    Both Side → each sheet prints 2 "layers", so effective pages per sheet doubles.
+        // UPS SHOULD DOUBLE for BOTH SIDE (PAGES LOGIC)
+        let effectiveUps = bestUps;
+        if (sides === "Both Side" || sides === "Both Sides") {
+          effectiveUps = bestUps * 2;
+        }
+
+        // 5. Sheets needed for this paper
+        //    Formula: ceil((inside_pages × qty) / effectiveUps)
+        //    inside_pages is shared — all papers use the same page count.
+        const insideTotalPages = Number(inside_pages) * qty;
+        const paperSheets = Math.ceil(insideTotalPages / effectiveUps);
+        const paperSheetsWithWastage = Math.ceil(paperSheets * 1.05);
+
+        console.log(`Paper ${i + 1}: bestSheet ${bestSheet.size_name}, bestUps ${bestUps}, effectiveUps ${effectiveUps}, paperSheets ${paperSheets}, paperSheetsWithWastage ${paperSheetsWithWastage}`);
+
+        // 6. Sheet cost for this paper
+        const sheetRate = Number(bestSheet.rate_per_sheet || 0);
+        const sheetCost = paperSheetsWithWastage * sheetRate;
+        
+        console.log(`Paper ${i + 1}: sheetCost ${sheetCost}`);
+
+        // 7. Printing cost — only if to_print is true
+        let printingCost = 0;
+        if (paper.to_print) {
+          printingCost = await calculatePrintingCost(
+            paperPressType,
+            paper.color_scheme,
+            sides,
+            paperSheetsWithWastage,
+            jobSize,
+            qty,
+            effectiveUps,
+            category
+          );
+          console.log(`Paper ${i + 1}: printingCost ${printingCost}`);
+        }
+
+        // 8. Accumulate
+        totalInsideSheetCost += sheetCost;
+        totalInsidePrintingCost += printingCost;
+        totalInsideSheetsAllPapers += paperSheetsWithWastage;
+
+        // Track first paper's values for binding context (binding rules were written around a single inside paper — first paper is dominant).
+        if (i === 0) {
+          primaryUps = effectiveUps;
+          primaryInsideSheets  = paperSheetsWithWastage;
+        }
+
+        // Build result object for this paper (saved in DB + returned to frontend)
+        insidePapersResults.push({
+          _id:                 paper._id || null,
+          selected_paper_id:  bestSheet.id,
+          to_print:            paper.to_print,
+          color_scheme:        paper.color_scheme || null,
+          press_type:          paper.press_type   || null,
+          // Calculation details
+          ups:                 bestUps,            // raw ups (before sides multiplier)
+          effective_ups:       effectiveUps,
+          sheets:              paperSheets,
+          sheets_with_wastage: paperSheetsWithWastage,
+          sheet_rate:          sheetRate,
+          sheet_cost:          sheetCost,
+          printing_cost:       printingCost,
+          // Display-only fields — frontend uses for pills, strips before DB save
+          paper_type:           paper.paper_type,
+          paper_gsm:            paper.paper_gsm,
+          // Display info for sidebar
+          best_sheet_name:     bestSheet.paper_name + " " + (bestSheet.size_category || ""),
+          best_sheet_dims:     `${bestSheet.width}x${bestSheet.height}`,
+          best_sheet_size_name: bestSheet.size_name,
         });
       }
 
-      if (!["A0", "A1", "A2"].includes(size)) {
-        return res.status(400).json({
-          message: "Plotter paper only supports A0, A1, A2 sizes"
-        });
-      }
-    }
-
-
-    let whereCondition = {
-      paper_name: paper_type,
-      gsm: paper_gsm,
-    };
-
-    // For plotter papers also match sheet size
-    if (
-      paper_type === "Maplitho Plotter Paper" ||
-      paper_type === "Photo Plotter Paper"
-    ) {
-      whereCondition.size_name = size.trim().toUpperCase();
-    }
-
-    // ------------------- 2. Find paper rows for inside (or single) -------------------
-    let insidePaperRows = await PaperMaster.findAll({
-      where: whereCondition,
-    });
-
-    if (!insidePaperRows || insidePaperRows.length === 0) {
-      return res.status(404).json({ message: "Inside paper not found" });
-    }
-    
-    const pressType = (item.inside_press_type || item.press_type || "").toUpperCase();    // must be sent from frontend (e.g., "DIGITAL BLACK WHITE", "HMT", etc.)
-    const coverPressType = (item.cover_press_type  || "").toUpperCase();
-
-    const isDigitalPress =
-      pressType === "DIGITAL MULTICOLOR" ||
-      pressType === "DIGITAL BLACK WHITE";
-
-      // DIGITAL PRESS → only allow 12x18 and 13x19
-    if (isDigitalPress) {
-      insidePaperRows = insidePaperRows.filter(
-        s =>
-          (Number(s.width) === 12 && Number(s.height) === 18) ||
-          (Number(s.width) === 13 && Number(s.height) === 19)
-      );
-    }
-
-    let { bestSheet: bestInsideSheet, bestUps: bestUpsInside } = pickBestSheet(insidePaperRows, jobSize);
-
-    // if(sides === "Both Side" ){
-    //   bestUpsInside = bestUpsInside * 2;
-    // }
-
-    if (!bestInsideSheet || !bestUpsInside) {
-      return res
-        .status(500)
-        .json({ message: "Inside sheet / UPS selection failed" });
-    }
-
-    // ------------------- 3. If Multiple Sheet: find cover sheet separately -------------------
-    let bestCoverSheet = bestInsideSheet;
-    let bestUpsCover = bestUpsInside;
-
-    if (category === "Multiple Sheet") {
-      const covType = cover_paper_type;
-      const covGsm = cover_paper_gsm;
-
+      // Cover calculation (same as original logic, only now it's after the inside papers loop)
       let coverPaperRows = await PaperMaster.findAll({
-        where: { paper_name: covType, gsm: covGsm },
+        where: { 
+          paper_name: cover_paper_type, 
+          gsm: cover_paper_gsm 
+        },
       });
 
       // fallback to insidePaperRows if none found
-      if (!coverPaperRows || coverPaperRows.length === 0){
+      if (!coverPaperRows || coverPaperRows.length === 0) {
         return res.status(404).json({ message: "Cover paper not found" });
       }
 
-
-      const isDigitalPressForCover =
-        coverPressType === "DIGITAL MULTICOLOR" ||
-        coverPressType === "DIGITAL BLACK WHITE";
+      const isDigitalCover = coverPressType === "DIGITAL MULTICOLOR" || coverPressType === "DIGITAL BLACK WHITE";
 
       // DIGITAL PRESS → only allow 12x18 and 13x19
-      if (isDigitalPressForCover) {
+      if (isDigitalCover) {
         coverPaperRows = coverPaperRows.filter(
           s =>
             (Number(s.width) === 12 && Number(s.height) === 18) ||
@@ -726,224 +945,160 @@ export const calculateItemController = async (req, res) => {
         );
       }
 
-      const picked = pickBestSheet(coverPaperRows, jobSize);
-      bestCoverSheet = picked.bestSheet ;
-      bestUpsCover = picked.bestUps;
+      const { bestSheet: bestCoverSheet, bestUps: bestUpsCover } = pickBestSheet(coverPaperRows, jobSize);
+      // ── Extract cover_to_print (default true for backward compat) ──────────
+      const cover_to_print = item.cover_to_print !== false;
 
-    }
+      const coverTotalPages = Number(cover_pages) * qty;
+      const coverSheets = Math.ceil(coverTotalPages / bestUpsCover);
+      // Apply 5% wastage per sheet type (round up)
+      const coverSheetsWithWastage = Math.ceil(coverSheets * 1.05);
+      const coverSheetRate = Number(bestCoverSheet.rate_per_sheet || 0);
+      const coverTotalSheetCost = coverSheetsWithWastage * coverSheetRate;
 
-    // ------------------- 4. Compute sheets required -------------------
-    let insideSheets = 0;
-    let coverSheets = 0;
-
-    if (category === "Multiple Sheet") {
-      // ✅ UPS SHOULD DOUBLE for BOTH SIDE (PAGES LOGIC)
-      if (sides === "Both Side" || sides === "Both Sides") {
-        bestUpsInside = bestUpsInside * 2;
+      // ── Cover printing cost — ONLY when cover goes to press ───────────────
+      let coverPrintingCostTotal = 0;
+      if (cover_to_print) {
+        if (!cover_color_scheme) {
+          return res.status(400).json({
+            message: "Cover color scheme is required when cover is sent to press",
+          });
+        }
+        if (!coverPressType || coverPressType === "") {
+          return res.status(400).json({
+            message: "Cover press machine is required when cover is sent to press",
+          });
+        }
+        coverPrintingCostTotal = await calculatePrintingCost(
+          coverPressType,
+          cover_color_scheme,
+          Number(cover_pages) === 4 ? "Both Side" : "Single Side",
+          coverSheetsWithWastage,
+          jobSize,
+          qty,
+          bestUpsCover,
+          category,
+          true,  // coverFlag
+        );
       }
-      const inside_total_pages = Number(inside_pages) * qty; // pages × copies
-      insideSheets = Math.ceil(inside_total_pages / bestUpsInside);
+
+      // ── Total sheet cost ──
+      const totalSheetCost = totalInsideSheetCost + coverTotalSheetCost;
+      const totalPrintingCost = totalInsidePrintingCost + coverPrintingCostTotal;
+      // ── Binding cost ───
+      // For binding context:
+      // insideSheets = totalInsideSheetsAllPapers  (used for cutting slabs, etc.)
+      // ups = primaryUps    (first paper's ups for folding/stitching)
+      // --- 7. Binding cost (applies on total qty) ---
+      let bindingCostTotal = 0;
+      if (binding_types && binding_types.length > 0) {
+        // fetch all binding rows matching selected names
+        const bindingRows = await BindingMaster.findAll({
+          where: { 
+            binding_name: binding_types,
+            category
+          },
+        });
+
+        // Build context for binding calculation
+        const bindingContext = {
+          insidePages: Number(item.inside_pages),
+          coverPages: Number(item.cover_pages),
+          insideSheets: totalInsideSheetsAllPapers, // ← sum of ALL inside papers' sheets
+          coverSheets: coverSheets || 0,
+          ups: primaryUps,                          // copies per sheet (forma)
+          size: jobSize,                                // { width, height } in inches (or feet for wide)
+          sides: sides,
+          itemName: item.enquiry_for || '',               // to detect school copy
+          creasesPerSheet: Number(item.creases_per_sheet || 0),
+          foldsPersheet: Number(item.folds_per_sheet || 0),
+        };
+
+        bindingCostTotal = calculateBindingCost(bindingRows, item, qty, bindingContext);
+      }
+
+      // ── Unit rate & item total ───
+      const sheetCostPerCopy = totalSheetCost    / qty;
+      const printingCostPerCopy = totalPrintingCost / qty;
+      const bindingCostPerCopy = bindingCostTotal  / qty;
+      const unitRate = sheetCostPerCopy + printingCostPerCopy + bindingCostPerCopy;
+      const itemTotal = unitRate * qty;
+
+      // ── Grand total (sum all job items) ──
+      const grandTotal = calcGrandTotal(item, all_items, itemTotal);
+
+      console.log("totalInsideSheetCost:   ", totalInsideSheetCost);
+      console.log("totalInsidePrintingCost:", totalInsidePrintingCost);
+      console.log("coverTotalSheetCost:    ", coverTotalSheetCost);
+      console.log("coverPrintingCostTotal: ", coverPrintingCostTotal);
+      console.log("bindingCostTotal:       ", bindingCostTotal);
+      console.log("unitRate:               ", unitRate);
+      console.log("insidePapersResults:    ", insidePapersResults);
+      console.log("totalInsideSheetsAllPapers: ", totalInsideSheetsAllPapers);
+
+      // ── Response ──────────────────────────────────────────────────────────
+      // `inside` → first paper's data for backward compat with frontend display.
+      // `inside_papers_results` → full array for sidebar and DB storage.
+      const firstPaperResult = insidePapersResults[0] || {};
+
+      return res.json({
+        // First paper info (backward compat — frontend reads data.inside for display)
+        inside: {
+          sheet_selected: firstPaperResult.best_sheet_size_name || null,
+          sheet_name: firstPaperResult.best_sheet_name || null,
+          sheet_dimensions: firstPaperResult.best_sheet_dims || null,
+          ups: firstPaperResult.effective_ups || null,
+          sheets: firstPaperResult.sheets || null,
+          sheets_with_wastage: firstPaperResult.sheets_with_wastage || null,
+          sheet_rate: firstPaperResult.sheet_rate || null,
+          total_sheet_cost: firstPaperResult.sheet_cost || null,
+          printing_cost_total: firstPaperResult.printing_cost || null,
+        },
+
+        // Full inside papers array — for sidebar display + DB storage
+        inside_papers_results: insidePapersResults,
 
 
-      const cover_total_pages = Number(cover_pages) * qty;
-      coverSheets = Math.ceil(cover_total_pages / bestUpsCover);
+        cover: {
+          // selected_paper_id added — used by frontend to build costing_snapshot.ms_cover_paper_id
+          selected_paper_id:   bestCoverSheet ? bestCoverSheet.id : null,
+          to_print:            cover_to_print,   // ← ADD: frontend uses to show state
+          sheet_selected:      bestCoverSheet ? bestCoverSheet.size_name : null,
+          sheet_dimensions:    bestCoverSheet ? `${bestCoverSheet.width}x${bestCoverSheet.height}` : null,
+          ups:                 bestUpsCover,
+          sheets:              coverSheets,
+          sheets_with_wastage: coverSheetsWithWastage,
+          sheet_rate:          coverSheetRate,
+          total_sheet_cost:    coverTotalSheetCost,
+          printing_cost_total: coverPrintingCostTotal,
+        },
 
-    } else {
-      // Single sheet/Other/Wide format: treat as single sheet requirement
-       // ❌ UPS NEVER changes for Single Sheet
-      insideSheets = Math.ceil(qty / bestUpsInside);
-      coverSheets = 0;
-    }
+        wide: null,
 
-    // Apply 5% wastage per sheet type (round up)
-    
-    // For plotter papers there will be no wastage
-    const isPlotterPaper =
-      paper_type === "Maplitho Plotter Paper" ||
-      paper_type === "Photo Plotter Paper";
-
-
-    const insideSheetsWithWastage = isPlotterPaper ? insideSheets : Math.ceil(insideSheets * 1.05);
-
-    const coverSheetsWithWastage = Math.ceil(coverSheets * 1.05);
-    const totalSheetsWithWastage =
-      insideSheetsWithWastage + coverSheetsWithWastage;
-    
-
-    // ------------------- 5. Sheet cost calculation (separate rates) -------------------
-    const insideSheetRate = Number(bestInsideSheet.rate_per_sheet || 0);
-
-    const insideTotalSheetCost = insideSheetsWithWastage * insideSheetRate;
-
-    let coverSheetRate = insideSheetRate;
-    let coverTotalSheetCost = 0;
-    if (coverSheets > 0) {
-      coverSheetRate = Number(bestCoverSheet.rate_per_sheet || insideSheetRate);
-      coverTotalSheetCost = coverSheetsWithWastage * coverSheetRate;
-    }
-
-    const totalSheetCost = insideTotalSheetCost + coverTotalSheetCost;
-
-
-    // ------------------- 6. Printing cost (per sheet) -------------------
-    const insideColor =
-      category === "Multiple Sheet"
-        ? color_scheme
-        : color_scheme;
-    const coverColor =
-      category === "Multiple Sheet"
-        ? cover_color_scheme || color_scheme
-        : color_scheme;
-
-    // ------------------- 6. Printing cost (using press rates) -------------------
-    // Inside printing
-    const insidePrintingCostTotal = await calculatePrintingCost(
-      pressType,
-      insideColor,        // color scheme for inside
-      sides,
-      insideSheetsWithWastage, // total sheets to print
-      jobSize,
-      qty,
-      bestUpsInside,
-      category
-    );
-
-    // Cover printing (if applicable)
-    let coverPrintingCostTotal = 0;
-    if (category === "Multiple Sheet" && coverSheetsWithWastage > 0) {
-      coverPrintingCostTotal = await calculatePrintingCost(
-        coverPressType,
-        coverColor,
-        Number(cover_pages) === 4 ? "Both Side" : "Single Side",
-        coverSheetsWithWastage,
-        jobSize,
-        qty,
-        bestUpsCover,
-        category,
-        true,
-      );
-    }
-
-    console.log("InsidePrintingCostTotal: ", insidePrintingCostTotal);
-    console.log("coverPrintingCostTotal: ", coverPrintingCostTotal);
-
-    const totalPrintingCost = insidePrintingCostTotal + coverPrintingCostTotal;
-
-
-    console.log("totalPrintingCost: ", totalPrintingCost);
-
-    // ------------------- 7. Binding cost (applies on total qty) -------------------
-    let bindingCostTotal = 0;
-    if (binding_types && binding_types.length > 0) {
-      // fetch all binding rows matching selected names
-      const bindingRows = await BindingMaster.findAll({
-        where: { 
-          binding_name: binding_types,
-          category: category
+        totals: {
+          // Per-paper breakdown (useful for audit/sidebar)
+          inside_papers_count:         insidePapersResults.length,
+          total_inside_sheet_cost:     totalInsideSheetCost,
+          total_inside_printing_cost:  totalInsidePrintingCost,
+          // Overall
+          total_sheet_cost:            totalSheetCost,
+          total_printing_cost:         totalPrintingCost,
+          total_binding_cost:          bindingCostTotal,
+          sheet_cost_per_copy:         sheetCostPerCopy,
+          printing_cost_per_copy:      printingCostPerCopy,
+          binding_cost_per_copy:       bindingCostPerCopy,
+          unit_rate:                   unitRate,
+          item_total:                  itemTotal,
+          grand_total:                 grandTotal,
         },
       });
 
-      // Build context for binding calculation
-      const bindingContext = {
-        insidePages: Number(item.inside_pages || 0),
-        coverPages: Number(item.cover_pages || 0),
-        insideSheets: insideSheetsWithWastage,                 // total inside sheets for all copies
-        coverSheets: coverSheets || 0,
-        ups: bestUpsInside,                          // copies per sheet (forma)
-        size: jobSize,                                // { width, height } in inches (or feet for wide)
-        sides: sides,
-        itemName: item.enquiry_for || '',               // to detect school copy
-        creasesPerSheet: Number(item.creases_per_sheet || 0),
-        foldsPersheet: Number(item.folds_per_sheet || 0),
-      };
-
-      bindingCostTotal = calculateBindingCost(bindingRows, item, qty, bindingContext);
     }
 
-
-    console.log("bindingCostTotal: ", bindingCostTotal);
-
-    // ------------------- 8. Unit rate & totals -------------------
-    // total sheet cost per copy
-    const sheetCostPerCopy = totalSheetCost / qty;
-
-    // printing cost per copy (distribute printing cost across copies)
-    const printingCostPerCopy = totalPrintingCost / qty;
-
-    console.log("printingCostPerCopy: ", printingCostPerCopy);
-
-    // binding cost per copy (user wanted binding applied on total qty)
-    const bindingCostPerCopy = bindingCostTotal / qty;
-
-    // final unit rate
-    const unitRate =
-      Number(sheetCostPerCopy) +
-      Number(printingCostPerCopy) +
-      Number(bindingCostPerCopy);
-
-    const itemTotal = unitRate * qty;
-
-
-    // ------------------- 9. Grand total (sum of all items) -------------------
-    let grandTotal = 0;
-
-    if (Array.isArray(all_items)) {
-      for (const it of all_items) {
-        if (!it) continue;
-
-        // SKIP current item (jo recalculate ho raha hai)
-        if (it.id && item.id && it.id === item.id) continue;
-
-        if(it._temp_id && item._temp_id && it._temp_id === item._temp_id) continue;
-
-        if (it.item_total) {
-          grandTotal += Number(it.item_total);
-        }
-      }
-    }
-    grandTotal += itemTotal;
-
-
-    // ------------------- 10. Return full breakdown -------------------
-    return res.json({
-      inside: {
-        sheet_selected: bestInsideSheet.size_name,
-        sheet_name: bestInsideSheet.paper_name + " " + (bestInsideSheet.size_category || "" ), 
-        sheet_dimensions: `${bestInsideSheet.width}x${bestInsideSheet.height}`,
-        ups: bestUpsInside,
-        sheets: insideSheets,
-        sheets_with_wastage: insideSheetsWithWastage,
-        sheet_rate: insideSheetRate,
-        total_sheet_cost: insideTotalSheetCost,
-        printing_cost_total: insidePrintingCostTotal,
-      },
-
-      cover: {
-        sheet_selected: bestCoverSheet ? bestCoverSheet.size_name : null,
-        sheet_dimensions: bestCoverSheet
-          ? `${bestCoverSheet.width}x${bestCoverSheet.height}`
-          : null,
-        ups: bestUpsCover,
-        sheets: coverSheets,
-        sheets_with_wastage: coverSheetsWithWastage,
-        sheet_rate: coverSheetRate,
-        total_sheet_cost: coverTotalSheetCost,
-        printing_cost_total: coverPrintingCostTotal,
-      },
-
-      totals: {
-        total_sheets_with_wastage: totalSheetsWithWastage,
-        total_sheet_cost: totalSheetCost,
-        total_printing_cost: totalPrintingCost,
-        total_binding_cost: bindingCostTotal,
-        sheet_cost_per_copy: sheetCostPerCopy,
-        printing_cost_per_copy: printingCostPerCopy,
-        binding_cost_per_copy: bindingCostPerCopy,
-        unit_rate: unitRate,
-        item_total: itemTotal,
-        grand_total: grandTotal,
-      },
-    });
+    // const totalSheetsWithWastage = insideSheetsWithWastage + coverSheetsWithWastage;
+    // Fallback — should never reach here
+    return res.status(400).json({ message: "Unknown category" });
+    
   } catch (err) {
     console.error("CALCULATION ERROR:", err);
     return res.status(500).json({
@@ -1102,6 +1257,12 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
         if (qty < 100) cost = qty * 70;
         else cost = qty * 30;
       }
+          // ----- Calendar Wiro Bound -----
+      else if (item.category === 'Single Sheet') {
+        if(name.includes('calendar')){
+          cost = qty * rate; // rate from DB 20
+        }
+      }
     }
     // ----- Perfect Bound -----
     else if (name.includes('perfect bound')) {
@@ -1241,7 +1402,7 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
 // ---------------------- PRINT COST (Color Based) ----------------------
 // Helper to calculate printing cost based on press type, color, sides, and sheet count
 const calculatePrintingCost = async (pressType, colorScheme, sides, sheetCount, jobSize, qty, ups = null, category = null, coverFlag = false) => {
-  console.log("pressType: ", pressType, ", colorScheme: ", colorScheme, ", sides: " , sides, " , sheetCount: ", sheetCount, ", jobSize: ", jobSize, ", qty: ", qty, ", ups: ", ups);
+  console.log("pressType: ", pressType, ", colorScheme: ", colorScheme, ", sides: " , sides, " , sheetCount: ", sheetCount, ", jobSize: ", jobSize, ", qty: ", qty, ", ups: ", ups, "coverFlag: ", coverFlag);
 
   if (!pressType) return 0;
 
@@ -1270,7 +1431,6 @@ const calculatePrintingCost = async (pressType, colorScheme, sides, sheetCount, 
     if(coverFlag === false && category === "Multiple Sheet" && sides === "Both Side"){
         pagesPerPlate = ups ? ups / 2 : 0;
     }
-    console.log("coverFlag: ", coverFlag);
     if(coverFlag && category === "Multiple Sheet" && sides === "Both Side"){
         pagesPerPlate = ups ? ups / 2 : 0;
     }
@@ -1347,34 +1507,8 @@ const calculatePrintingCost = async (pressType, colorScheme, sides, sheetCount, 
 };
 
 
-// ---------------------- BEST SHEET PICKING ----------------------
-const pickBestSheet = (paperRows, jobSize) => {
-  console.log("Pick best sheet called:");
-  let bestSheet = null;
-  let bestUps = 0;
-
-  for (const s of paperRows) {
-    const ups = calculateUps({ width: s.width, height: s.height }, jobSize);
-    if (ups > bestUps) {
-      bestUps = ups;
-      bestSheet = s;
-    }
-  }
-
-  return { bestSheet, bestUps };
-};
 
 
 
-// calculate number of folds from forma (e.g. A4 → 0, A5 → 1, A6 → 2, etc.)
-const calculateFoldsFromForma = (forma) => {
-  if (forma <= 0) return 0;
 
-  // ensure it's power of 2
-  if ((forma & (forma - 1)) !== 0) {
-    console.warn("Forma is not power of 2. Folding may be incorrect.");
-  }
-
-  return Math.log2(forma/2); 
-};
 
