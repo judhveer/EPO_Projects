@@ -41,3 +41,6 @@ logs/
 *.log
 debug.log
 
+
+**/.DS_Store
+
