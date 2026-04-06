@@ -78,6 +78,28 @@ const validateSize = (value, availableSizes, category) => {
   return false;
 };
 
+// Pure function outside the component — returns the allowed press types for a
+// given color scheme inside Multiple Sheet's inside papers.
+// Also used for Single Sheet (passed category to distinguish plotter edge case).
+
+const getAllowedPressTypesForPaper = (colorScheme) => {
+  if (colorScheme === "Black and White") {
+    return PRESS_TYPES.filter((p) =>
+      ["DIGITAL BLACK WHITE", "HMT BLACK WHITE", "AUTOPRINT"].includes(p.value),
+    );
+  }
+  if (colorScheme === "Multicolor") {
+    return PRESS_TYPES.filter((p) =>
+      ["DIGITAL MULTICOLOR", "HMT MULTICOLOR"].includes(p.value),
+    );
+  }
+  return [];
+};
+
+// Small helper to format ₹ amounts
+const rs = (v) => v != null ? `₹${Number(v).toFixed(2)}` : null;
+
+
 const JobItem = React.memo(function JobItem({
   item,
   index,
@@ -85,15 +107,21 @@ const JobItem = React.memo(function JobItem({
   batchItemChange,
   resetItemFields,
   onRemove,
+  handleInsidePaperChange, // handles changes within a single inside paper
+  addInsidePaper, // adds a new empty inside paper to this item
+  removeInsidePaper, // removes an inside paper from this item
 }) {
   const category = item.category;
   const uniqueKey = item.id ?? item._temp_id;
   const isThicknessMaterial = thicknessMaterials.includes(
     item.wide_material_name,
   );
+  const cs = item.costing_snapshot;
 
+  // ─── Cover press types —─
   const allowedCoverPressTypes = useMemo(() => {
-    if (category !== "Multiple Sheet") return [];
+    // No printing → no press type needed
+    if (category !== "Multiple Sheet" || item.cover_to_print === false) return [];
 
     if (item.cover_color_scheme === "Black and White") {
       return PRESS_TYPES.filter((p) =>
@@ -109,8 +137,10 @@ const JobItem = React.memo(function JobItem({
     }
 
     return [];
-  }, [category, item.cover_color_scheme]);
+  }, [category, item.cover_color_scheme, item.cover_to_print]);
 
+  // allowedPressTypes is now only for Single Sheet and Wide Format.
+  // Multiple Sheet inside press types are computed per inside paper inline.
   // Inside your component:
   const allowedPressTypes = useMemo(() => {
     switch (category) {
@@ -127,30 +157,6 @@ const JobItem = React.memo(function JobItem({
           }
         }
 
-        if (item.color_scheme === "Black and White") {
-          return PRESS_TYPES.filter((p) =>
-            [
-              "DIGITAL BLACK WHITE",
-              "HMT BLACK WHITE",
-              "AUTOPRINT",
-              "PLOTTER PRINTING",
-            ].includes(p.value),
-          );
-        }
-
-        if (item.color_scheme === "Multicolor") {
-          return PRESS_TYPES.filter((p) =>
-            [
-              "DIGITAL MULTICOLOR",
-              "HMT MULTICOLOR",
-              "PLOTTER PRINTING",
-            ].includes(p.value),
-          );
-        }
-
-        return [];
-
-      case "Multiple Sheet":
         if (item.color_scheme === "Black and White") {
           return PRESS_TYPES.filter((p) =>
             ["DIGITAL BLACK WHITE", "HMT BLACK WHITE", "AUTOPRINT"].includes(
@@ -173,13 +179,18 @@ const JobItem = React.memo(function JobItem({
       default:
         return [];
     }
-  }, [category, item.color_scheme]);
+  }, [category, item.color_scheme, item.paper_type]);
+
+  // Only resets press_type for Single Sheet / Wide Format, and cover press type
+  // for Multiple Sheet. Inside paper press types are self-managed in
+  // handleInsidePaperChange (when color_scheme changes, press_type clears).
 
   useEffect(() => {
     const resets = {};
 
     // If current press_type is not in allowed list, clear it
     if (
+      category !== "Multiple Sheet" &&
       item.press_type &&
       Array.isArray(allowedPressTypes) &&
       !allowedPressTypes.some((p) => p.value === item.press_type)
@@ -187,16 +198,10 @@ const JobItem = React.memo(function JobItem({
       resets.press_type = "";
     }
 
-    if (
-      item.inside_press_type &&
-      Array.isArray(allowedPressTypes) &&
-      !allowedPressTypes.some((p) => p.value === item.inside_press_type)
-    ) {
-      resets.inside_press_type = "";
-    }
-
+    // Only validate cover press type when cover is actually going to press
     if (
       category === "Multiple Sheet" &&
+      item.cover_to_print !== false &&
       item.cover_press_type &&
       Array.isArray(allowedCoverPressTypes) &&
       !allowedCoverPressTypes.some((p) => p.value === item.cover_press_type)
@@ -211,13 +216,12 @@ const JobItem = React.memo(function JobItem({
     category,
     item.color_scheme,
     item.cover_color_scheme,
+    item.cover_to_print,       
     item.press_type,
-    item.inside_press_type,
     item.cover_press_type,
     allowedPressTypes,
     allowedCoverPressTypes,
     uniqueKey,
-    handleItemChange,
     resetItemFields,
   ]);
 
@@ -289,59 +293,45 @@ const JobItem = React.memo(function JobItem({
           </div>
         </Field>
 
-        {(category === "Single Sheet" || category === "Multiple Sheet") &&
-          item.enquiry_for && (
-            <Field
-              label={
-                category === "Multiple Sheet"
-                  ? "Inside Paper Type"
-                  : "Paper Type"
+        {category === "Single Sheet" && item.enquiry_for && (
+          <Field label="Paper Type" required>
+            <Select
+              value={item.paper_type || ""}
+              onChange={(e) =>
+                handleItemChange(uniqueKey, "paper_type", e.target.value)
               }
               required
             >
-              <Select
-                value={item.paper_type || ""}
-                onChange={(e) =>
-                  handleItemChange(uniqueKey, "paper_type", e.target.value)
-                }
-                required
-              >
-                <option value="">Select Paper</option>
+              <option value="">Select Paper</option>
 
-                {item.available_papers?.map((p) => (
-                  <option key={p.paper_name} value={p.paper_name}>
-                    {p.paper_name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
+              {item.available_papers?.map((p) => (
+                <option key={p.paper_name} value={p.paper_name}>
+                  {p.paper_name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
 
-        {(category === "Single Sheet" || category === "Multiple Sheet") &&
-          item.paper_type && (
-            <Field
-              label={
-                category === "Multiple Sheet" ? "Inside Paper GSM" : "Paper GSM"
+        {category === "Single Sheet" && item.paper_type && (
+          <Field label="Paper GSM" required>
+            <Select
+              value={item.paper_gsm || ""}
+              onChange={(e) =>
+                handleItemChange(uniqueKey, "paper_gsm", e.target.value)
               }
               required
             >
-              <Select
-                value={item.paper_gsm || ""}
-                onChange={(e) =>
-                  handleItemChange(uniqueKey, "paper_gsm", e.target.value)
-                }
-                required
-              >
-                <option value="">Select GSM</option>
+              <option value="">Select GSM</option>
 
-                {item.available_gsm?.map((p) => (
-                  <option key={p.id} value={p.gsm}>
-                    {p.gsm} {p.size_category ? ` (${p.size_category})` : ""}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
+              {item.available_gsm?.map((p) => (
+                <option key={p.id} value={p.gsm}>
+                  {p.gsm} {p.size_category ? ` (${p.size_category})` : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
 
         {/* ================= WIDE FORMAT ================= */}
 
@@ -420,25 +410,11 @@ const JobItem = React.memo(function JobItem({
         )}
 
         {/* Category-specific options */}
+        {/* MULTIPLE SHEET — NEW: inside papers loop */}
 
         {category === "Multiple Sheet" && (
           <React.Fragment key={`multiple-${index}`}>
-            <Field label="Inside Paper Color" required>
-              <Select
-                value={item.color_scheme || ""}
-                onChange={(e) =>
-                  batchItemChange(uniqueKey, {
-                    color_scheme: e.target.value,
-                    inside_press_type: "",
-                  })
-                }
-              >
-                <option value="">Select</option>
-                <option>Black and White</option>
-                <option>Multicolor</option>
-              </Select>
-            </Field>
-
+            {/* Inside Pages — shared across all inside papers */}
             <Field label="Inside Pages" required>
               <Input
                 type="number"
@@ -447,33 +423,183 @@ const JobItem = React.memo(function JobItem({
                 onChange={(e) =>
                   handleItemChange(uniqueKey, "inside_pages", e.target.value)
                 }
-                placeholder="200"
+                placeholder="e.g. 200"
                 required
               />
             </Field>
+            {/* ── Inside Papers Loop ─────────────────────────────────────
+                Each inside paper has its own: paper type, GSM,
+                "send to press" checkbox, color scheme, press machine.
+                Max 4 inside papers allowed.
+            ─────────────────────────────────────────────────────────────── */}
+            <div className="col-span-2 space-y-3">
+              {(item.inside_papers || []).map((paper, pIdx) => {
+                // Compute allowed press types for this specific inside paper
+                // based on its own color_scheme selection.
+                const paperPressTypes = getAllowedPressTypesForPaper(
+                  paper.color_scheme
+                );
 
-            <Field label="Press Machine For Inside Paper" required>
-              <Select
-                value={item.inside_press_type || ""}
-                onChange={(e) =>
-                  handleItemChange(
-                    uniqueKey,
-                    "inside_press_type",
-                    e.target.value,
-                  )
-                }
-              >
-                <option value="" disabled>
-                  Select Press Machine
-                </option>
+                return (
+                  <div
+                    key={paper._id}
+                    className="border border-slate-300 bg-slate-50 rounded-lg p-3 grid md:grid-cols-2 gap-3"
+                  >
+                    {/* Header row: label + remove button */}
+                    <div className="col-span-2 flex items-center justify-between">
+                      <span className="text-sm font-semibold text-blue-600">
+                        🗒 Inside Paper {pIdx + 1}
+                      </span>
+                      {/* Only show remove if more than 1 inside paper */}
+                      {(item.inside_papers || []).length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removeInsidePaper(uniqueKey, paper._id)
+                          }
+                          className="text-xs text-red-500 border border-red-300 rounded px-2 py-0.5 hover:bg-red-50"
+                        >
+                          ✕ Remove
+                        </button>
+                      )}
+                    </div>
 
-                {allowedPressTypes.map((press) => (
-                  <option key={press.value} value={press.value}>
-                    {press.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+                    {/* Paper Type — uses shared available_papers at item level */}
+                    <Field label="Paper Type" required>
+                      <Select
+                        value={paper.paper_type || ""}
+                        onChange={(e) =>
+                          handleInsidePaperChange(
+                            uniqueKey,
+                            paper._id,
+                            "paper_type",
+                            e.target.value
+                          )
+                        }
+                        required
+                      >
+                        <option value="">Select Paper</option>
+                        {item.available_papers?.map((p) => (
+                          <option key={p.paper_name} value={p.paper_name}>
+                            {p.paper_name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+
+                    {/* Paper GSM — uses this paper's own available_gsm */}
+                    {paper.paper_type && (
+                      <Field label="Paper GSM" required>
+                        <Select
+                          value={paper.paper_gsm || ""}
+                          onChange={(e) =>
+                            handleInsidePaperChange(
+                              uniqueKey,
+                              paper._id,
+                              "paper_gsm",
+                              e.target.value
+                            )
+                          }
+                          required
+                        >
+                          <option value="">Select GSM</option>
+                          {paper.available_gsm?.map((g) => (
+                            <option key={g.id} value={g.gsm}>
+                              {g.gsm}
+                              {g.size_category
+                                ? ` (${g.size_category})`
+                                : ""}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                    )}
+
+                    {/* Send to Press checkbox */}
+                    <Field label="Send to Press?">
+                      <label className="flex items-center gap-2 cursor-pointer text-sm">
+                        <input
+                          type="checkbox"
+                          checked={paper.to_print || false}
+                          onChange={(e) =>
+                            handleInsidePaperChange(
+                              uniqueKey,
+                              paper._id,
+                              "to_print",
+                              e.target.checked
+                            )
+                          }
+                          className="w-4 h-4"
+                        />
+                        <span className="text-slate-700">
+                          This paper will be printed
+                        </span>
+                      </label>
+                    </Field>
+
+                    {/* Color Scheme + Press Machine — only shown when to_print is checked */}
+                    {paper.to_print && (
+                      <>
+                        <Field label="Color Scheme" required>
+                          <Select
+                            value={paper.color_scheme || ""}
+                            onChange={(e) =>
+                              handleInsidePaperChange(
+                                uniqueKey,
+                                paper._id,
+                                "color_scheme",
+                                e.target.value
+                              )
+                            }
+                            required
+                          >
+                            <option value="">Select</option>
+                            <option>Black and White</option>
+                            <option>Multicolor</option>
+                          </Select>
+                        </Field>
+
+                        <Field label="Press Machine" required>
+                          <Select
+                            value={paper.press_type || ""}
+                            onChange={(e) =>
+                              handleInsidePaperChange(
+                                uniqueKey,
+                                paper._id,
+                                "press_type",
+                                e.target.value
+                              )
+                            }
+                            required
+                          >
+                            <option value="" disabled>
+                              Select Press Machine
+                            </option>
+                            {paperPressTypes.map((p) => (
+                              <option key={p.value} value={p.value}>
+                                {p.label}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Add inside paper button — visible when less than 4 papers */}
+              {(item.inside_papers || []).length < 4 && (
+                <button
+                  type="button"
+                  onClick={() => addInsidePaper(uniqueKey)}
+                  className="text-sm text-blue-600 border border-blue-300 rounded px-3 py-1.5 hover:bg-blue-50 transition-colors"
+                >
+                  ➕ Add Another Inside Paper
+                </button>
+              )}
+            </div>
+
 
             {/* COVER PAPER */}
             <Field label="Cover Paper Type" required>
@@ -520,22 +646,6 @@ const JobItem = React.memo(function JobItem({
               </Field>
             )}
 
-            <Field label="Cover Paper Color" required>
-              <Select
-                value={item.cover_color_scheme || ""}
-                onChange={(e) =>
-                  batchItemChange(uniqueKey, {
-                    cover_color_scheme: e.target.value,
-                    cover_press_type: "",
-                  })
-                }
-              >
-                <option value="">Select</option>
-                <option>Black and White</option>
-                <option>Multicolor</option>
-              </Select>
-            </Field>
-
             <Field label="Cover Pages" required>
               <Select
                 value={item.cover_pages || ""}
@@ -548,6 +658,65 @@ const JobItem = React.memo(function JobItem({
                 <option>4</option>
               </Select>
             </Field>
+
+            {/* ── NEW: Send Cover to Press toggle ───────────────────────────────── */}
+            <Field label="Send Cover to Press?">
+              <label className="flex items-center gap-2 cursor-pointer text-sm">
+                <input
+                  type="checkbox"
+                  checked={item.cover_to_print !== false}
+                  onChange={(e) =>
+                    handleItemChange(uniqueKey, "cover_to_print", e.target.checked)
+                  }
+                  className="w-4 h-4"
+                />
+                <span className="text-slate-700">
+                  Cover will be printed (uncheck for paper cost only)
+                </span>
+              </label>
+            </Field>
+            
+
+            {/* Color scheme and press machine — ONLY when cover_to_print is true */}
+            {item.cover_to_print !== false && (
+              <>
+                <Field label="Cover Color Scheme" required>
+                  <Select
+                    value={item.cover_color_scheme || ""}
+                    onChange={(e) =>
+                      batchItemChange(uniqueKey, {
+                        cover_color_scheme: e.target.value,
+                        cover_press_type: "",
+                      })
+                    }
+                  >
+                    <option value="">Select</option>
+                    <option>Black and White</option>
+                    <option>Multicolor</option>
+                  </Select>
+                </Field>
+
+                {/* ── Cover Press Machine (Multiple Sheet only) ── */}
+                <Field label="Press Machine For Cover" required>
+                  <Select
+                    value={item.cover_press_type || ""}
+                    onChange={(e) =>
+                      handleItemChange(uniqueKey, "cover_press_type", e.target.value)
+                    }
+                  >
+                    <option value="" disabled>
+                      Select Press Machine
+                    </option>
+
+                    {allowedCoverPressTypes.map((press) => (
+                      <option key={press.value} value={press.value}>
+                        {press.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </>
+            )}
           </React.Fragment>
         )}
 
@@ -631,27 +800,7 @@ const JobItem = React.memo(function JobItem({
           </div>
         </Field>
 
-        {category === "Multiple Sheet" && (
-          <Field label="Press Machine For Cover Paper" required>
-            <Select
-              value={item.cover_press_type || ""}
-              onChange={(e) =>
-                handleItemChange(uniqueKey, "cover_press_type", e.target.value)
-              }
-            >
-              <option value="" disabled>
-                Select Press Machine
-              </option>
-
-              {allowedCoverPressTypes.map((press) => (
-                <option key={press.value} value={press.value}>
-                  {press.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
-
+        {/* ── Color Scheme — Single Sheet only (Wide Format has none) */}
         {category !== "Multiple Sheet" &&
           category !== "Wide Format" &&
           category !== "Other" && (
@@ -668,7 +817,7 @@ const JobItem = React.memo(function JobItem({
               </Select>
             </Field>
           )}
-
+        {/* ── Press Machine — Single Sheet and Wide Format only ── */}
         {category !== "Other" && category !== "Multiple Sheet" && (
           <Field label="Press Machine" required>
             <Select
@@ -689,7 +838,7 @@ const JobItem = React.memo(function JobItem({
             </Select>
           </Field>
         )}
-
+        {/* ── Bindings ── */}
         {category !== "Other" &&
           item.available_bindings &&
           item.available_bindings.length > 0 && (
@@ -718,6 +867,7 @@ const JobItem = React.memo(function JobItem({
             </Field>
           )}
 
+        {/* ── Crease / Fold extra inputs ── */}
         {/* ----- EXTRA INPUTS FOR SINGLE SHEET ----- */}
         {category === "Single Sheet" &&
           item.binding_types?.includes("Creasing") && (
@@ -739,7 +889,8 @@ const JobItem = React.memo(function JobItem({
           )}
 
         {category === "Single Sheet" &&
-          item.binding_types?.includes("Folding") && item.sides === "Both Side" && (
+          item.binding_types?.includes("Folding") &&
+          item.sides === "Both Side" && (
             <Field label="No. of Folding per Sheet" required>
               <Input
                 type="number"
@@ -802,56 +953,93 @@ const JobItem = React.memo(function JobItem({
         </Field>
 
         {/* ---------- Best Sheet Results (Inside + Cover) ---------- */}
-        <div className="col-span-2">
-          {item.best_inside_sheet && (
-            <p className="text-xs text-green-700 mt-1">
-              Inside Sheet: <b>{item.best_inside_sheet_name}</b> (
-              {item.best_inside_dimensions}) — UPS:{" "}
-              <b>{item.best_inside_ups}</b>
-            </p>
+        {/* ── [FIX 4] Best Sheet Results — all inside papers + cover + wide ── */}
+        <div className="col-span-2 space-y-1 mt-1">
+
+          {/* SINGLE SHEET */}
+          {category === "Single Sheet" && cs?.ss_sheets_with_wastage != null && (
+            <div className="text-xs bg-green-50 border border-green-200 rounded px-3 py-2 space-y-0.5">
+              <p className="font-semibold text-green-800">📄 Single Sheet Breakdown</p>
+              <p className="text-green-700">
+                Sheet: <b>{item.best_inside_sheet_name}</b> ({item.best_inside_dimensions})
+                {" "}· UPS: <b>{cs.ss_ups}</b>
+                {" "}· Sheets: <b>{cs.ss_sheets}</b> → with wastage: <b>{cs.ss_sheets_with_wastage}</b>
+                {" "}· Rate: <b>{rs(cs.ss_sheet_rate)}</b>
+                {" "}· Sheet cost: <b>{rs(cs.ss_sheet_cost)}</b>
+                {" "}· Print cost: <b>{rs(cs.ss_printing_cost)}</b>
+                {cs.binding_cost > 0 && <> · Binding: <b>{rs(cs.binding_cost)}</b></>}
+              </p>
+            </div>
           )}
 
-          {item.category === "Multiple Sheet" && item.best_cover_sheet && (
-            <p className="text-xs text-blue-700 mt-1">
-              Cover Sheet: <b>{item.best_cover_sheet}</b> (
-              {item.best_cover_dimensions}) — UPS: <b>{item.best_cover_ups}</b>
-            </p>
+          {/* MULTIPLE SHEET — per inside paper */}
+          {category === "Multiple Sheet" && item.inside_papers?.map((paper, pIdx) =>
+            paper.best_sheet_size_name ? (
+              <div key={paper._id || pIdx} className="text-xs bg-green-50 border border-green-200 rounded px-3 py-1.5">
+                <span className="font-semibold text-green-800">🗒 Inside Paper {pIdx + 1}: </span>
+                <span className="text-green-700">
+                  <b>{paper.best_sheet_name}</b> ({paper.best_sheet_dims})
+                  {" "}· UPS: <b>{paper.ups}</b>
+                  {" "}· Sheets: <b>{paper.sheets}</b> → <b>{paper.sheets_with_wastage}</b>
+                  {" "}· {rs(paper.sheet_rate)}/sheet
+                  {" "}· Sheet cost: <b>{rs(paper.sheet_cost)}</b>
+
+                  {paper.to_print && paper.printing_cost != null && <> · Print: <b>{rs(paper.printing_cost)}</b></>}
+                  {paper.to_print && paper.press_type && (
+                    <> · Press: <b>{paper.press_type}</b></>
+                  )}
+                  {!paper.to_print && <> · <i>not printed</i></>}
+                </span>
+              </div>
+            ) : null,
           )}
 
-          {item.category === "Wide Format" && item.calculation_type && (
-            <p className="text-xs text-purple-700 mt-1">
-              Material: <b>{item.selected_material}</b>
-              {item.material_info.board_width_ft && (
-                <>
-                  {" "}
-                  —
-                  <b>
-                    {item.material_info.board_width_ft} x{" "}
-                    {item.material_info.board_height_ft}ft
-                  </b>
-                  — Type: <b>{item.calculation_type.toUpperCase()}</b>
-                  {item.rolls_or_boards_used && (
-                    <>
-                      {" "}
-                      — Used: <b>{item.rolls_or_boards_used}</b>
-                    </>
-                  )}
-                  {item.wide_ups && (
-                    <>
-                      {" "}
-                      — UPS: <b>{item.wide_ups}</b>
-                    </>
-                  )}
-                  {item.wastage_sqft !== undefined && (
-                    <>
-                      {" "}
-                      — Wastage: <b>{item.wastage_sqft.toFixed(2)} sqft</b>
-                    </>
-                  )}
-                </>
+          {/* MULTIPLE SHEET — cover */}
+          {category === "Multiple Sheet" && cs?.ms_cover_sheets_with_wastage != null && (
+            <div className="text-xs bg-blue-50 border border-blue-200 rounded px-3 py-1.5">
+              <span className="font-semibold text-blue-800">📘 Cover: </span>
+              <span className="text-blue-700">
+                <b>{item.best_cover_sheet}</b> ({item.best_cover_dimensions})
+                {" "}· UPS: <b>{cs.ms_cover_ups}</b>
+                {" "}· Sheets: <b>{cs.ms_cover_sheets}</b> → <b>{cs.ms_cover_sheets_with_wastage}</b>
+                {" "}· Sheet cost: <b>{rs(cs.ms_cover_sheet_cost)}</b>
+                {" "}· Print: <b>{rs(cs.ms_cover_printing_cost)}</b>
+              </span>
+              {cs.binding_cost > 0 && (
+                <p className="text-blue-700 mt-0.5">Binding: <b>{rs(cs.binding_cost)}</b></p>
               )}
-            </p>
+            </div>
           )}
+
+          {/* WIDE FORMAT */}
+          {category === "Wide Format" && item.calculation_type && (
+            <div className="text-xs bg-purple-50 border border-purple-200 rounded px-3 py-2 space-y-0.5">
+              <p className="font-semibold text-purple-800">🖼 Wide Format Breakdown</p>
+              <p className="text-purple-700">
+                Material: <b>{item.selected_material}</b>
+                {item.material_info?.board_width_ft && <> · Board: <b>{item.material_info.board_width_ft}×{item.material_info.board_height_ft}ft</b></>}
+                {" "}· Type: <b>{item.calculation_type.toUpperCase()}</b>
+                {item.wide_ups    != null && <> · UPS: <b>{item.wide_ups}</b></>}
+                {item.rolls_or_boards_used != null && <> · Used: <b>{item.rolls_or_boards_used}</b></>}
+                {item.wastage_sqft != null && <> · Wastage: <b>{Number(item.wastage_sqft).toFixed(2)} sqft</b></>}
+                {cs?.wf_material_cost != null && <> · Material: <b>{rs(cs.wf_material_cost)}</b></>}
+                {cs?.wf_printing_cost > 0 && <> · Print: <b>{rs(cs.wf_printing_cost)}</b></>}
+                {cs?.binding_cost > 0 && <> · Binding: <b>{rs(cs.binding_cost)}</b></>}
+              </p>
+            </div>
+          )}
+
+          {/* Summary total line — shown for all calculated categories */}
+          {cs && category !== "Other" && (
+            <div className="text-xs bg-slate-100 border border-slate-200 rounded px-3 py-1.5 flex flex-wrap gap-4">
+              {cs.total_sheet_cost    > 0 && <span>Sheet total: <b>{rs(cs.total_sheet_cost)}</b></span>}
+              {cs.total_printing_cost > 0 && <span>Print total: <b>{rs(cs.total_printing_cost)}</b></span>}
+              {cs.binding_cost        > 0 && <span>Binding: <b>{rs(cs.binding_cost)}</b></span>}
+              <span className="ml-auto font-semibold text-slate-700">Unit rate: <b>{rs(cs.unit_rate)}</b></span>
+            </div>
+          )}
+
+
         </div>
       </div>
     </FormCard>
