@@ -244,6 +244,89 @@ const cleanJobItems = (items) => {
 
 
 
+
+// ── rebuildCostingSnapshotFromDB ──────────────────────────────────────────────
+// Reconstructs a costing_snapshot from the saved JobItemCosting DB row.
+// This is used in edit mode so the user can re-save without recalculating.
+// resolvePaperIds in the backend reads ONLY these fields from costing_snapshot:
+//   Single Sheet  → ss_paper_id
+//   Multiple Sheet → ms_cover_paper_id
+//   Wide Format   → wf_material_id
+// All other fields are bonus — they populate JobItemCosting on save.
+const rebuildCostingSnapshotFromDB = (category, costing) => {
+  if (!costing) return null;
+
+  if (category === "Single Sheet") {
+    return {
+      ss_paper_id:            costing.ss_paper_id,
+      ss_ups:                 costing.ss_ups,
+      ss_sheets:              costing.ss_sheets,
+      ss_sheets_with_wastage: costing.ss_sheets_with_wastage,
+      ss_sheet_rate:          costing.ss_sheet_rate,
+      ss_sheet_cost:          costing.ss_sheet_cost,
+      ss_printing_cost:       costing.ss_printing_cost,
+      binding_cost:           costing.binding_cost           || 0,
+      binding_cost_per_copy:  costing.binding_cost_per_copy  || 0,
+      total_sheet_cost:       costing.total_sheet_cost       || 0,
+      total_printing_cost:    costing.total_printing_cost    || 0,
+      sheet_cost_per_copy:    costing.sheet_cost_per_copy    || 0,
+      printing_cost_per_copy: costing.printing_cost_per_copy || 0,
+      unit_rate:              costing.unit_rate              || 0,
+      item_total:             costing.item_total             || 0,
+    };
+  }
+
+  if (category === "Multiple Sheet") {
+    return {
+      ms_inside_costing:             costing.ms_inside_costing             || [],
+      ms_total_inside_sheet_cost:    costing.ms_total_inside_sheet_cost    || 0,
+      ms_total_inside_printing_cost: costing.ms_total_inside_printing_cost || 0,
+      ms_cover_paper_id:             costing.ms_cover_paper_id,   // ← critical
+      ms_cover_ups:                  costing.ms_cover_ups,
+      ms_cover_sheets:               costing.ms_cover_sheets,
+      ms_cover_sheets_with_wastage:  costing.ms_cover_sheets_with_wastage,
+      ms_cover_sheet_rate:           costing.ms_cover_sheet_rate,
+      ms_cover_sheet_cost:           costing.ms_cover_sheet_cost,
+      ms_cover_printing_cost:        costing.ms_cover_printing_cost,
+      binding_cost:                  costing.binding_cost           || 0,
+      binding_cost_per_copy:         costing.binding_cost_per_copy  || 0,
+      total_sheet_cost:              costing.total_sheet_cost       || 0,
+      total_printing_cost:           costing.total_printing_cost    || 0,
+      sheet_cost_per_copy:           costing.sheet_cost_per_copy    || 0,
+      printing_cost_per_copy:        costing.printing_cost_per_copy || 0,
+      unit_rate:                     costing.unit_rate              || 0,
+      item_total:                    costing.item_total             || 0,
+    };
+  }
+
+  if (category === "Wide Format") {
+    return {
+      wf_material_id:          costing.wf_material_id,        // ← critical
+      wf_calculation_type:     costing.wf_calculation_type,
+      wf_rolls_or_boards_used: costing.wf_rolls_or_boards_used,
+      wf_wastage_sqft:         costing.wf_wastage_sqft,
+      wf_ups:                  costing.wf_ups,
+      wf_material_cost:        costing.wf_material_cost        || 0,
+      wf_printing_cost:        costing.wf_printing_cost        || 0,
+      binding_cost:            costing.binding_cost            || 0,
+      binding_cost_per_copy:   costing.binding_cost_per_copy   || 0,
+      total_sheet_cost:        0,
+      total_printing_cost:     costing.total_printing_cost     || 0,
+      sheet_cost_per_copy:     0,
+      printing_cost_per_copy:  costing.printing_cost_per_copy  || 0,
+      unit_rate:               costing.unit_rate               || 0,
+      item_total:              costing.item_total              || 0,
+    };
+  }
+
+  // "Other" never has costing
+  return null;
+};
+
+
+
+
+
 // ── buildCostingSnapshot ──────────────────────────────────────────────────────
 // Maps the calculation API response into the costing_snapshot object that
 // createJobCard/updateJobCard uses to create/upsert JobItemCosting.
@@ -1336,6 +1419,7 @@ export default function JobCardForm({
         available_wide_gsm: [],
         inside_papers: insidePapers,
         costing_snapshot: null, // will be rebuilt if user recalculates
+        costing_snapshot: rebuildCostingSnapshotFromDB(item.category, item.costing),
       };
     });
 
