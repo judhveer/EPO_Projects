@@ -34,12 +34,11 @@ import ClientDetailsModel from "./jobFmsModels/ClientDetails.model.js";
 import ItemMasterModel from "./jobFmsModels/AccountsJobItems/ItemMaster.model.js";
 import PaperMasterModel from "./jobFmsModels/AccountsJobItems/PaperMaster.model.js";
 import BindingMasterModel from "./jobFmsModels/AccountsJobItems/BindingMaster.model.js";
-import QuotationModel from "./jobFmsModels/AccountsJobItems/Quotation.model.js";
-import JobCostingModel from "./jobFmsModels/AccountsJobItems/JobCosting.model.js";
 import SizeMasterModel from "./jobFmsModels/AccountsJobItems/SizeMaster.model.js";
 import JobDesignTimeModel from "./jobFmsModels/JobDesignTimeLog.js";
 import WideFormatMaterialModel from "./jobFmsModels/AccountsJobItems/WideFormatMaterial.model.js";
 import PrintingRateMasterModel from "./jobFmsModels/AccountsJobItems/PrintingRateMaster.model.js";
+import JobItemCostingModel from "./jobFmsModels/AccountsJobItems/JobItemCosting.model.js";
 
 // SalesPipeline Models
 const Lead = LeadModel(sequelize);
@@ -74,12 +73,11 @@ const ClientDetails = ClientDetailsModel(sequelize);
 const ItemMaster = ItemMasterModel(sequelize);
 const PaperMaster = PaperMasterModel(sequelize);
 const BindingMaster = BindingMasterModel(sequelize);
-const Quotation = QuotationModel(sequelize);
-const JobCosting = JobCostingModel(sequelize);
 const SizeMaster = SizeMasterModel(sequelize);
 const JobDesignTime = JobDesignTimeModel(sequelize);
 const WideFormatMaterial = WideFormatMaterialModel(sequelize);
 const PrintingRateMaster = PrintingRateMasterModel(sequelize);
+const JobItemCosting = JobItemCostingModel(sequelize);
 
 associateJobFmsModels({
   User,
@@ -95,12 +93,11 @@ associateJobFmsModels({
   PaperMaster,
 
   BindingMaster,
-  Quotation,
-  JobCosting,
   SizeMaster,
   JobDesignTime,
   WideFormatMaterial,
-  PrintingRateMaster
+  PrintingRateMaster,
+  JobItemCosting,
 });
 
 // Associations (ticketId attribute)
@@ -169,10 +166,9 @@ export default {
   ItemMaster,
   PaperMaster,
   BindingMaster,
-  Quotation,
-  JobCosting,
   SizeMaster,
   JobDesignTime,
   WideFormatMaterial,
-  PrintingRateMaster
+  PrintingRateMaster,
+  JobItemCosting
 };
