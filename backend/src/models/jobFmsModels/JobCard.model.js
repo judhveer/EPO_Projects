@@ -220,7 +220,7 @@ export default (sequelize) => {
       const latest = await JobCard.findOne({
         order: [["job_no", "DESC"]],
       });
-      const nextNo = latest ? Number(latest.job_no) + 1 : 1;
+      const nextNo = latest ? Number(latest.job_no) + 1 : 10870;
       job.job_no = nextNo;
     }
   });
