@@ -889,8 +889,7 @@ const JobItem = React.memo(function JobItem({
           )}
 
         {category === "Single Sheet" &&
-          item.binding_types?.includes("Folding") &&
-          item.sides === "Both Side" && (
+          item.binding_types?.includes("Folding") && (
             <Field label="No. of Folding per Sheet" required>
               <Input
                 type="number"
