@@ -181,7 +181,9 @@ export default function DashboardTable({
                       ? job.assignments[0].is_paused
                         ? "⏸ Paused"
                         : job.assignments[0].status === "in_progress"
-                        ? "🎨 In Progress"
+                        ? "🎨 In Progress" 
+                        : job.assignments[0].status === "assigned"
+                        ? "Not Started Yet"
                         : "✅ Completed"
                       : "—"}
                   </td>
