@@ -1418,7 +1418,6 @@ export default function JobCardForm({
         available_wide_materials: [],
         available_wide_gsm: [],
         inside_papers: insidePapers,
-        costing_snapshot: null, // will be rebuilt if user recalculates
         costing_snapshot: rebuildCostingSnapshotFromDB(item.category, item.costing),
       };
     });
