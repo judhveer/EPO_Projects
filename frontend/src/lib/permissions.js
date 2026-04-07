@@ -81,6 +81,9 @@ export function can(user, perm) {
         case 'jobfms.production.view':
             return dept === 'Production Coordinator';
 
+        case 'jobfms.outbound.view':
+            return dept === 'Process Coordinator';
+
         default:
             return false;
 
