@@ -41,7 +41,6 @@ export default function DashboardFilters({ filters, setFilters, resetPage, crmUs
       >
         <option value="">Order Type</option>
         <option value="Work Order">Work Order</option>
-        <option value="Bulk Order">Bulk Order</option>
         <option value="Project Based Order">Project Based</option>
         <option value="Job Order">Job Order</option>
       </select>
