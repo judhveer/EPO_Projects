@@ -1277,13 +1277,33 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
       }
     }
     // ----- Numbering + Interleaf + Perforation (combined) -----
-    else if (name.includes('numbering') && name.includes('interleaf') && name.includes('perforation')) {
+    else if (name.includes('numbering')) {
       if (item.category === 'Multiple Sheet') {
+        console.log("Numbering binding: ", rate);
         const totalPages = insidePages * qty;          // total pages across all copies
         const slabs = Math.ceil(totalPages / 500);     // number of 500‑page slabs (rounded up)
-        cost = slabs * 150;                            // ₹150 per slab
+        cost = slabs * rate;                            // ₹150 per slab
       }
     }
+    // ----- Numbering + Interleaf + Perforation (combined) -----
+    else if (name.includes('interleaf')) {
+      if (item.category === 'Multiple Sheet') {
+        console.log("Interleaf binding: ", rate);
+        const totalPages = insidePages * qty;          // total pages across all copies
+        const slabs = Math.ceil(totalPages / 500);     // number of 500‑page slabs (rounded up)
+        cost = slabs * rate;                            // ₹150 per slab
+      }
+    }
+    // ----- Numbering + Interleaf + Perforation (combined) -----
+    else if (name.includes('perforation')) {
+      if (item.category === 'Multiple Sheet') {
+        console.log("Perforation binding: ", rate);
+        const totalPages = insidePages * qty;          // total pages across all copies
+        const slabs = Math.ceil(totalPages / 500);     // number of 500‑page slabs (rounded up)
+        cost = slabs * rate;                            // ₹150 per slab
+      }
+    }
+
     // ----- Tin Mounting -----
     else if (name.includes('tin mounting')) {
       if (item.category === 'Single Sheet') {
