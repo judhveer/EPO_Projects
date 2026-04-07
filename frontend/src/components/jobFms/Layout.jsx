@@ -18,6 +18,7 @@ const JOB_FMS_TABS = [
   { key: "designer", label: "Designer", to: "/job-fms/designer", perm: "jobfms.designer.view", },
   { key: "crm", label: "CRM", to: "/job-fms/crm", perm: "jobfms.crm.view", },
   { key: "production", label: "Production", to: "/job-fms/production", perm: "jobfms.production.view", },
+  { key: "outbound", label: "Outbound Orders", to: "/job-fms/outbound", perm: "jobfms.outbound.view", },
   { key: "bills", label: "Pending Bills", to: "/job-fms/pending-bills", perm: "jobfms.bills.view", },
 ];
 
