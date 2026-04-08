@@ -49,7 +49,6 @@ export default function DashboardTable({
               <th className="border p-2">Proof Date</th>
               <th className="border p-2">Priority</th>
               <th className="border p-2">Instructions</th>
-              <th className="border p-2">No of Files</th>
               <th className="border p-2">Payment Status</th>
               <th className="border p-2">Status</th>
               <th className="border p-2">Job Completion Deadline</th>
@@ -125,7 +124,6 @@ export default function DashboardTable({
                     </span>
                   </td>
                   <td className="border p-2">{job.instructions}</td>
-                  <td className="border p-2">{job.no_of_files}</td>
                   <td className="border p-2">
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-semibold ${
