@@ -249,7 +249,7 @@ const parseSize = (sizeStr, category) => {
 // ---------------------- UPS CALCULATION ----------------------
 // How many job-size pieces fit on one sheet (try normal + rotated orientation)
 const calculateUps = (sheet, job) => {
-  console.log("calculateUps called:")
+  console.log("calculateUps called: sheet", sheet);
   const normal =
     Math.floor(sheet.width / job.width) * Math.floor(sheet.height / job.height);
 
@@ -946,6 +946,11 @@ export const calculateItemController = async (req, res) => {
       }
 
       const { bestSheet: bestCoverSheet, bestUps: bestUpsCover } = pickBestSheet(coverPaperRows, jobSize);
+      if(bestUpsCover === 0){
+        return res.status(400).json({
+            message: "Client Size does not fit the Cover Paper.!",
+          });
+      }
       // ── Extract cover_to_print (default true for backward compat) ──────────
       const cover_to_print = item.cover_to_print !== false;
 
@@ -1000,6 +1005,15 @@ export const calculateItemController = async (req, res) => {
           },
         });
 
+        const bindingTargets = item.binding_targets || {};
+        const numberingPaperIds   = bindingTargets.numbering_paper_ids   || [];
+        const perforationPaperIds = bindingTargets.perforation_paper_ids || [];
+
+        // Count how many inside papers are targeted
+        // (for single-paper jobs, default to 1 — backwards compat)
+        const numberingPaperCount = insidePapers.length <= 1 ? 1 : Math.max(numberingPaperIds.length, 1);   // guard: at least 1 if binding is checked
+        const perforationPaperCount = insidePapers.length <= 1 ? 1 : Math.max(perforationPaperIds.length, 1);
+
         // Build context for binding calculation
         const bindingContext = {
           insidePages: Number(item.inside_pages),
@@ -1012,6 +1026,9 @@ export const calculateItemController = async (req, res) => {
           itemName: item.enquiry_for || '',               // to detect school copy
           creasesPerSheet: Number(item.creases_per_sheet || 0),
           foldsPersheet: Number(item.folds_per_sheet || 0),
+          numInsidePapers: insidePapers.length,        // ← for interleaf
+          numberingPaperCount,                               // ← for numbering
+          perforationPaperCount,                             // ← for perforation
         };
 
         bindingCostTotal = calculateBindingCost(bindingRows, item, qty, bindingContext);
@@ -1126,7 +1143,10 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
     sides,
     itemName,
     creasesPerSheet,
-    foldsPersheet
+    foldsPersheet,
+    numInsidePapers = 1,          // ← NEW
+    numberingPaperCount = 1,      // ← NEW: how many papers have numbering
+    perforationPaperCount = 1,    // ← NEW: how many papers have perforation
   } = context;
 
   // console.log("Calculating binding cost with context: ", context);
@@ -1276,31 +1296,66 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
         cost = qty * 2;
       }
     }
-    // ----- Numbering + Interleaf + Perforation (combined) -----
+    // ----- Numbering -----
     else if (name.includes('numbering')) {
       if (item.category === 'Multiple Sheet') {
-        console.log("Numbering binding: ", rate);
-        const totalPages = insidePages * qty;          // total pages across all copies
-        const slabs = Math.ceil(totalPages / 500);     // number of 500‑page slabs (rounded up)
-        cost = slabs * rate;                            // ₹150 per slab
+        const pagesPerPaper = insidePages * qty;
+        const slabsPerPaper = Math.ceil(pagesPerPaper / 500);
+        const costPerPaper = slabsPerPaper * rate;
+        cost = costPerPaper * numberingPaperCount;
+        console.log(`Numbering: ${numberingPaperCount} paper(s), ` + `${pagesPerPaper} pages/paper, ${slabsPerPaper} slabs/paper → ₹${cost}`);
       }
+
     }
-    // ----- Numbering + Interleaf + Perforation (combined) -----
+    // ----- Interleaf -----
     else if (name.includes('interleaf')) {
       if (item.category === 'Multiple Sheet') {
-        console.log("Interleaf binding: ", rate);
-        const totalPages = insidePages * qty;          // total pages across all copies
-        const slabs = Math.ceil(totalPages / 500);     // number of 500‑page slabs (rounded up)
-        cost = slabs * rate;                            // ₹150 per slab
+        const totalPages = insidePages * numInsidePapers * qty;
+        const slabs = Math.ceil(totalPages / 500);
+        cost = slabs * rate;
+        console.log(`Interleaf: ${numInsidePapers} paper(s), ` + `${totalPages} total pages, ${slabs} slabs → ₹${cost}`);
       }
+
     }
-    // ----- Numbering + Interleaf + Perforation (combined) -----
+    // ----- Perforation -----
     else if (name.includes('perforation')) {
       if (item.category === 'Multiple Sheet') {
-        console.log("Perforation binding: ", rate);
-        const totalPages = insidePages * qty;          // total pages across all copies
-        const slabs = Math.ceil(totalPages / 500);     // number of 500‑page slabs (rounded up)
-        cost = slabs * rate;                            // ₹150 per slab
+        const pagesPerPaper = insidePages * qty;
+        const slabsPerPaper = Math.ceil(pagesPerPaper / 500);
+        const costPerPaper  = slabsPerPaper * rate;
+        cost = costPerPaper * perforationPaperCount;
+        console.log(`Perforation: ${perforationPaperCount} paper(s), ` + `${pagesPerPaper} pages/paper, ${slabsPerPaper} slabs/paper → ₹${cost}`);
+      }
+    }
+    // ----- Hard Bound -----
+    else if (name.includes('hard bound')) {
+      if (item.category === 'Multiple Sheet') {
+
+        // Total pages including multiple inside papers
+        const totalPages = insidePages * numInsidePapers;
+        // Number of 100-page slabs
+        const slabs = Math.ceil(totalPages / 100);
+        // ✅ Determine size category
+        const area = size.width * size.height;
+        let baseRate = 0;
+
+        // Approx A5 ≈ 48 sq in, A4 ≈ 97 sq in
+        if (area <= 48.22) {
+          baseRate = rate; // upto A5 50rs
+        } else if (area <= 97) {
+          baseRate = rate + 30; // A4 80rs 
+        } else {
+          baseRate = rate * 2; // bigger than A4 100rs
+        }
+
+        // First 100 pages + remaining slabs
+        if (slabs === 1) {
+          cost = baseRate * qty;
+        } else {
+          cost = (baseRate + (slabs - 1) * 30) * qty;
+        }
+
+        console.log(`Hard Bound: totalPages=${totalPages}, slabs=${slabs}, baseRate=${baseRate}, totalCost=${cost}`);
       }
     }
 
