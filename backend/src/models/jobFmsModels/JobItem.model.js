@@ -279,6 +279,12 @@ export default (sequelize) => {
         allowNull: true,
         comment: "Array of binding names selected, e.g. ['Matt Lamination (Single Side)', 'Cutting'].",
       },
+      binding_targets: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        defaultValue: null,
+        comment: "{ numbering_paper_ids: string[], perforation_paper_ids: string[] }"
+      },
       no_of_foldings: {
         type: DataTypes.INTEGER,
         allowNull: true,
