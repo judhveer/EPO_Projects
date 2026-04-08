@@ -176,7 +176,6 @@ export default function ProcessCoordinatorTable() {
               <th className="p-2 border">Delivery Date</th>
               <th className="border p-2 max-w-[500px] ">Delivery Location</th>
               <th className="border p-2 max-w-[500px] ">Priority</th>
-              <th className="p-2 border">Status</th>
               <th className="p-2 border">Assign Designer</th>
             </tr>
           </thead>
@@ -227,7 +226,6 @@ export default function ProcessCoordinatorTable() {
                   </td>
 
                   <td className="border p-2">{job.task_priority}</td>
-                  <td className="border p-2">{job.status}</td>
 
                   {/* CLICKABLE ASSIGN DESIGNER CELL */}
                   <td
