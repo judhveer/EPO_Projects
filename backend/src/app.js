@@ -67,6 +67,7 @@ import designerRoutes from "./routes/jobFmsRoutes/designer.routes.js";
 import crmJobsRoutes from "./routes/jobFmsRoutes/crmJobs.routes.js";
 import commonDashboardRoutes from "./routes/jobFmsRoutes/commonDashboard.routes.js"
 import productionDashboardRoutes from "./routes/jobFmsRoutes/production.routes.js";
+import outboundRoutes from "./routes/jobFmsRoutes/outbound.routes.js";
 
 
 import notFound from './middlewares/salesPipeline/notFound.js';
@@ -221,6 +222,10 @@ app.use("/api/fms/production",
   authenticate,
   productionDashboardRoutes);
 
+
+app.use("/api/fms/outbound", 
+  authenticate,
+  outboundRoutes);
 
 
 //  FOR PENDING BILLS FROM GOOGLE SHEET
