@@ -76,6 +76,61 @@ function ItemCard({ item, index }) {
         {item.binding_types?.length > 0 && <Row label="Binding" value={item.binding_types.join(", ")} />}
         {item.no_of_foldings > 0 && <Row label="Folding" value={`${item.no_of_foldings} fold(s) per copy`} />}
         {item.no_of_creases  > 0 && <Row label="Creasing" value={`${item.no_of_creases} crease(s) per sheet`} />}
+        {/* Binding targets — shown for Multiple Sheet with 2+ papers */}
+        {isMultiple &&
+          Array.isArray(item.inside_papers) &&
+          item.inside_papers.length >= 2 &&
+          item.binding_targets && (
+            <div className="space-y-1">
+              {item.binding_types?.includes("Numbering") &&
+                (item.binding_targets.numbering_paper_ids || []).length > 0 && (
+                  <Row
+                    label="Numbering On"
+                    value={item.binding_targets.numbering_paper_ids
+                      .map((pid) => {
+                        const idx = item.inside_papers.findIndex(
+                          (p) => p._id === pid
+                        );
+                        const paper = item.inside_papers[idx];
+                        return idx === -1
+                          ? pid
+                          : [
+                              `Paper ${idx + 1}`,
+                              paper?.paper_type,
+                              paper?.paper_gsm ? `${paper.paper_gsm} GSM` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" — ");
+                      })
+                      .join(", ")}
+                  />
+                )}
+
+              {item.binding_types?.includes("Perforation") &&
+                (item.binding_targets.perforation_paper_ids || []).length > 0 && (
+                  <Row
+                    label="Perforation On"
+                    value={item.binding_targets.perforation_paper_ids
+                      .map((pid) => {
+                        const idx = item.inside_papers.findIndex(
+                          (p) => p._id === pid
+                        );
+                        const paper = item.inside_papers[idx];
+                        return idx === -1
+                          ? pid
+                          : [
+                              `Paper ${idx + 1}`,
+                              paper?.paper_type,
+                              paper?.paper_gsm ? `${paper.paper_gsm} GSM` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" — ");
+                      })
+                      .join(", ")}
+                  />
+                )}
+            </div>
+          )}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════
