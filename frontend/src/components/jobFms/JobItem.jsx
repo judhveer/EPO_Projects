@@ -235,12 +235,27 @@ const JobItem = React.memo(function JobItem({
 
       handleItemChange(uniqueKey, "binding_types", updated);
 
-      if (!checked && bindingName === "Creasing")
-        handleItemChange(uniqueKey, "no_of_crease", "");
-      if (!checked && bindingName === "Folding")
-        handleItemChange(uniqueKey, "no_of_folding", "");
+      // Clear targets when binding is removed
+      if (!checked) {
+        if (bindingName === "Numbering") {
+          handleItemChange(uniqueKey, "binding_targets", {
+            ...item.binding_targets,
+            numbering_paper_ids: [],
+          });
+        }
+        if (bindingName === "Perforation") {
+          handleItemChange(uniqueKey, "binding_targets", {
+            ...item.binding_targets,
+            perforation_paper_ids: [],
+          });
+        }
+        if (bindingName === "Creasing")
+          handleItemChange(uniqueKey, "creases_per_sheet", "");
+        if (bindingName === "Folding")
+          handleItemChange(uniqueKey, "folds_per_sheet", "");
+      }
     },
-    [item.binding_types, uniqueKey, handleItemChange],
+    [item.binding_types, item.binding_targets, uniqueKey, handleItemChange],
   );
 
   return (
@@ -865,6 +880,123 @@ const JobItem = React.memo(function JobItem({
                 ))}
               </div>
             </Field>
+          )}
+
+        {/* ── Binding targets — only for Multiple Sheet with 2+ inside papers ── */}
+        {category === "Multiple Sheet" &&
+          (item.inside_papers || []).length >= 2 && (
+            <>
+              {/* NUMBERING target selector */}
+              {item.binding_types?.includes("Numbering") && (
+                <Field label="Numbering — Apply to Which Paper(s)?">
+                  <div className="space-y-1">
+                    {(item.inside_papers || []).map((paper, pIdx) => {
+                      const isChecked = (
+                        item.binding_targets?.numbering_paper_ids || []
+                      ).includes(paper._id);
+
+                      const label = [
+                        `Inside Paper ${pIdx + 1}`,
+                        paper.paper_type,
+                        paper.paper_gsm ? `${paper.paper_gsm} GSM` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" — ");
+
+                      return (
+                        <label
+                          key={paper._id || pIdx}
+                          className="flex items-center gap-2 text-sm cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const prev =
+                                item.binding_targets?.numbering_paper_ids || [];
+                              const updated = e.target.checked
+                                ? [...prev, paper._id]
+                                : prev.filter((id) => id !== paper._id);
+                              handleItemChange(uniqueKey, "binding_targets", {
+                                ...item.binding_targets,
+                                numbering_paper_ids: updated,
+                              });
+                            }}
+                          />
+                          <span className="text-slate-700">{label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {(item.binding_targets?.numbering_paper_ids || []).length > 1 && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      ₹ cost will be multiplied by{" "}
+                      {item.binding_targets.numbering_paper_ids.length} papers.
+                    </p>
+                  )}
+                </Field>
+              )}
+
+              {/* PERFORATION target selector */}
+              {item.binding_types?.includes("Perforation") && (
+                <Field label="Perforation — Apply to Which Paper(s)?">
+                  <div className="space-y-1">
+                    {(item.inside_papers || []).map((paper, pIdx) => {
+                      const isChecked = (
+                        item.binding_targets?.perforation_paper_ids || []
+                      ).includes(paper._id);
+
+                      const label = [
+                        `Inside Paper ${pIdx + 1}`,
+                        paper.paper_type,
+                        paper.paper_gsm ? `${paper.paper_gsm} GSM` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" — ");
+
+                      return (
+                        <label
+                          key={paper._id || pIdx}
+                          className="flex items-center gap-2 text-sm cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const prev =
+                                item.binding_targets?.perforation_paper_ids || [];
+                              const updated = e.target.checked
+                                ? [...prev, paper._id]
+                                : prev.filter((id) => id !== paper._id);
+                              handleItemChange(uniqueKey, "binding_targets", {
+                                ...item.binding_targets,
+                                perforation_paper_ids: updated,
+                              });
+                            }}
+                          />
+                          <span className="text-slate-700">{label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {(item.binding_targets?.perforation_paper_ids || []).length > 1 && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      ₹ cost will be multiplied by{" "}
+                      {item.binding_targets.perforation_paper_ids.length} papers.
+                    </p>
+                  )}
+                </Field>
+              )}
+
+              {/* INTERLEAF info — no target needed, auto-applies to all */}
+              {item.binding_types?.includes("Interleaf") && (
+                <div className="col-span-2 text-xs bg-amber-50 border border-amber-200 rounded px-3 py-2 text-amber-800">
+                  ℹ️ <b>Interleaf</b> goes between all{" "}
+                  <b>{(item.inside_papers || []).length} inside papers</b> automatically.
+                  Cost = <b>{item.inside_pages || "?"} pages × {(item.inside_papers || []).length} papers × {item.quantity || "?"} qty → slabs</b>.
+                </div>
+              )}
+            </>
           )}
 
         {/* ── Crease / Fold extra inputs ── */}
