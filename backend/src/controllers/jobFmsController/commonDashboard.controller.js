@@ -185,7 +185,7 @@ export const getDashboardJobDetails = async (req, res) => {
         message: "Job not found",
       });
     }
-    console.log("getDashboardJobDetails: ", getDashboardJobDetails);
+    console.log("getDashboardJobDetails: ", job);
     res.json(job);
   } catch (err) {
     console.error("Dashboard job details error:", err);
