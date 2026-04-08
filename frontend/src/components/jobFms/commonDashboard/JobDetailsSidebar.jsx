@@ -4,6 +4,17 @@ import api from "../../../lib/api";
 
 import { DateTime } from "luxon";
 
+function formatSeconds(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  return [
+    hours ? `${hours}h` : "",
+    minutes ? `${minutes}m` : "",
+    secs ? `${secs}s` : ""
+  ].filter(Boolean).join(" ");
+}
+
 export default function JobDetailsSidebar({ jobNo, onClose }) {
   const [job, setJob] = useState(null);
 
@@ -200,11 +211,7 @@ export default function JobDetailsSidebar({ jobNo, onClose }) {
                       />
                       <Detail
                         label="Design Duration"
-                        value={
-                          a.designer_duration_seconds
-                            ? `${a.designer_duration_seconds} seconds`
-                            : "—"
-                        }
+                        value={a.designer_duration_seconds ? formatSeconds(a.designer_duration_seconds) : "—"}
                       />
                       <Detail
                         label="Current Status"
