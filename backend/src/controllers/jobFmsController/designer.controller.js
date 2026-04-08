@@ -161,7 +161,8 @@ export const designerStartTask = async (req, res) => {
     }
 
     assignment.status = "in_progress";
-    assignment.designer_start_time = new Date();
+    const startTime = new Date();
+    assignment.designer_start_time = startTime;
 
     await JobDesignTime.create(
       {
@@ -174,6 +175,9 @@ export const designerStartTask = async (req, res) => {
     await assignment.save({ transaction: t });
 
     const job = await JobCard.findByPk(job_no);
+    if (!job) {
+      throw new Error("Job not found");
+    }
     job.status = "design_in_progress";
     job.current_stage = "design_in_progress";
     await job.save({ transaction: t });
@@ -202,67 +206,81 @@ export const designerStartTask = async (req, res) => {
 
     res.json({ message: "Task started", assignment });
 
-    /* ------------------ EMAIL NOTIFICATIONS ------------------ */
+    try{
+      /* ------------------ EMAIL NOTIFICATIONS ------------------ */
 
-    // Fetch CRM user
-    const crmUser = await User.findOne({
-      where: { username: job.order_handled_by },
-    });
-
-    // Fetch Process Coordinators
-    const coordinators = await User.findAll({
-      where: { department: "Process Coordinator" },
-    });
-
-    const attachments = [
-      {
-        filename: "epo-logo.jpg",
-        path: path.resolve("assets/epo-logo.jpg"),
-        cid: "epo-logo",
-      },
-    ];
-
-    // 📧 Notify Process Coordinators
-    if (coordinators.length) {
-      await sendMailForFMS({
-        to: coordinators.map((u) => u.email),
-        subject: `Design Started | Job #${job_no}`,
-        html: processCoordinatorDesignStartedTemplate({
-          jobNo: job_no,
-          clientName: job.client_name,
-          designerName: job.assigned_designer || "Designer",
-          startedAt: startTime.toLocaleString(),
-          estimatedCompletionTime: assignment.estimated_completion_time,
-          dashboardUrl: `${process.env.LEADS_URL}/job-fms/process-coordinator`,
-        }),
-        attachments,
+      // Fetch CRM user
+      const crmUser = await User.findOne({
+        where: { username: job.order_handled_by },
       });
+
+      // Fetch Process Coordinators
+      const coordinators = await User.findAll({
+        where: { department: "Process Coordinator" },
+      });
+
+      const attachments = [
+        {
+          filename: "epo-logo.jpg",
+          path: path.resolve("assets/epo-logo.jpg"),
+          cid: "epo-logo",
+        },
+      ];
+
+      // 📧 Notify Process Coordinators
+      if (coordinators.length) {
+        await sendMailForFMS({
+          to: coordinators.map((u) => u.email),
+          subject: `Design Started | Job #${job_no}`,
+          html: processCoordinatorDesignStartedTemplate({
+            jobNo: job_no,
+            clientName: job.client_name,
+            designerName: job.assigned_designer || "Designer",
+            startedAt: startTime.toLocaleString(),
+            estimatedCompletionTime: assignment.estimated_completion_time,
+            dashboardUrl: `${process.env.LEADS_URL}/job-fms/process-coordinator`,
+          }),
+          attachments,
+        });
+      }
+
+      // 📧 Notify CRM
+      if (crmUser?.email) {
+        await sendMailForFMS({
+          to: crmUser.email,
+          subject: `Design Started | Job #${job_no}`,
+          html: crmDesignStartedTemplate({
+            crmName: crmUser.username,
+            jobNo: job_no,
+            clientName: job.client_name,
+            designerName: job.assigned_designer || "Designer",
+            estimatedCompletionTime: assignment.estimated_completion_time,
+            dashboardUrl: `${process.env.LEADS_URL}/job-fms/crm`,
+          }),
+          attachments,
+        });
+      }
+
+      console.log(
+        "Emails sent successfully for action designer Started the task.",
+      );
+
+    }
+    catch(err){
+      console.error(err);
+      console.error("Error in sending emails!");
     }
 
-    // 📧 Notify CRM
-    if (crmUser?.email) {
-      await sendMailForFMS({
-        to: crmUser.email,
-        subject: `Design Started | Job #${job_no}`,
-        html: crmDesignStartedTemplate({
-          crmName: crmUser.username,
-          jobNo: job_no,
-          clientName: job.client_name,
-          designerName: job.assigned_designer || "Designer",
-          estimatedCompletionTime: assignment.estimated_completion_time,
-          dashboardUrl: `${process.env.LEADS_URL}/job-fms/crm`,
-        }),
-        attachments,
-      });
-    }
 
-    console.log(
-      "Emails sent successfully for action designer Started the task.",
-    );
   } catch (err) {
-    await t.rollback();
+    if (!t.finished) {
+      await t.rollback();
+    }
     console.error(err);
-    res.status(500).json({ error: "Failed to start task" });
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to start task" });
+    }
+    return;
   }
 };
 
