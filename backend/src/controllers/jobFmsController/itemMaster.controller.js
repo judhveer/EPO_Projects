@@ -1299,11 +1299,10 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
     // ----- Numbering -----
     else if (name.includes('numbering')) {
       if (item.category === 'Multiple Sheet') {
-        const pagesPerPaper = insidePages * qty;
-        const slabsPerPaper = Math.ceil(pagesPerPaper / 500);
-        const costPerPaper = slabsPerPaper * rate;
-        cost = costPerPaper * numberingPaperCount;
-        console.log(`Numbering: ${numberingPaperCount} paper(s), ` + `${pagesPerPaper} pages/paper, ${slabsPerPaper} slabs/paper → ₹${cost}`);
+        const totalPages = insidePages * numberingPaperCount * qty;
+        const slabs = Math.ceil(totalPages / 500);
+        cost = slabs * rate;
+        console.log(`Numbering: ${numberingPaperCount} paper(s), ${totalPages} total pages, ${slabs} slabs → ₹${cost}`);
       }
 
     }
@@ -1320,11 +1319,10 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
     // ----- Perforation -----
     else if (name.includes('perforation')) {
       if (item.category === 'Multiple Sheet') {
-        const pagesPerPaper = insidePages * qty;
-        const slabsPerPaper = Math.ceil(pagesPerPaper / 500);
-        const costPerPaper  = slabsPerPaper * rate;
-        cost = costPerPaper * perforationPaperCount;
-        console.log(`Perforation: ${perforationPaperCount} paper(s), ` + `${pagesPerPaper} pages/paper, ${slabsPerPaper} slabs/paper → ₹${cost}`);
+        const totalPages = insidePages * perforationPaperCount * qty;
+        const slabs = Math.ceil(totalPages / 500);
+        cost = slabs * rate;
+        console.log(`Perforation: ${perforationPaperCount} paper(s), ${totalPages} total pages, ${slabs} slabs → ₹${cost}`);
       }
     }
     // ----- Hard Bound -----
