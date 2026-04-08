@@ -311,6 +311,7 @@ export default function OutboundOrders({ refresh }) {
       <JobItemsSidebar
         jobNo={selectedJobNo}
         onClose={() => setSelectedJobNo(null)}
+        viewMode="outbound"
       />
     </div>
   );
