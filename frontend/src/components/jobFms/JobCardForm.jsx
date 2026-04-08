@@ -98,6 +98,7 @@ const CALC_TRIGGER_FIELDS = new Set([
   "binding_types",
   "creases_per_sheet",
   "folds_per_sheet",
+  "binding_targets",
 ]);
 
 
@@ -1104,6 +1105,10 @@ export default function JobCardForm({
       quantity: "",
       uom: "",
       binding_types: [],
+      binding_targets: {
+        numbering_paper_ids: [],
+        perforation_paper_ids: [],
+      },
       // Multiple Sheet: starts with one empty inside paper
       inside_papers: [createEmptyInsidePaper()],
       // Single Sheet: paper fields stay at item level
@@ -1403,6 +1408,10 @@ export default function JobCardForm({
         binding_types: Array.isArray(item.binding_types)
           ? item.binding_types
           : [],
+        binding_targets: item.binding_targets || {
+          numbering_paper_ids: [],
+          perforation_paper_ids: [],
+        },
 
         // extra binding details
         folds_per_sheet: item.no_of_foldings || "",
