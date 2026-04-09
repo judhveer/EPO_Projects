@@ -13,9 +13,8 @@ export async function createTransporter() {
 
     return nodemailer.createTransport({
       host: "smtp.gmail.com",
-      port: 587, // Changed from 465 to 587 (STARTTLS is more reliable)
-      secure: false, // false for port 587, true for 465
-      requireTLS: true, // Require TLS
+      port: 465, // Changed from 465 to 587 (STARTTLS is more reliable)
+      secure: true, // false for port 587, true for 465
       auth: {
         type: "OAuth2",
         user: process.env.EMAIL_USER,
@@ -23,15 +22,10 @@ export async function createTransporter() {
         clientSecret: process.env.CLIENT_SECRET,
         refreshToken: process.env.REFRESH_TOKEN,
         accessToken: accessToken,
-        expires: 3600, // Token expiration
       },
       // Better connection pooling settings
-      pool: true,
-      maxConnections: 3, // Increased slightly
-      maxMessages: 10,
-      socketTimeout: 30000, // 30 seconds
-      connectionTimeout: 10000, // 10 seconds
-      // TLS options to prevent SSL errors
+      pool: false,
+      family: 4,
       tls: {
         rejectUnauthorized: true,
         minVersion: "TLSv1.2",
