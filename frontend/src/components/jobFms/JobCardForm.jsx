@@ -44,6 +44,7 @@ const EMPTY_FORM = {
   paper_ordered_from: "",
   receiving_date_for_mm: "",
   discount: "",
+  gst_percentage: "",
   job_items: [],
 };
 
@@ -89,7 +90,7 @@ const CALC_TRIGGER_FIELDS = new Set([
   "cover_pages",
   "cover_press_type",
   "inside_press_type",
-  "cover_to_print",     // toggling print/no-print changes total cost
+  "cover_to_print", // toggling print/no-print changes total cost
   // Wide Format
   "wide_material_name",
   "wide_material_gsm",
@@ -100,7 +101,6 @@ const CALC_TRIGGER_FIELDS = new Set([
   "folds_per_sheet",
   "binding_targets",
 ]);
-
 
 // [FIX 1B] Fields inside an inside_paper that should trigger recalculation.
 const INSIDE_PAPER_CALC_TRIGGER_FIELDS = new Set([
@@ -174,6 +174,9 @@ const normalizePayload = (payload) => {
       : 0,
     total_amount: payload.total_amount ? Number(payload.total_amount) : 0,
     discount: payload.discount ? Number(payload.discount) : 0,
+    gst_percentage: payload.gst_percentage
+      ? Number(payload.gst_percentage)
+      : null,
     no_of_files: payload.no_of_files ? Number(payload.no_of_files) : 0,
 
     job_items: payload.job_items.map((item) => ({
@@ -211,40 +214,48 @@ const cleanJobItems = (items) => {
       available_sizes,
       available_wide_materials,
       available_wide_gsm,
-      best_inside_sheet, best_inside_sheet_name, best_inside_dimensions, best_inside_ups,
-      best_cover_sheet, best_cover_dimensions, best_cover_ups,
-      selected_material, calculation_type, rolls_or_boards_used,
-      wastage_sqft, wide_ups, material_info,
+      best_inside_sheet,
+      best_inside_sheet_name,
+      best_inside_dimensions,
+      best_inside_ups,
+      best_cover_sheet,
+      best_cover_dimensions,
+      best_cover_ups,
+      selected_material,
+      calculation_type,
+      rolls_or_boards_used,
+      wastage_sqft,
+      wide_ups,
+      material_info,
       ...cleaned
     } = item;
 
     // Strip available_gsm from each inside_paper before sending to backend
     if (Array.isArray(cleaned.inside_papers)) {
-      cleaned.inside_papers = cleaned.inside_papers.map(({
-        available_gsm:        _ag,
-        // Strip calc output — goes to JobItemCosting, not stored in JobItem.inside_papers
-        ups:                  _ups,
-        effective_ups:        _eups,
-        sheets:               _sh,
-        sheets_with_wastage:  _shw,
-        sheet_rate:           _shr,
-        sheet_cost:           _shc,
-        printing_cost:        _pc,
-        // Strip display-only text (derivable from selected_paper_id JOIN)
-        best_sheet_size_name: _bssn,
-        best_sheet_name:      _bsn,
-        best_sheet_dims:      _bsd,
-        // Keep: _id, selected_paper_id, paper_type, paper_gsm,
-        //        to_print, color_scheme, press_type
-        ...rest
-      }) => rest);
+      cleaned.inside_papers = cleaned.inside_papers.map(
+        ({
+          available_gsm: _ag,
+          // Strip calc output — goes to JobItemCosting, not stored in JobItem.inside_papers
+          ups: _ups,
+          effective_ups: _eups,
+          sheets: _sh,
+          sheets_with_wastage: _shw,
+          sheet_rate: _shr,
+          sheet_cost: _shc,
+          printing_cost: _pc,
+          // Strip display-only text (derivable from selected_paper_id JOIN)
+          best_sheet_size_name: _bssn,
+          best_sheet_name: _bsn,
+          best_sheet_dims: _bsd,
+          // Keep: _id, selected_paper_id, paper_type, paper_gsm,
+          //        to_print, color_scheme, press_type
+          ...rest
+        }) => rest,
+      );
     }
     return cleaned;
   });
 };
-
-
-
 
 // ── rebuildCostingSnapshotFromDB ──────────────────────────────────────────────
 // Reconstructs a costing_snapshot from the saved JobItemCosting DB row.
@@ -259,64 +270,64 @@ const rebuildCostingSnapshotFromDB = (category, costing) => {
 
   if (category === "Single Sheet") {
     return {
-      ss_paper_id:            costing.ss_paper_id,
-      ss_ups:                 costing.ss_ups,
-      ss_sheets:              costing.ss_sheets,
+      ss_paper_id: costing.ss_paper_id,
+      ss_ups: costing.ss_ups,
+      ss_sheets: costing.ss_sheets,
       ss_sheets_with_wastage: costing.ss_sheets_with_wastage,
-      ss_sheet_rate:          costing.ss_sheet_rate,
-      ss_sheet_cost:          costing.ss_sheet_cost,
-      ss_printing_cost:       costing.ss_printing_cost,
-      binding_cost:           costing.binding_cost           || 0,
-      binding_cost_per_copy:  costing.binding_cost_per_copy  || 0,
-      total_sheet_cost:       costing.total_sheet_cost       || 0,
-      total_printing_cost:    costing.total_printing_cost    || 0,
-      sheet_cost_per_copy:    costing.sheet_cost_per_copy    || 0,
+      ss_sheet_rate: costing.ss_sheet_rate,
+      ss_sheet_cost: costing.ss_sheet_cost,
+      ss_printing_cost: costing.ss_printing_cost,
+      binding_cost: costing.binding_cost || 0,
+      binding_cost_per_copy: costing.binding_cost_per_copy || 0,
+      total_sheet_cost: costing.total_sheet_cost || 0,
+      total_printing_cost: costing.total_printing_cost || 0,
+      sheet_cost_per_copy: costing.sheet_cost_per_copy || 0,
       printing_cost_per_copy: costing.printing_cost_per_copy || 0,
-      unit_rate:              costing.unit_rate              || 0,
-      item_total:             costing.item_total             || 0,
+      unit_rate: costing.unit_rate || 0,
+      item_total: costing.item_total || 0,
     };
   }
 
   if (category === "Multiple Sheet") {
     return {
-      ms_inside_costing:             costing.ms_inside_costing             || [],
-      ms_total_inside_sheet_cost:    costing.ms_total_inside_sheet_cost    || 0,
+      ms_inside_costing: costing.ms_inside_costing || [],
+      ms_total_inside_sheet_cost: costing.ms_total_inside_sheet_cost || 0,
       ms_total_inside_printing_cost: costing.ms_total_inside_printing_cost || 0,
-      ms_cover_paper_id:             costing.ms_cover_paper_id,   // ← critical
-      ms_cover_ups:                  costing.ms_cover_ups,
-      ms_cover_sheets:               costing.ms_cover_sheets,
-      ms_cover_sheets_with_wastage:  costing.ms_cover_sheets_with_wastage,
-      ms_cover_sheet_rate:           costing.ms_cover_sheet_rate,
-      ms_cover_sheet_cost:           costing.ms_cover_sheet_cost,
-      ms_cover_printing_cost:        costing.ms_cover_printing_cost,
-      binding_cost:                  costing.binding_cost           || 0,
-      binding_cost_per_copy:         costing.binding_cost_per_copy  || 0,
-      total_sheet_cost:              costing.total_sheet_cost       || 0,
-      total_printing_cost:           costing.total_printing_cost    || 0,
-      sheet_cost_per_copy:           costing.sheet_cost_per_copy    || 0,
-      printing_cost_per_copy:        costing.printing_cost_per_copy || 0,
-      unit_rate:                     costing.unit_rate              || 0,
-      item_total:                    costing.item_total             || 0,
+      ms_cover_paper_id: costing.ms_cover_paper_id, // ← critical
+      ms_cover_ups: costing.ms_cover_ups,
+      ms_cover_sheets: costing.ms_cover_sheets,
+      ms_cover_sheets_with_wastage: costing.ms_cover_sheets_with_wastage,
+      ms_cover_sheet_rate: costing.ms_cover_sheet_rate,
+      ms_cover_sheet_cost: costing.ms_cover_sheet_cost,
+      ms_cover_printing_cost: costing.ms_cover_printing_cost,
+      binding_cost: costing.binding_cost || 0,
+      binding_cost_per_copy: costing.binding_cost_per_copy || 0,
+      total_sheet_cost: costing.total_sheet_cost || 0,
+      total_printing_cost: costing.total_printing_cost || 0,
+      sheet_cost_per_copy: costing.sheet_cost_per_copy || 0,
+      printing_cost_per_copy: costing.printing_cost_per_copy || 0,
+      unit_rate: costing.unit_rate || 0,
+      item_total: costing.item_total || 0,
     };
   }
 
   if (category === "Wide Format") {
     return {
-      wf_material_id:          costing.wf_material_id,        // ← critical
-      wf_calculation_type:     costing.wf_calculation_type,
+      wf_material_id: costing.wf_material_id, // ← critical
+      wf_calculation_type: costing.wf_calculation_type,
       wf_rolls_or_boards_used: costing.wf_rolls_or_boards_used,
-      wf_wastage_sqft:         costing.wf_wastage_sqft,
-      wf_ups:                  costing.wf_ups,
-      wf_material_cost:        costing.wf_material_cost        || 0,
-      wf_printing_cost:        costing.wf_printing_cost        || 0,
-      binding_cost:            costing.binding_cost            || 0,
-      binding_cost_per_copy:   costing.binding_cost_per_copy   || 0,
-      total_sheet_cost:        0,
-      total_printing_cost:     costing.total_printing_cost     || 0,
-      sheet_cost_per_copy:     0,
-      printing_cost_per_copy:  costing.printing_cost_per_copy  || 0,
-      unit_rate:               costing.unit_rate               || 0,
-      item_total:              costing.item_total              || 0,
+      wf_wastage_sqft: costing.wf_wastage_sqft,
+      wf_ups: costing.wf_ups,
+      wf_material_cost: costing.wf_material_cost || 0,
+      wf_printing_cost: costing.wf_printing_cost || 0,
+      binding_cost: costing.binding_cost || 0,
+      binding_cost_per_copy: costing.binding_cost_per_copy || 0,
+      total_sheet_cost: 0,
+      total_printing_cost: costing.total_printing_cost || 0,
+      sheet_cost_per_copy: 0,
+      printing_cost_per_copy: costing.printing_cost_per_copy || 0,
+      unit_rate: costing.unit_rate || 0,
+      item_total: costing.item_total || 0,
     };
   }
 
@@ -324,96 +335,108 @@ const rebuildCostingSnapshotFromDB = (category, costing) => {
   return null;
 };
 
-
-
-
-
 // ── buildCostingSnapshot ──────────────────────────────────────────────────────
 // Maps the calculation API response into the costing_snapshot object that
 // createJobCard/updateJobCard uses to create/upsert JobItemCosting.
 const buildCostingSnapshot = (category, data, qty) => {
   if (category === "Single Sheet") {
     return {
-      ss_paper_id:            data.inside.selected_paper_id,
-      ss_ups:                 data.inside.ups,
-      ss_sheets:              data.inside.sheets,
+      ss_paper_id: data.inside.selected_paper_id,
+      ss_ups: data.inside.ups,
+      ss_sheets: data.inside.sheets,
       ss_sheets_with_wastage: data.inside.sheets_with_wastage,
-      ss_sheet_rate:          data.inside.sheet_rate,
-      ss_sheet_cost:          data.inside.total_sheet_cost,
-      ss_printing_cost:       data.inside.printing_cost_total,
-      binding_cost:           data.totals.total_binding_cost    || 0,
-      binding_cost_per_copy:  data.totals.binding_cost_per_copy || 0,
-      total_sheet_cost:       data.totals.total_sheet_cost,
-      total_printing_cost:    data.totals.total_printing_cost,
-      sheet_cost_per_copy:    data.totals.sheet_cost_per_copy,
+      ss_sheet_rate: data.inside.sheet_rate,
+      ss_sheet_cost: data.inside.total_sheet_cost,
+      ss_printing_cost: data.inside.printing_cost_total,
+      binding_cost: data.totals.total_binding_cost || 0,
+      binding_cost_per_copy: data.totals.binding_cost_per_copy || 0,
+      total_sheet_cost: data.totals.total_sheet_cost,
+      total_printing_cost: data.totals.total_printing_cost,
+      sheet_cost_per_copy: data.totals.sheet_cost_per_copy,
       printing_cost_per_copy: data.totals.printing_cost_per_copy,
-      unit_rate:              data.totals.unit_rate,
-      item_total:             data.totals.item_total,
+      unit_rate: data.totals.unit_rate,
+      item_total: data.totals.item_total,
     };
   }
   if (category === "Multiple Sheet") {
     return {
-      ms_inside_costing: (data.inside_papers_results || []).map(p => ({
-        paper_id:            p.selected_paper_id,
-        paper_name:          p.paper_type          || null,
-        gsm:                 p.paper_gsm           || null,
-        size_name:           p.best_sheet_size_name || null,
-        sheet_dimensions:    p.best_sheet_dims      || null,
-        ups:                 p.ups,
-        effective_ups:       p.effective_ups,
-        sheets:              p.sheets,
+      ms_inside_costing: (data.inside_papers_results || []).map((p) => ({
+        paper_id: p.selected_paper_id,
+        paper_name: p.paper_type || null,
+        gsm: p.paper_gsm || null,
+        size_name: p.best_sheet_size_name || null,
+        sheet_dimensions: p.best_sheet_dims || null,
+        ups: p.ups,
+        effective_ups: p.effective_ups,
+        sheets: p.sheets,
         sheets_with_wastage: p.sheets_with_wastage,
-        sheet_rate:          p.sheet_rate,
-        sheet_cost:          p.sheet_cost,
-        printing_cost:       p.printing_cost,
-        to_print:            p.to_print,
-        color_scheme:        p.color_scheme,
-        press_type:          p.press_type,
+        sheet_rate: p.sheet_rate,
+        sheet_cost: p.sheet_cost,
+        printing_cost: p.printing_cost,
+        to_print: p.to_print,
+        color_scheme: p.color_scheme,
+        press_type: p.press_type,
       })),
-      ms_total_inside_sheet_cost:    data.totals.total_inside_sheet_cost    || 0,
-      ms_total_inside_printing_cost: data.totals.total_inside_printing_cost || 0,
-      ms_cover_paper_id:             data.cover?.selected_paper_id,
-      ms_cover_ups:                  data.cover?.ups,
-      ms_cover_sheets:               data.cover?.sheets,
-      ms_cover_sheets_with_wastage:  data.cover?.sheets_with_wastage,
-      ms_cover_sheet_rate:           data.cover?.sheet_rate,
-      ms_cover_sheet_cost:           data.cover?.total_sheet_cost,
-      ms_cover_printing_cost:        data.cover?.printing_cost_total,
-      ms_cover_to_print:             data.cover?.to_print ?? true,  // default to true since cover is printed by default
-      binding_cost:                  data.totals.total_binding_cost    || 0,
-      binding_cost_per_copy:         data.totals.binding_cost_per_copy || 0,
-      total_sheet_cost:              data.totals.total_sheet_cost,
-      total_printing_cost:           data.totals.total_printing_cost,
-      sheet_cost_per_copy:           data.totals.sheet_cost_per_copy,
-      printing_cost_per_copy:        data.totals.printing_cost_per_copy,
-      unit_rate:                     data.totals.unit_rate,
-      item_total:                    data.totals.item_total,
+      ms_total_inside_sheet_cost: data.totals.total_inside_sheet_cost || 0,
+      ms_total_inside_printing_cost:
+        data.totals.total_inside_printing_cost || 0,
+      ms_cover_paper_id: data.cover?.selected_paper_id,
+      ms_cover_ups: data.cover?.ups,
+      ms_cover_sheets: data.cover?.sheets,
+      ms_cover_sheets_with_wastage: data.cover?.sheets_with_wastage,
+      ms_cover_sheet_rate: data.cover?.sheet_rate,
+      ms_cover_sheet_cost: data.cover?.total_sheet_cost,
+      ms_cover_printing_cost: data.cover?.printing_cost_total,
+      ms_cover_to_print: data.cover?.to_print ?? true, // default to true since cover is printed by default
+      binding_cost: data.totals.total_binding_cost || 0,
+      binding_cost_per_copy: data.totals.binding_cost_per_copy || 0,
+      total_sheet_cost: data.totals.total_sheet_cost,
+      total_printing_cost: data.totals.total_printing_cost,
+      sheet_cost_per_copy: data.totals.sheet_cost_per_copy,
+      printing_cost_per_copy: data.totals.printing_cost_per_copy,
+      unit_rate: data.totals.unit_rate,
+      item_total: data.totals.item_total,
     };
   }
   if (category === "Wide Format") {
     return {
       // wf_material_id is set server-side (from selected_wide_material_id)
-      wf_material_id:          data.wide?.selected_wide_material_id,  // ← CRITICAL FIX
-      wf_calculation_type:     data.wide?.calculation_type,
+      wf_material_id: data.wide?.selected_wide_material_id, // ← CRITICAL FIX
+      wf_calculation_type: data.wide?.calculation_type,
       wf_rolls_or_boards_used: data.wide?.details?.rolls_or_boards_used,
-      wf_wastage_sqft:         data.wide?.details?.wastage_sqft,
-      wf_ups:                  data.wide?.details?.ups,
-      wf_material_cost:        data.totals.material_cost  || 0,
-      wf_printing_cost:        data.totals.printing_cost  || 0,
-      binding_cost:            data.totals.total_binding_cost    || 0,
-      binding_cost_per_copy:   qty > 0 ? (data.totals.total_binding_cost || 0) / qty : 0,
-      unit_rate:               data.totals.unit_rate,
-      item_total:              data.totals.item_total,
+      wf_wastage_sqft: data.wide?.details?.wastage_sqft,
+      wf_ups: data.wide?.details?.ups,
+      wf_material_cost: data.totals.material_cost || 0,
+      wf_printing_cost: data.totals.printing_cost || 0,
+      binding_cost: data.totals.total_binding_cost || 0,
+      binding_cost_per_copy:
+        qty > 0 ? (data.totals.total_binding_cost || 0) / qty : 0,
+      unit_rate: data.totals.unit_rate,
+      item_total: data.totals.item_total,
       // WF has no sheets, so sheet totals are 0
-      total_sheet_cost:    0,
+      total_sheet_cost: 0,
       total_printing_cost: data.totals.printing_cost || 0,
       sheet_cost_per_copy: 0,
-      printing_cost_per_copy: qty > 0 ? (data.totals.printing_cost || 0) / qty : 0,
+      printing_cost_per_copy:
+        qty > 0 ? (data.totals.printing_cost || 0) / qty : 0,
     };
   }
   return null;
 };
 
+/**
+ * Pure billing breakdown — called on every render, zero side effects.
+ * discount is clamped so it can never exceed subtotal.
+ */
+const computeBilling = (totalAmount, discount, gstPct) => {
+  const subtotal = parseFloat(Number(totalAmount || 0).toFixed(2));
+  const disc = parseFloat(Math.min(Number(discount || 0), subtotal).toFixed(2));
+  const afterDisc = parseFloat((subtotal - disc).toFixed(2));
+  const rate = gstPct ? Number(gstPct) : 0;
+  const gstAmount = parseFloat(((afterDisc * rate) / 100).toFixed(2));
+  const finalAmount = parseFloat((afterDisc + gstAmount).toFixed(2));
+  return { subtotal, disc, afterDisc, gstAmount, finalAmount };
+};
 
 export default function JobCardForm({
   onCreated,
@@ -541,17 +564,19 @@ export default function JobCardForm({
     [searchClients, setFormAndRef],
   );
 
-
   // ── Dropdown loaders ─────────────────────────────────────────────────────────
-  const patchItem = useCallback((itemId, patch) => {
-    setFormAndRef((prev) => {
-      const idx = findItemIndexById(prev.job_items, itemId);
-      if (idx === -1) return prev;
-      const items = [...prev.job_items];
-      items[idx] = { ...items[idx], ...patch };
-      return { ...prev, job_items: items };
-    });
-  }, [findItemIndexById, setFormAndRef]);
+  const patchItem = useCallback(
+    (itemId, patch) => {
+      setFormAndRef((prev) => {
+        const idx = findItemIndexById(prev.job_items, itemId);
+        if (idx === -1) return prev;
+        const items = [...prev.job_items];
+        items[idx] = { ...items[idx], ...patch };
+        return { ...prev, job_items: items };
+      });
+    },
+    [findItemIndexById, setFormAndRef],
+  );
 
   // Added inside_papers reset so switching category starts fresh.
   const loadCategoryItems = useCallback(
@@ -560,47 +585,47 @@ export default function JobCardForm({
         const { data } = await api.get(
           `/api/fms/items/by-category?category=${category}`,
         );
-          patchItem(itemId, {
-            available_items: data, // store category items
-            enquiry_for: "",
-            size: "",
-            sides: "",
-            color_scheme: "",
-            inside_pages: "",
-            cover_pages: "",
-            quantity: "",
-            paper_type: "",
-            paper_gsm: "",
-            binding_types: [],
-            available_gsm: [],
-            available_gsm_cover: [],
-            available_wide_materials: [],
-            wide_material_name: "",
-            wide_material_gsm: "",
-            wide_material_thickness: "",
-            available_wide_gsm: [],
-            cover_paper_type: "",
-            cover_paper_gsm: "",
-            cover_color_scheme: "",
-            cover_press_type: "",
-            cover_to_print: true,        
-            unit_rate: "",
-            item_total: "",
-            best_inside_sheet: "",
-            best_inside_sheet_name: "",
-            best_cover_sheet: "",
+        patchItem(itemId, {
+          available_items: data, // store category items
+          enquiry_for: "",
+          size: "",
+          sides: "",
+          color_scheme: "",
+          inside_pages: "",
+          cover_pages: "",
+          quantity: "",
+          paper_type: "",
+          paper_gsm: "",
+          binding_types: [],
+          available_gsm: [],
+          available_gsm_cover: [],
+          available_wide_materials: [],
+          wide_material_name: "",
+          wide_material_gsm: "",
+          wide_material_thickness: "",
+          available_wide_gsm: [],
+          cover_paper_type: "",
+          cover_paper_gsm: "",
+          cover_color_scheme: "",
+          cover_press_type: "",
+          cover_to_print: true,
+          unit_rate: "",
+          item_total: "",
+          best_inside_sheet: "",
+          best_inside_sheet_name: "",
+          best_cover_sheet: "",
 
-            selected_material: "",
-            calculation_type: "",
-            rolls_or_boards_used: "",
-            wastage_sqft: "",
-            wide_ups: "",
-            folds_per_sheet: "",
-            creases_per_sheet: "",
-            press_type: "",
-            // reset inside papers to a single empty paper 
-            inside_papers: [createEmptyInsidePaper()],
-          });
+          selected_material: "",
+          calculation_type: "",
+          rolls_or_boards_used: "",
+          wastage_sqft: "",
+          wide_ups: "",
+          folds_per_sheet: "",
+          creases_per_sheet: "",
+          press_type: "",
+          // reset inside papers to a single empty paper
+          inside_papers: [createEmptyInsidePaper()],
+        });
       } catch (err) {
         console.error("Failed to load category items", err);
         showSoftError("Failed to load category items. Please try again.");
@@ -616,8 +641,8 @@ export default function JobCardForm({
           `/api/fms/items/bindings?category=${category}`,
         );
 
-        patchItem(itemId, { 
-          available_bindings: data 
+        patchItem(itemId, {
+          available_bindings: data,
         });
       } catch (err) {
         console.error("Failed to load category bindings", err);
@@ -633,8 +658,8 @@ export default function JobCardForm({
       try {
         const { data } = await api.get(`/api/fms/items/paper-types`);
 
-        patchItem(itemId, { 
-          available_papers: data 
+        patchItem(itemId, {
+          available_papers: data,
         });
       } catch (err) {
         console.error("Failed to load papers:", err);
@@ -649,7 +674,7 @@ export default function JobCardForm({
       try {
         const { data } = await api.get("/api/fms/items/wide-materials");
 
-        patchItem(itemId, { available_wide_materials: data }); 
+        patchItem(itemId, { available_wide_materials: data });
       } catch (err) {
         console.error("Failed to load wide materials", err);
         showSoftError("Failed to load wide materials. Please try again.");
@@ -665,8 +690,8 @@ export default function JobCardForm({
           `/api/fms/items/wide-materials/gsm?materialName=${materialName}`,
         );
 
-        patchItem(itemId, { 
-          available_wide_gsm: data 
+        patchItem(itemId, {
+          available_wide_gsm: data,
         });
       } catch (err) {
         console.error("Failed to load wide GSM");
@@ -684,8 +709,12 @@ export default function JobCardForm({
           `/api/fms/items/paper-types/gsm?paperName=${paperName}`,
         );
 
-        patchItem(itemId, type === "inside" ? { available_gsm: data } : { available_gsm_cover: data });
-        
+        patchItem(
+          itemId,
+          type === "inside"
+            ? { available_gsm: data }
+            : { available_gsm_cover: data },
+        );
       } catch (err) {
         console.error("Failed to load paper gsm:", err);
         showSoftError("Failed to load paper GSM. Please try again.");
@@ -694,7 +723,6 @@ export default function JobCardForm({
     [patchItem, showSoftError],
   );
 
-
   // Loads GSM options for a SPECIFIC inside paper (by its _id).
   // This is separate from loadItemPapersGsm because each inside paper can
   // have a different paper_type, so each needs its own GSM list.
@@ -702,7 +730,7 @@ export default function JobCardForm({
     async (itemId, paperId, paperName, clearGsm = true) => {
       try {
         const { data } = await api.get(
-          `/api/fms/items/paper-types/gsm?paperName=${paperName}`
+          `/api/fms/items/paper-types/gsm?paperName=${paperName}`,
         );
         setFormAndRef((prev) => {
           const itemIndex = findItemIndexById(prev.job_items, itemId);
@@ -729,7 +757,7 @@ export default function JobCardForm({
         showSoftError("Failed to load paper GSM. Please try again.");
       }
     },
-    [findItemIndexById, showSoftError, setFormAndRef]
+    [findItemIndexById, showSoftError, setFormAndRef],
   );
 
   const loadSizes = useCallback(
@@ -737,8 +765,8 @@ export default function JobCardForm({
       try {
         const { data } = await api.get(`/api/fms/items/sizes?search=${search}`);
 
-        patchItem(itemId, { 
-          available_sizes: data 
+        patchItem(itemId, {
+          available_sizes: data,
         });
       } catch (err) {
         console.error("Failed to load sizes", err);
@@ -761,7 +789,10 @@ export default function JobCardForm({
       // For Multiple Sheet: pass first inside paper's data at item level
       // so backend (unchanged) can still calculate. Remove when backend updated.
       let itemToSend = { ...item, unit_rate: null, item_total: null };
-      if (item.category === "Multiple Sheet" && item.inside_papers?.length > 0) {
+      if (
+        item.category === "Multiple Sheet" &&
+        item.inside_papers?.length > 0
+      ) {
         const firstPaper = item.inside_papers[0];
         itemToSend = {
           ...itemToSend,
@@ -794,44 +825,43 @@ export default function JobCardForm({
 
         const qty = Number(formRef.current.job_items[index].quantity || 1);
 
-      // Build costing_snapshot from the API response
-      const costingSnapshot = buildCostingSnapshot(item.category, data, qty);
+        // Build costing_snapshot from the API response
+        const costingSnapshot = buildCostingSnapshot(item.category, data, qty);
 
-        // [FIX 1A] Merge inside_papers_results back into item.inside_papers        
+        // [FIX 1A] Merge inside_papers_results back into item.inside_papers
         setFormAndRef((prev) => {
           const updatedItems = [...prev.job_items];
           const currentInsidePapers = updatedItems[index].inside_papers || [];
 
-
-          const mergedInsidePapers =
-            data.inside_papers_results?.length
-              ? currentInsidePapers.map((paper, pIdx) => {
-                  const result = data.inside_papers_results[pIdx];
-                  if (!result) return paper;
-                  // Merge calc result fields but preserve frontend-only fields (_id, available_gsm)
-                  return {
-                    ...paper,
-                    selected_paper_id:    result.selected_paper_id   ?? paper.selected_paper_id,
-                    ups:                  result.ups,
-                    effective_ups:        result.effective_ups,
-                    sheets:               result.sheets,
-                    sheets_with_wastage:  result.sheets_with_wastage,
-                    sheet_rate:           result.sheet_rate,
-                    sheet_cost:           result.sheet_cost,
-                    printing_cost:        result.printing_cost,
-                    best_sheet_size_name: result.best_sheet_size_name,
-                    best_sheet_name:      result.best_sheet_name,
-                    best_sheet_dims:      result.best_sheet_dims,
-                  };
-                })
-              : currentInsidePapers;
+          const mergedInsidePapers = data.inside_papers_results?.length
+            ? currentInsidePapers.map((paper, pIdx) => {
+                const result = data.inside_papers_results[pIdx];
+                if (!result) return paper;
+                // Merge calc result fields but preserve frontend-only fields (_id, available_gsm)
+                return {
+                  ...paper,
+                  selected_paper_id:
+                    result.selected_paper_id ?? paper.selected_paper_id,
+                  ups: result.ups,
+                  effective_ups: result.effective_ups,
+                  sheets: result.sheets,
+                  sheets_with_wastage: result.sheets_with_wastage,
+                  sheet_rate: result.sheet_rate,
+                  sheet_cost: result.sheet_cost,
+                  printing_cost: result.printing_cost,
+                  best_sheet_size_name: result.best_sheet_size_name,
+                  best_sheet_name: result.best_sheet_name,
+                  best_sheet_dims: result.best_sheet_dims,
+                };
+              })
+            : currentInsidePapers;
 
           updatedItems[index] = {
             ...updatedItems[index],
             // Store unit & item total
             unit_rate: data.totals.unit_rate,
             item_total: data.totals.item_total,
-            costing_snapshot: costingSnapshot,// ← sent to backend for JobItemCosting
+            costing_snapshot: costingSnapshot, // ← sent to backend for JobItemCosting
 
             // ← NEW: inside papers now carry per-paper calc results
             inside_papers: mergedInsidePapers,
@@ -1039,7 +1069,10 @@ export default function JobCardForm({
       // so isItemReady naturally guards that).
       if (INSIDE_PAPER_CALC_TRIGGER_FIELDS.has(field)) {
         setTimeout(() => {
-          const latestIndex = findItemIndexById(formRef.current.job_items, itemId);
+          const latestIndex = findItemIndexById(
+            formRef.current.job_items,
+            itemId,
+          );
           if (latestIndex === -1) return;
           const latestItem = formRef.current.job_items[latestIndex];
           if (isItemReady(latestItem)) {
@@ -1047,10 +1080,13 @@ export default function JobCardForm({
           }
         }, 0);
       }
-
-
     },
-    [findItemIndexById, setFormAndRef, loadInsidePaperGsm, calculateItemBackend],
+    [
+      findItemIndexById,
+      setFormAndRef,
+      loadInsidePaperGsm,
+      calculateItemBackend,
+    ],
   );
 
   // Adds a new empty inside paper to a Multiple Sheet item (max 4).
@@ -1070,7 +1106,7 @@ export default function JobCardForm({
         return { ...prev, job_items: items };
       });
     },
-    [findItemIndexById, setFormAndRef]
+    [findItemIndexById, setFormAndRef],
   );
 
   // Removes an inside paper from a Multiple Sheet item (min 1 must remain).
@@ -1083,13 +1119,13 @@ export default function JobCardForm({
         const item = { ...items[index] };
         if ((item.inside_papers || []).length <= 1) return prev; // min 1
         item.inside_papers = item.inside_papers.filter(
-          (p) => p._id !== paperId
+          (p) => p._id !== paperId,
         );
         items[index] = item;
         return { ...prev, job_items: items };
       });
     },
-    [findItemIndexById, setFormAndRef]
+    [findItemIndexById, setFormAndRef],
   );
 
   const createEmptyItem = React.useCallback(
@@ -1121,11 +1157,11 @@ export default function JobCardForm({
       cover_paper_gsm: "",
       cover_color_scheme: "",
       cover_press_type: "",
-      cover_to_print: true,         // ← ADD: cover is printed by default
+      cover_to_print: true, // ← ADD: cover is printed by default
       // Shared dropdowns
       available_items: [],
-      available_papers: [],   // shared across all inside papers
-      available_gsm: [],      // for Single Sheet item-level paper
+      available_papers: [], // shared across all inside papers
+      available_gsm: [], // for Single Sheet item-level paper
       available_gsm_cover: [],
       available_bindings: [],
       available_wide_materials: [],
@@ -1327,10 +1363,11 @@ export default function JobCardForm({
     [findItemIndexById, setFormAndRef],
   );
 
-    // Edit mode: map existing DB job items to the new inside_papers structure.
+  // Edit mode: map existing DB job items to the new inside_papers structure.
   useEffect(() => {
     if (!existingJob) return;
 
+    console.log("Mapping existing job for edit mode:", existingJob);
     const formatDateTimeLocal = (isoString) => {
       if (!isoString) return "";
       const date = new Date(isoString);
@@ -1359,7 +1396,10 @@ export default function JobCardForm({
       // New records saved with inside_papers will have the array already.
       let insidePapers;
       if (item.category === "Multiple Sheet") {
-        if (Array.isArray(item.inside_papers) && item.inside_papers.length > 0) {
+        if (
+          Array.isArray(item.inside_papers) &&
+          item.inside_papers.length > 0
+        ) {
           // Already in new format — just ensure _id and available_gsm exist
           insidePapers = item.inside_papers.map((p) => ({
             ...p,
@@ -1384,7 +1424,6 @@ export default function JobCardForm({
         insidePapers = [createEmptyInsidePaper()];
       }
 
-
       return {
         ...item,
         // enquiry_for: item.enquiry_for,
@@ -1395,7 +1434,8 @@ export default function JobCardForm({
         paper_gsm: item.selectedPaper?.gsm || "",
 
         // Rebuild cover fields if available
-        cover_to_print: item.cover_to_print !== undefined ? item.cover_to_print : true,
+        cover_to_print:
+          item.cover_to_print !== undefined ? item.cover_to_print : true,
         cover_paper_type: item.selectedCoverPaper?.paper_name || "",
         cover_paper_gsm: item.selectedCoverPaper?.gsm || "",
 
@@ -1427,7 +1467,10 @@ export default function JobCardForm({
         available_wide_materials: [],
         available_wide_gsm: [],
         inside_papers: insidePapers,
-        costing_snapshot: rebuildCostingSnapshotFromDB(item.category, item.costing),
+        costing_snapshot: rebuildCostingSnapshotFromDB(
+          item.category,
+          item.costing,
+        ),
       };
     });
 
@@ -1436,6 +1479,7 @@ export default function JobCardForm({
       delivery_date: formatDateTimeLocal(existingJob.delivery_date),
       proof_date: formatDateOnly(existingJob.proof_date),
       receiving_date_for_mm: formatDateOnly(existingJob.receiving_date_for_mm),
+      gst_percentage: existingJob.gst_percentage ?? "",
       job_items: mappedItems,
     });
 
@@ -1854,7 +1898,7 @@ export default function JobCardForm({
               batchItemChange={batchItemChange}
               resetItemFields={resetItemFields}
               onRemove={removeItem}
-               // NEW props for inside papers in Multiple Sheet
+              // NEW props for inside papers in Multiple Sheet
               handleInsidePaperChange={handleInsidePaperChange}
               addInsidePaper={addInsidePaper}
               removeInsidePaper={removeInsidePaper}
@@ -1870,68 +1914,194 @@ export default function JobCardForm({
           </Button>
         </div>
 
-        <Field label="Total Amount">
-          <Input
-            type="number"
-            name="total_amount"
-            value={form.total_amount || 0}
-            onChange={onChange}
-            readOnly
-          />
-        </Field>
+        {/* ══════════════════ BILLING SUMMARY ══════════════════ */}
+        <div className="md:col-span-3 mt-4">
+          <h3 className="font-semibold text-blue-700 mb-3">
+            💰 Billing Summary
+          </h3>
 
-        <Field label="Discount">
-          <Input
-            type="number"
-            step="0.1"
-            name="discount"
-            value={form.discount || 0}
-            onChange={onChange}
-          />
-        </Field>
+          {/* ── Input row ── */}
+          <div className="grid md:grid-cols-4 gap-4">
+            {/* Subtotal — read-only, auto-computed from job items */}
+            <Field label="Subtotal (auto)">
+              <Input
+                type="number"
+                name="total_amount"
+                value={form.total_amount || 0}
+                readOnly
+                className="bg-slate-50 cursor-not-allowed"
+              />
+            </Field>
 
-        <Field label="Advance Payment">
-          <Input
-            type="number"
-            min="0"
-            name="advance_payment"
-            value={form.advance_payment || 0}
-            onChange={onChange}
-            step="0.01"
-          />
-        </Field>
+            {/* Discount */}
+            <Field label="Discount (₹)">
+              <Input
+                type="number"
+                name="discount"
+                min="0"
+                step="0.01"
+                value={form.discount || ""}
+                placeholder="0.00"
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const subtotal = Number(form.total_amount || 0);
+                  // Clamp: can never exceed subtotal
+                  const val = raw === "" ? "" : Math.min(Number(raw), subtotal);
+                  setFormAndRef((f) => ({ ...f, discount: val }));
+                }}
+              />
+            </Field>
 
-        <Field label="Mode of Payment">
-          <Select
-            name="mode_of_payment"
-            value={form.mode_of_payment}
-            onChange={onChange}
-          >
-            <option value="">Select</option>
-            <option value="upi">UPI</option>
-            <option value="neft">NEFT</option>
-            <option value="rtgs">RTGS</option>
-            <option value="pfms">PFMS</option>
-            <option value="cash">Cash</option>
-            <option value="cheque">Cheque</option>
-          </Select>
-        </Field>
+            {/* GST */}
+            <Field label="GST">
+              <Select
+                name="gst_percentage"
+                value={form.gst_percentage || ""}
+                onChange={onChange}
+              >
+                <option value="">No GST</option>
+                <option value="5.00">5% GST</option>
+                <option value="18.00">18% GST</option>
+              </Select>
+            </Field>
 
-        <Field label="Payment Status">
-          <Select
-            name="payment_status"
-            value={form.payment_status}
-            onChange={onChange}
-          >
-            <option value="">Select</option>
-            <option>Paid</option>
-            <option>Half Paid</option>
-            <option>Un-paid</option>
-          </Select>
-        </Field>
+            {/* Mode of Payment */}
+            <Field label="Mode of Payment">
+              <Select
+                name="mode_of_payment"
+                value={form.mode_of_payment}
+                onChange={onChange}
+              >
+                <option value="">Select</option>
+                <option value="upi">UPI</option>
+                <option value="neft">NEFT</option>
+                <option value="rtgs">RTGS</option>
+                <option value="pfms">PFMS</option>
+                <option value="cash">Cash</option>
+                <option value="cheque">Cheque</option>
+              </Select>
+            </Field>
+          </div>
 
-        {/* ---------------- SUBMIT ---------------- */}
-        <div className="md:col-span-3 mt-6 mx-auto ">
+          {/* ── Live breakdown panel ── */}
+          {(() => {
+            const { subtotal, disc, afterDisc, gstAmount, finalAmount } =
+              computeBilling(
+                form.total_amount,
+                form.discount,
+                form.gst_percentage,
+              );
+
+            // Only show when there's something meaningful
+            if (subtotal === 0 && !form.gst_percentage) return null;
+
+            return (
+              <div className="mt-3 rounded-xl border border-slate-200 overflow-hidden text-sm">
+                {/* Subtotal row */}
+                <div className="flex justify-between items-center px-4 py-2.5 bg-white border-b border-slate-100">
+                  <span className="text-slate-500">Subtotal</span>
+                  <span className="font-medium text-slate-700">
+                    ₹
+                    {subtotal.toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+
+                {/* Discount row — only shown when discount > 0 */}
+                {disc > 0 && (
+                  <div className="flex justify-between items-center px-4 py-2.5 bg-white border-b border-slate-100">
+                    <span className="text-slate-500">
+                      Discount
+                      <span className="ml-2 text-xs text-red-500 font-medium">
+                        − ₹
+                        {disc.toLocaleString("en-IN", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    </span>
+                    <span className="font-medium text-slate-700">
+                      ₹
+                      {afterDisc.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
+
+                {/* GST row — only shown when GST is selected */}
+                {form.gst_percentage && (
+                  <div className="flex justify-between items-center px-4 py-2.5 bg-blue-50 border-b border-blue-100">
+                    <span className="text-blue-600">
+                      GST @ {form.gst_percentage}%
+                      <span className="ml-1.5 text-xs text-blue-400">
+                        on ₹
+                        {afterDisc.toLocaleString("en-IN", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    </span>
+                    <span className="font-medium text-blue-700">
+                      + ₹
+                      {gstAmount.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
+
+                {/* Final amount — always shown */}
+                <div className="flex justify-between items-center px-4 py-3 bg-green-50">
+                  <span className="font-semibold text-green-800">
+                    Final Amount
+                    {form.gst_percentage
+                      ? ` (incl. ${form.gst_percentage}% GST)`
+                      : disc > 0
+                        ? " (after discount)"
+                        : ""}
+                  </span>
+                  <span className="text-xl font-bold text-green-700">
+                    ₹
+                    {finalAmount.toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Payment fields row ── */}
+          <div className="grid md:grid-cols-3 gap-4 mt-4">
+            <Field label="Advance Payment (₹)">
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                name="advance_payment"
+                value={form.advance_payment || ""}
+                placeholder="0.00"
+                onChange={onChange}
+              />
+            </Field>
+
+            <Field label="Payment Status">
+              <Select
+                name="payment_status"
+                value={form.payment_status}
+                onChange={onChange}
+              >
+                <option value="">Select</option>
+                <option>Paid</option>
+                <option>Half Paid</option>
+                <option>Un-paid</option>
+              </Select>
+            </Field>
+          </div>
+        </div>
+
+        {/* ══════════════════ SUBMIT ══════════════════ */}
+        <div className="md:col-span-3 mt-6 mx-auto">
           <Button type="submit" disabled={loading}>
             {loading
               ? isEditMode
@@ -1946,4 +2116,3 @@ export default function JobCardForm({
     </FormCard>
   );
 }
-
