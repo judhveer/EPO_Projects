@@ -37,6 +37,7 @@ export default function DashboardTable({
               </th>
               <th className="border p-2"> Job Created On</th>
               <th className="border p-2">Client Name</th>
+              <th className="border p-2">Items</th>
               <th className="border p-2">Client Type</th>
               <th className="border p-2">Order Type</th>
               <th className="border p-2">Address</th>
@@ -54,7 +55,6 @@ export default function DashboardTable({
                 Status
               </th>
               <th className="border p-2">Job Completion Deadline</th>
-              <th className="border p-2">Items</th>
               <th className="border p-2">Designer State</th>
               <th className="border p-2">Approval State</th>
             </tr>
@@ -90,6 +90,21 @@ export default function DashboardTable({
                       .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border p-2">{job.client_name}</td>
+                  <td className="border p-2 text-center text-xs">
+                    {job.item_count} items
+                    {job.item_count > 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation(); // VERY IMPORTANT
+                          onViewItems(job.job_no);
+                        }}
+                        className="ml-2 text-blue-600 underline cursor-pointer relative z-30"
+                      >
+                        View
+                      </button>
+                    )}
+                  </td>
                   <td className="border p-2">{job.client_type}</td>
                   <td className="border p-2 ">{job.order_type}</td>
                   <td className="border p-2 ">{job.address}</td>
@@ -163,23 +178,6 @@ export default function DashboardTable({
                       .setZone("Asia/Kolkata")
                       .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
-
-                  <td className="border p-2 text-center text-xs">
-                    {job.item_count} items
-                    {job.item_count > 0 && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation(); // VERY IMPORTANT
-                          onViewItems(job.job_no);
-                        }}
-                        className="ml-2 text-blue-600 underline cursor-pointer relative z-30"
-                      >
-                        View
-                      </button>
-                    )}
-                  </td>
-
                   
                   <td className="border p-2">
                     {job.assignments?.[0]
