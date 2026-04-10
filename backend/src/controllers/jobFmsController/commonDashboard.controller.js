@@ -185,7 +185,10 @@ export const getDashboardJobDetails = async (req, res) => {
         message: "Job not found",
       });
     }
-    console.log("getDashboardJobDetails: ", job);
+    const data = job.toJSON();
+
+    console.log("Assignments:", data.assignments);
+    console.log("Client Approvals:", data.clientApprovals);
     res.json(job);
   } catch (err) {
     console.error("Dashboard job details error:", err);
