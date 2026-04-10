@@ -130,6 +130,7 @@ export default function ProductionTable() {
               </th>
               <th className="border p-2">Job Created On</th>
               <th className="border p-2">Client Name</th>
+              <th className="border p-2">Items</th>
               <th className="border p-2">Client Type</th>
               <th className="border p-2">Order Type</th>
               <th className="border p-2">Contact</th>
@@ -142,7 +143,6 @@ export default function ProductionTable() {
               <th className="border p-2">No of Files</th>
               <th className="border p-2">Status</th>
               <th className="border p-2">Job Completion Deadline</th>
-              <th className="border p-2">Items</th>
               <th className="border p-2 sticky right-0 bg-blue-800 z-40">
                 Stage Update
               </th>
@@ -175,6 +175,17 @@ export default function ProductionTable() {
                       .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border p-2 group-hover:text-white">{job.client_name}</td>
+                  <td className="border p-2 text-center text-xs group-hover:text-white">
+                    {job.item_count || 0} items
+                    {job.item_count > 0 && (
+                      <button
+                        onClick={() => setItemSidebarJobNo(job.job_no)}
+                        className="ml-2 text-blue-600 hover:text-blue-800 underline text-xs cursor-pointer group-hover:text-white"
+                      >
+                        View
+                      </button>
+                    )}
+                  </td>
                   <td className="border p-2 group-hover:text-white">{job.client_type}</td>
                   <td className="border p-2 group-hover:text-white">{job.order_type}</td>
                   <td className="border p-2 group-hover:text-white">{job.contact_number}</td>
@@ -223,18 +234,6 @@ export default function ProductionTable() {
                     {DateTime.fromJSDate(new Date(job.job_completion_deadline))
                       .setZone("Asia/Kolkata")
                       .toFormat("dd LLL yyyy, hh:mm a")}
-                  </td>
-
-                  <td className="border p-2 text-center text-xs group-hover:text-white">
-                    {job.item_count || 0} items
-                    {job.item_count > 0 && (
-                      <button
-                        onClick={() => setItemSidebarJobNo(job.job_no)}
-                        className="ml-2 text-blue-600 hover:text-blue-800 underline text-xs cursor-pointer group-hover:text-white"
-                      >
-                        View
-                      </button>
-                    )}
                   </td>
 
                   {/* Simplified Actions: Single Mark Completed Button */}
