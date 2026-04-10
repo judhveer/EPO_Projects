@@ -356,6 +356,7 @@ export default function DesignerTable({ refresh }) {
               </th>
               <th className="border p-1 sm:p-2"> Job Created On</th>
               <th className="border p-1 sm:p-2">Client Name</th>
+              <th className="border p-1 sm:p-2">Items</th>
               <th className="border p-1 sm:p-2">Order Type</th>
               <th className="border p-1 sm:p-2">Order Handled By</th>
               <th className="border p-1 sm:p-2">Execution Location</th>
@@ -370,7 +371,6 @@ export default function DesignerTable({ refresh }) {
               <th className="border p-1 sm:p-2">Instructions</th>
               <th className="border p-1 sm:p-2">No of Files</th>
               <th className="border p-1 sm:p-2">Job Completion Deadline</th>
-              <th className="border p-1 sm:p-2">Items</th>
               <th className="border p-1 sm:p-2 bg-blue-800 sticky right-[220px] sm:right-[260px] min-w-[200px] sm:min-w-[250px] z-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                 {" "}
                 Estimated Completion Time
@@ -407,6 +407,22 @@ export default function DesignerTable({ refresh }) {
                       .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border p-1 sm:p-2">{job.client_name}</td>
+
+                  <td className="border p-1 sm:p-2 text-center text-gray-500 text-xs italic hover:text-white cursor-default">
+                    {job.item_count || 0} items{" "}
+                    {job.item_count > 0 && (
+                      <button
+                        onClick={() => { 
+                          setOpenActionDropdown(null);
+                          setSelectedJobNo(job.job_no);
+                        }}
+                        className="ml-2 text-blue-600 hover:text-blue-800 underline text-xs cursor-pointer"
+                      >
+                        View
+                      </button>
+                    )}
+                  </td>
+
                   <td className="border p-1 sm:p-2 ">{job.order_type}</td>
                   <td className="border p-1 sm:p-2">{job.order_handled_by}</td>
                   <td className="border p-1 sm:p-2">
@@ -453,21 +469,6 @@ export default function DesignerTable({ refresh }) {
                           .setZone("Asia/Kolkata")
                           .toFormat("dd LLL yyyy, hh:mm a")
                       : "Not Set"}
-                  </td>
-
-                  <td className="border p-1 sm:p-2 text-center text-gray-500 text-xs italic hover:text-white cursor-default">
-                    {job.item_count || 0} items{" "}
-                    {job.item_count > 0 && (
-                      <button
-                        onClick={() => { 
-                          setOpenActionDropdown(null);
-                          setSelectedJobNo(job.job_no);
-                        }}
-                        className="ml-2 text-blue-600 hover:text-blue-800 underline text-xs cursor-pointer"
-                      >
-                        View
-                      </button>
-                    )}
                   </td>
 
                   {/* action-dropdown */}
