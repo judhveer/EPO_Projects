@@ -1241,6 +1241,14 @@ export const cancelJobCard = async (req, res) => {
     job.current_stage = "cancelled";
     job.status = "cancelled";
 
+    await JobAssignment.update(
+      { status: "cancelled" },
+      { where: { 
+        job_no: job_no,
+        status: ["assigned", "in_progress"],
+      }, transaction: t }
+    );
+
     await job.save();
 
     await advanceStage({
