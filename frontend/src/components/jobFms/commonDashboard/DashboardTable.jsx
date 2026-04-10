@@ -50,7 +50,9 @@ export default function DashboardTable({
               <th className="border p-2">Priority</th>
               <th className="border p-2">Instructions</th>
               <th className="border p-2">Payment Status</th>
-              <th className="border p-2">Status</th>
+              <th className="border p-2 sticky right-0 bg-blue-800 z-30 text-center font-semibold">
+                Status
+              </th>
               <th className="border p-2">Job Completion Deadline</th>
               <th className="border p-2">Items</th>
               <th className="border p-2">Designer State</th>
@@ -137,7 +139,7 @@ export default function DashboardTable({
                       {job.payment_status}
                     </span>
                   </td>
-                  <td className="border p-2">
+                  <td className="border p-2 sticky right-0 bg-inherit z-20">
                     <span
                       className={`px-2 py-1 rounded-md text-xs font-semibold ${
                         job.status === "completed"
