@@ -74,6 +74,18 @@ const calculateJobCompletionDeadline = (deliveryDateInput) => {
 };
 
 
+
+
+function computeGST(totalAmount, discount, gstPct) {
+  const subtotal   = parseFloat(Number(totalAmount || 0).toFixed(2));
+  const disc       = parseFloat(Math.min(Number(discount || 0), subtotal).toFixed(2));
+  const afterDiscount = parseFloat((subtotal - disc).toFixed(2));
+  const rate       = gstPct ? Number(gstPct) : 0;
+  const gst_amount = parseFloat(((afterDiscount * rate) / 100).toFixed(2));
+  const final_amount = parseFloat((afterDiscount + gst_amount).toFixed(2));
+  return { afterDiscount, gst_amount, final_amount };
+}
+
 /**
  * CREATE JOB CARD + JOB ITEMS (in a single transaction)
  */
@@ -112,6 +124,7 @@ export const createJobCard = async (req, res) => {
       no_of_files,
       is_direct_to_production = false,
       discount = 0,
+      gst_percentage = null,
       job_items = [], // ✅ default empty array
     } = req.body;
 
@@ -150,6 +163,18 @@ export const createJobCard = async (req, res) => {
         message: "No of files should be same as job items.",
       });
     }
+
+    // After the existing required-fields validation block:
+    if (
+      gst_percentage !== null &&
+      gst_percentage !== undefined &&
+      gst_percentage !== "" &&
+      ![5, 18].includes(Number(gst_percentage))
+    ) {
+      return res.status(400).json({ message: "GST percentage must be 5 or 18" });
+    }
+
+    const { gst_amount, final_amount } = computeGST(total_amount, discount, gst_percentage);
 
     // calculate job completion deadline
     const job_completion_deadline = calculateJobCompletionDeadline(delivery_date);
@@ -191,6 +216,9 @@ export const createJobCard = async (req, res) => {
         current_stage: initialStage,
         job_completion_deadline,
         discount: Number(discount) || 0,
+        gst_percentage: gst_percentage ? Number(gst_percentage) : null,  
+        gst_amount,      
+        final_amount,     
       },
       { transaction: t }
     );
@@ -745,6 +773,37 @@ export const updateJobCard = async (req, res) => {
       const job_completion_deadline = calculateJobCompletionDeadline(req.body.delivery_date);
       console.log("job completion deadline: ", job_completion_deadline);
       updates.job_completion_deadline = job_completion_deadline;
+    }
+
+    // Recompute GST whenever billing-related fields change
+    const billingFieldChanged =
+      "total_amount"    in updates ||
+      "discount"        in updates ||
+      "gst_percentage"  in updates;
+
+    if (billingFieldChanged) {
+      // Validate GST if it was sent
+      if (
+        updates.gst_percentage !== undefined &&
+        updates.gst_percentage !== null &&
+        updates.gst_percentage !== "" &&
+        ![5, 18].includes(Number(updates.gst_percentage))
+      ) {
+        await t.rollback();
+        return res.status(400).json({ message: "GST percentage must be 5 or 18" });
+      }
+
+      // Use updated values if present, otherwise fall back to current DB values
+      const latestTotal  = Number(updates.total_amount  ?? jobCard.total_amount  ?? 0);
+      const latestDisc   = Number(updates.discount       ?? jobCard.discount       ?? 0);
+      const latestGstPct =
+        "gst_percentage" in updates
+          ? updates.gst_percentage
+          : jobCard.gst_percentage;
+
+      const { gst_amount, final_amount } = computeGST(latestTotal, latestDisc, latestGstPct);
+
+      await jobCard.update({ gst_amount, final_amount }, { transaction: t });
     }
 
     await jobCard.update(updates, { transaction: t });
