@@ -77,6 +77,11 @@ export default function DashboardTable({
                         {"Redesign"}
                       </div>
                     )}
+                    {job.status === "cancelled" && (
+                      <div className="text-[11px] text-red-800 italic mt-1 bg-gray-300 rounded-2xl">
+                        {"Cancelled"}
+                      </div>
+                    )}
                   </td>
                   <td className="border p-2">
                     {DateTime
