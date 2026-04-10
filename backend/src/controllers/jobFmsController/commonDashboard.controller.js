@@ -239,6 +239,7 @@ export const getJobItemsByJobNo = async (req, res) => {
           ...json,
           binding_types:  normalizeFields(json.binding_types),
           inside_papers:  normalizeFields(json.inside_papers),
+          binding_targets: normalizeFields(json.binding_targets),
           cover_to_print: json.cover_to_print !== false, // normalize to boolean
           costing,
         }
