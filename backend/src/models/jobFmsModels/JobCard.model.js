@@ -184,6 +184,30 @@ export default (sequelize) => {
         allowNull: false,
         default: 0.0
       },
+      gst_percentage: {
+        type: DataTypes.DECIMAL(5, 2),
+        allowNull: true,
+        defaultValue: null,
+        validate: {
+          isIn: {
+            args: [[null, 5, 18]],
+            msg: "GST percentage must be 5, 18, or null",
+          },
+        },
+        comment: "5.00 = 5%, 18.00 = 18%, NULL = no GST",
+      },
+      gst_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: false,
+        defaultValue: 0.0,
+        comment: "total_amount × gst_percentage / 100",
+      },
+      final_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: false,
+        defaultValue: 0.0,
+        comment: "total_amount - discount + gst_amount",
+      },
       completed_at: {
         type: DataTypes.DATE,
         allowNull: true,
