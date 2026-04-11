@@ -267,13 +267,26 @@ const pickBestSheet = (paperRows, jobSize) => {
   console.log("Pick best sheet called:");
   let bestSheet = null;
   let bestUps = 0;
+  let bestWastage = Infinity;
 
   for (const s of paperRows) {
     const ups = calculateUps({ width: s.width, height: s.height }, jobSize);
-    if (ups > bestUps) {
-      bestUps = ups;
-      bestSheet = s;
+    if(ups === 0) continue; // sheet is too small to fit even one piece — skip
+
+    const sheetArea  = Number(s.width)       * Number(s.height);
+    const usedArea   = Number(jobSize.width) * Number(jobSize.height) * ups;
+    const wastage    = sheetArea - usedArea;
+
+    const isBetter =
+      ups > bestUps ||                          // strictly more copies per sheet
+      (ups === bestUps && wastage < bestWastage); // same copies, less waste
+
+    if (isBetter) {
+      bestSheet   = s;
+      bestUps     = ups;
+      bestWastage = wastage;
     }
+
   }
 
   return { bestSheet, bestUps };
@@ -782,7 +795,6 @@ export const calculateItemController = async (req, res) => {
             },
           ];
 
-      console.log("insidePapers: ", insidePapers);
 
       const coverPressType = (item.cover_press_type  || "").toUpperCase();
 
