@@ -39,6 +39,7 @@ import CommonDashboard from "./pages/jobFms/CommonDashboard.jsx";
 import ProductionDashboard from "./pages/jobFms/ProductionDashboard.jsx"
 import OutboundOrders from "./components/jobFms/OutboundOrders.jsx";
 import PendingBillingDashboard from "./components/jobFms/accounts/PendingBillingDashboard.jsx";
+import QuotationDashboard from "./pages/jobFms/QuotationDashboard.jsx";
 
 
 
@@ -192,11 +193,23 @@ export default function App() {
 
             <Route index element={<Navigate to="common" replace />} />
 
+              {/* Permission is missing yet */}
+            <Route
+              path="quotation"
+              element={
+                <Gate
+                  perm="jobfms.quotation.view"
+                  fallback={<div className="p-6">Not Authorized</div>}
+                >
+                  <QuotationDashboard />
+                </Gate>
+              }
+            />
+
             <Route
               path="common"
               element={<CommonDashboard />}
             />
-
 
             <Route
               path="writer"
