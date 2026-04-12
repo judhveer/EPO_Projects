@@ -385,8 +385,8 @@ export const createJobCard = async (req, res) => {
             total_printing_cost:    cs.total_printing_cost    ?? 0,
             sheet_cost_per_copy:    cs.sheet_cost_per_copy    ?? 0,
             printing_cost_per_copy: cs.printing_cost_per_copy ?? 0,
-            unit_rate:              cs.unit_rate               ?? 0,
-            item_total:             cs.item_total              ?? 0, 
+            unit_rate:              Number(cs.unit_rate ?? 0),
+            item_total:             Number(cs.item_total ?? 0), 
           }, { transaction: t });
         }
       }
@@ -967,8 +967,8 @@ export const updateJobCard = async (req, res) => {
         total_printing_cost:     cs.total_printing_cost     ?? 0,
         sheet_cost_per_copy:     cs.sheet_cost_per_copy     ?? 0,
         printing_cost_per_copy:  cs.printing_cost_per_copy  ?? 0,
-        unit_rate:               cs.unit_rate               ?? 0,
-        item_total:              cs.item_total              ?? 0,
+        unit_rate:               Number(cs.unit_rate ?? 0),
+        item_total:              Number(cs.item_total ?? 0),
       };
 
       // Upsert via unique constraint on job_item_id
