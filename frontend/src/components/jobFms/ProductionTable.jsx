@@ -131,17 +131,17 @@ export default function ProductionTable() {
               <th className="border p-2">Job Created On</th>
               <th className="border p-2">Client Name</th>
               <th className="border p-2">Items</th>
+              <th className="border p-2">Delivery Date</th>
+              <th className="border p-2 max-w-[500px]">Delivery Location</th>
+              <th className="border p-2">Instructions</th>
+              <th className="border p-2">Status</th>
               <th className="border p-2">Client Type</th>
               <th className="border p-2">Order Type</th>
               <th className="border p-2">Contact</th>
               <th className="border p-2">Order Handled By</th>
               <th className="border p-2">Execution Location</th>
-              <th className="border p-2">Delivery Date</th>
-              <th className="border p-2 max-w-[500px]">Delivery Location</th>
               <th className="border p-2">Priority</th>
-              <th className="border p-2">Instructions</th>
               <th className="border p-2">No of Files</th>
-              <th className="border p-2">Status</th>
               <th className="border p-2">Job Completion Deadline</th>
               <th className="border p-2 sticky right-0 bg-blue-800 z-40">
                 Stage Update
@@ -186,15 +186,14 @@ export default function ProductionTable() {
                       </button>
                     )}
                   </td>
-                  <td className="border p-2 group-hover:text-white">{job.client_type}</td>
-                  <td className="border p-2 group-hover:text-white">{job.order_type}</td>
-                  <td className="border p-2 group-hover:text-white">{job.contact_number}</td>
-                  <td className="border p-2 group-hover:text-white">{job.order_handled_by}</td>
-                  <td className="border p-2 group-hover:text-white">{job.execution_location}</td>
                   <td className="border p-2 font-semibold text-blue-600 group-hover:text-white">
-                    {DateTime.fromJSDate(new Date(job.delivery_date))
-                      .setZone("Asia/Kolkata")
-                      .toFormat("dd LLL yyyy, hh:mm a")}
+                    <span className="bg-yellow-300 text-blue-900 rounded-md font-bold p-1">
+                      {job.delivery_date
+                        ? DateTime.fromJSDate(new Date(job.delivery_date))
+                            .setZone("Asia/Kolkata")
+                            .toFormat("dd LLL yyyy, hh:mm a")
+                        : "—"}
+                    </span>
                   </td>
                   <td className="border-r border-gray-200 px-2 max-w-[500px] group-hover:text-white">
                     {job.delivery_location?.replace(/_/g, " ")}
@@ -204,21 +203,9 @@ export default function ProductionTable() {
                       </div>
                     )}
                   </td>
+                  <td className="border p-2 group-hover:text-white">{job.instructions}</td>
                   <td className="border p-2">
                     <span
-                      className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        job.task_priority === "Urgent"
-                          ? "bg-red-100 text-red-700 group-hover:bg-red-200 group-hover:text-red-800"
-                          : "bg-yellow-100 text-yellow-700 group-hover:bg-yellow-200 group-hover:text-yellow-800"
-                      }`}
-                    >
-                      {job.task_priority}
-                    </span>
-                  </td>
-                  <td className="border p-2 group-hover:text-white">{job.instructions}</td>
-                  <td className="border p-2 group-hover:text-white">{job.no_of_files}</td>
-                  <td className="border p-2">
-<span
                       className={`px-2 py-1 rounded-md text-xs font-semibold ${
                         job.status === "completed"
                           ? "bg-blue-100 text-blue-700 group-hover:bg-blue-200 group-hover:text-blue-800"
@@ -230,6 +217,25 @@ export default function ProductionTable() {
                       {job.status}
                     </span>
                   </td>
+                  <td className="border p-2 group-hover:text-white">{job.client_type}</td>
+                  <td className="border p-2 group-hover:text-white">{job.order_type}</td>
+                  <td className="border p-2 group-hover:text-white">{job.contact_number}</td>
+                  <td className="border p-2 group-hover:text-white">{job.order_handled_by}</td>
+                  <td className="border p-2 group-hover:text-white">{job.execution_location}</td>
+
+
+                  <td className="border p-2">
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                        job.task_priority === "Urgent"
+                          ? "bg-red-100 text-red-700 group-hover:bg-red-200 group-hover:text-red-800"
+                          : "bg-yellow-100 text-yellow-700 group-hover:bg-yellow-200 group-hover:text-yellow-800"
+                      }`}
+                    >
+                      {job.task_priority}
+                    </span>
+                  </td>
+                  <td className="border p-2 group-hover:text-white">{job.no_of_files}</td>
                   <td className="border p-2 group-hover:text-white">
                     {DateTime.fromJSDate(new Date(job.job_completion_deadline))
                       .setZone("Asia/Kolkata")
