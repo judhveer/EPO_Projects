@@ -1065,7 +1065,7 @@ const JobItem = React.memo(function JobItem({
 
         <Field label="Unit Rate" required>
           <Input
-            value={item.unit_rate || ""}
+            value={ (item.unit_rate).toFixed(2) || ""}
             readOnly={category !== "Other"}
             onChange={(e) =>
               handleItemChange(uniqueKey, "unit_rate", e.target.value)
@@ -1075,7 +1075,9 @@ const JobItem = React.memo(function JobItem({
 
         <Field label="Item Total" required>
           <Input
-            value={item.item_total || ""}
+            value={item.item_total?.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                  }) || ""}
             onChange={(e) =>
               handleItemChange(uniqueKey, "item_total", e.target.value)
             }
