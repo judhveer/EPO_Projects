@@ -113,11 +113,14 @@ export default function DashboardTable({
                   <td className="border p-2">{job.order_handled_by}</td>
                   <td className="border p-2">{job.execution_location}</td>
                   <td className="border p-2 font-semibold text-blue-600 hover:text-white">
+                    <span className="bg-yellow-300 text-blue-900 rounded-md font-bold p-1">
+                      {job.delivery_date
+                        ? DateTime.fromJSDate(new Date(job.delivery_date))
+                            .setZone("Asia/Kolkata")
+                            .toFormat("dd LLL yyyy, hh:mm a")
+                        : "—"}
+                    </span>
                     {/* {new Date(job.delivery_date).toLocaleString()} */}
-                    {DateTime
-                      .fromJSDate(new Date(job.delivery_date))
-                      .setZone("Asia/Kolkata")
-                      .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border-r border-gray-200 px-2  max-w-[500px]">
                     {job.delivery_location?.replace(/_/g, " ")}
