@@ -84,6 +84,9 @@ export function can(user, perm) {
         case 'jobfms.outbound.view':
             return dept === 'Process Coordinator';
 
+        case 'jobfms.quotation.view':
+            return dept === 'Accounts' || (isSalesDept(dept) && role === "CRM") || dept === 'CRM' || dept === 'Tender Executive';
+
         default:
             return false;
 
