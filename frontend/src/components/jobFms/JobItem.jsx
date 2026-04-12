@@ -1065,10 +1065,12 @@ const JobItem = React.memo(function JobItem({
 
         <Field label="Unit Rate" required>
           <Input
-            value={ (item.unit_rate).toFixed(2) || ""}
+            value={item.unit_rate?.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                  }) || ""}
             readOnly={category !== "Other"}
             onChange={(e) =>
-              handleItemChange(uniqueKey, "unit_rate", e.target.value)
+              handleItemChange(uniqueKey, "unit_rate", parseFloat(e.target.value) || 0)
             }
           />
         </Field>
