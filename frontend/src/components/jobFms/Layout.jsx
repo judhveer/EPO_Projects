@@ -12,6 +12,7 @@ const navClass = ({ isActive }) =>
 
 // Define the available tabs
 const JOB_FMS_TABS = [
+  { key: "quotation", label: "Quotation", to: "/job-fms/quotation", perm: "jobfms.quotation.view", },
   { key: "common", label: "Common Dashboard", to: "/job-fms/common", perm: "jobfms.common.view", },
   { key: "writer", label: "Job Writer", to: "/job-fms/writer", perm: "jobfms.writer.view", },
   { key: "coordinator", label: "Process Coordinator", to: "/job-fms/coordinator", perm: "jobfms.coordinator.view", },
