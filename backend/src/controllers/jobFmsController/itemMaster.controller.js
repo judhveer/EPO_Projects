@@ -248,29 +248,42 @@ const parseSize = (sizeStr, category) => {
 
 // ---------------------- UPS CALCULATION ----------------------
 // How many job-size pieces fit on one sheet (try normal + rotated orientation)
-const calculateUps = (sheet, job) => {
+const calculateUps = (sheet, job, requireEven = false) => {
   console.log("calculateUps called: sheet", sheet);
-  const normal =
-    Math.floor(sheet.width / job.width) * Math.floor(sheet.height / job.height);
+  const normal = Math.floor(sheet.width / job.width) * Math.floor(sheet.height / job.height);
 
-  const rotated =
-    Math.floor(sheet.width / job.height) * Math.floor(sheet.height / job.width);
+  const rotated = Math.floor(sheet.width / job.height) * Math.floor(sheet.height / job.width);
 
-  const ups = Math.max(normal, rotated);
-  if (ups === 0) return 0; // cannot fit even one piece
-  return ups;
+  if (!requireEven) {
+    return Math.max(normal, rotated);
+  }
+
+  // Phase 1 — orientations that naturally land on even UPS (preferred)
+  // "Natural even" means the grid itself produces an even number without adjustment.
+  // Example: 23x36 / 7.5x10 → normal=9 (odd, rejected), rotated=8 (even, accepted) 
+  const naturalEvens = [normal, rotated].filter( (ups) => ups > 0 && ups % 2 === 0);
+  if (naturalEvens.length > 0) {
+    return Math.max(...naturalEvens);
+  }
+
+  // Phase 2 — no orientation is naturally even; round the best down to nearest even
+  // Example: if both orientations gave odd UPS, press operator leaves one cell blank to make it even. So 9 becomes 8, 7 becomes 6, etc.
+  const best    = Math.max(normal, rotated);
+  const rounded = best % 2 === 0 ? best : best - 1;
+  return rounded; // returns 0 if best was 1 → sheet will be skipped
 };
 
 // ---------------------- BEST SHEET PICKING ----------------------
 // Given a list of paper rows and the job size, returns the sheet with the highest UPS (most efficient fit).
-const pickBestSheet = (paperRows, jobSize) => {
+// requireEvenUps: pass true for Both Side Multiple Sheet
+const pickBestSheet = (paperRows, jobSize, requireEvenUps = false) => {
   console.log("Pick best sheet called:");
   let bestSheet = null;
   let bestUps = 0;
   let bestWastage = Infinity;
 
   for (const s of paperRows) {
-    const ups = calculateUps({ width: s.width, height: s.height }, jobSize);
+    const ups = calculateUps({ width: s.width, height: s.height }, jobSize, requireEvenUps);
     if(ups === 0) continue; // sheet is too small to fit even one piece — skip
 
     const sheetArea  = Number(s.width)       * Number(s.height);
@@ -288,6 +301,11 @@ const pickBestSheet = (paperRows, jobSize) => {
     }
 
   }
+
+  console.log(
+    `pickBestSheet [evenRequired=${requireEvenUps}]: ` +
+    `${bestSheet?.size_name ?? "none"}, UPS=${bestUps}, wastage=${bestWastage?.toFixed?.(3) ?? "∞"}`
+  );
 
   return { bestSheet, bestUps };
 };
@@ -849,9 +867,10 @@ export const calculateItemController = async (req, res) => {
             });
           }
         }
-
+        // Both Side Multiple Sheet → must have even UPS (sheets fold to form pages)
+        const requireEvenUps = sides === "Both Side" || sides === "Both Sides";
         // 3. Pick best sheet
-        let { bestSheet, bestUps } = pickBestSheet(paperRows, jobSize);
+        let { bestSheet, bestUps } = pickBestSheet(paperRows, jobSize, requireEvenUps);
         if (!bestSheet || !bestUps) {
           return res.status(500).json({
             message: `Sheet / UPS selection failed for inside paper ${i + 1} (${paper.paper_type})`,
@@ -956,8 +975,9 @@ export const calculateItemController = async (req, res) => {
             (Number(s.width) === 13 && Number(s.height) === 19)
         );
       }
-
-      const { bestSheet: bestCoverSheet, bestUps: bestUpsCover } = pickBestSheet(coverPaperRows, jobSize);
+      // Cover requireEven: only when cover is 4 pages (both sides printed, folded)
+      const coverRequiresEvenUps = Number(cover_pages) === 4;
+      const { bestSheet: bestCoverSheet, bestUps: bestUpsCover } = pickBestSheet(coverPaperRows, jobSize, coverRequiresEvenUps);
       if(bestUpsCover === 0){
         return res.status(400).json({
             message: "Client Size does not fit the Cover Paper.!",
@@ -966,7 +986,7 @@ export const calculateItemController = async (req, res) => {
       // ── Extract cover_to_print (default true for backward compat) ──────────
       const cover_to_print = item.cover_to_print !== false;
 
-      const coverTotalPages = Number(cover_pages) * qty;
+      const coverTotalPages = 2 * qty;    // cover is 2 pages per copy (front + back), regardless of inside page count
       const coverSheets = Math.ceil(coverTotalPages / bestUpsCover);
       // Apply 5% wastage per sheet type (round up)
       const coverSheetsWithWastage = Math.ceil(coverSheets * 1.05);
@@ -1517,7 +1537,7 @@ const calculatePrintingCost = async (pressType, colorScheme, sides, sheetCount, 
         pagesPerPlate = ups ? ups / 2 : 0;
     }
     if(coverFlag && category === "Multiple Sheet" && sides === "Both Side"){
-        pagesPerPlate = ups ? ups / 2 : 0;
+        pagesPerPlate = ups ? Math.floor(ups / 2) : 0;
     }
     
 
