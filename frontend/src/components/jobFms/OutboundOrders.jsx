@@ -93,15 +93,15 @@ export default function OutboundOrders({ refresh }) {
               </th>
               <th className="border p-1 sm:p-2 min-w-[150px]">Job Created On</th>
               <th className="border p-1 sm:p-2 min-w-[140px]">Client Name</th>
+              <th className="border p-1 sm:p-2 min-w-[80px]">Items</th>
               <th className="border p-1 sm:p-2 min-w-[130px]">Order Handled By</th>
-              <th className="border p-1 sm:p-2 min-w-[160px]">Delivery Date</th>
+              <th className="border p-1 sm:p-2 min-w-[170px]">Delivery Date</th>
               <th className="border p-1 sm:p-2 min-w-[200px]">Delivery Location</th>
               <th className="border p-1 sm:p-2 min-w-[80px] text-center">Priority</th>
               <th className="border p-1 sm:p-2 min-w-[180px]">Instructions</th>
               <th className="border p-1 sm:p-2 min-w-[40px]">Files</th>
               <th className="border p-1 sm:p-2 min-w-[160px]">Completion Deadline</th>
               <th className="border p-1 sm:p-2 min-w-[150px]">Status</th>
-              <th className="border p-1 sm:p-2 min-w-[80px]">Items</th>
               {/* Outbound-specific — sticky right group */}
               <th className="border p-1 sm:p-2 bg-blue-800 sticky right-[320px] min-w-[140px] z-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                 Outbound Sent To
@@ -138,14 +138,27 @@ export default function OutboundOrders({ refresh }) {
                   </td>
 
                   <td className="border p-1 sm:p-2">{job.client_name}</td>
+                  <td className="border p-1 sm:p-2 text-center text-gray-500 text-xs italic group-hover:text-white">
+                    {job.item_count || 0} items{" "}
+                    {job.item_count > 0 && (
+                      <button
+                        onClick={() => setSelectedJobNo(job.job_no)}
+                        className="ml-1 text-blue-600 group-hover:text-white underline text-xs cursor-pointer"
+                      >
+                        View
+                      </button>
+                    )}
+                  </td>
                   <td className="border p-1 sm:p-2">{job.order_handled_by}</td>
 
                   <td className="border p-1 sm:p-2 font-semibold text-blue-600 group-hover:text-white">
-                    {job.delivery_date
-                      ? DateTime.fromJSDate(new Date(job.delivery_date))
-                          .setZone("Asia/Kolkata")
-                          .toFormat("dd LLL yyyy, hh:mm a")
-                      : "—"}
+                    <span className="bg-yellow-300 text-blue-900 rounded-md font-bold p-1">
+                      {job.delivery_date
+                        ? DateTime.fromJSDate(new Date(job.delivery_date))
+                            .setZone("Asia/Kolkata")
+                            .toFormat("dd LLL yyyy, hh:mm a")
+                        : "—"}
+                    </span>
                   </td>
 
                   <td className="border p-1 sm:p-2">
@@ -183,18 +196,6 @@ export default function OutboundOrders({ refresh }) {
                   </td>
 
                   <td className="border p-1 sm:p-2 text-center">{job.status ?? "—"}</td>
-
-                  <td className="border p-1 sm:p-2 text-center text-gray-500 text-xs italic group-hover:text-white">
-                    {job.item_count || 0} items{" "}
-                    {job.item_count > 0 && (
-                      <button
-                        onClick={() => setSelectedJobNo(job.job_no)}
-                        className="ml-1 text-blue-600 group-hover:text-white underline text-xs cursor-pointer"
-                      >
-                        View
-                      </button>
-                    )}
-                  </td>
 
                   {/* Outbound-specific sticky right cells */}
                   <td className="border p-1 sm:p-2 sticky right-[320px] bg-white z-20 min-w-[140px] group-hover:bg-blue-500 group-hover:text-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
