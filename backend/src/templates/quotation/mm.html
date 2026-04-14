@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 10px; color: #1e1b4b; background: #fff;
+  display: flex; flex-direction: column; min-height: 297mm;
+}
+.page-header svg, .page-footer svg { display:block; width:100%; height:auto; }
+.content { flex: 1; padding: 8px 26px 6px; }
+
+/* ── QUOTATION HEADING ── */
+.quotation-heading {
+  text-align: center;
+  font-size: 15px; font-weight: 900;
+  color: #4c1d95;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  border-bottom: 2.5px solid #7c3aed;
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+}
+
+/* ── META ── */
+.meta-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
+}
+.meta-ref { font-size: 8.5px; color: #5b21b6; font-weight: 700; }
+.meta-date { font-size: 8.5px; color: #6b7280; }
+
+/* ── CLIENT ── */
+.client-block {
+  border: 1px solid #ede9fe;
+  border-top: 3px solid #7c3aed;
+  border-radius: 0 0 6px 6px;
+  padding: 7px 12px;
+  margin-bottom: 7px;
+}
+.client-label { font-size: 7px; color: #a78bfa; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 3px; }
+.client-name  { font-size: 12px; font-weight: 800; color: #4c1d95; }
+.client-sub   { font-size: 8.5px; color: #374151; margin-top: 1px; line-height: 1.5; }
+
+/* ── SUBJECT ── */
+.subject-wrap { margin: 4px 0 3px; }
+.subject-text {
+  display: inline-block;
+  font-size: 9.5px; font-weight: 800; color: #4c1d95;
+  text-transform: uppercase; letter-spacing: 0.8px;
+}
+.salutation { font-size: 8.5px; color: #6b7280; margin-top: 3px; }
+.salutation em { margin-left: 6px; }
+
+/* ── TABLE ── */
+table { width: 100%; border-collapse: collapse; margin-top: 7px; }
+table thead tr { background: linear-gradient(90deg, #4c1d95, #7c3aed); }
+table thead th {
+  color: #fff; font-size: 8px; font-weight: 700;
+  padding: 6px 5px; border: 1px solid #6d28d9;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+table thead th.l { text-align: left; }
+table thead th.r { text-align: right; }
+table thead th.c { text-align: center; }
+table tbody tr:nth-child(even) { background: #f5f3ff; }
+table tbody tr:nth-child(odd)  { background: #fff; }
+table tbody td {
+  padding: 5px 5px; font-size: 8.5px;
+  border: 1px solid #ede9fe; vertical-align: top;
+}
+table tbody td.l  { text-align: left; }
+table tbody td.r  { text-align: right; }
+table tbody td.c  { text-align: center; }
+table tbody td small { color: #6b7280; font-size: 7.5px; display: block; margin-top: 1px; }
+table tbody strong { font-size: 9px; color: #3730a3; }
+
+.subtotal-row td { background: #ede9fe !important; font-size: 8.5px; border-color: #ddd6fe; padding: 4px 5px; }
+.final-row td {
+  background: linear-gradient(90deg, #4c1d95, #7c3aed) !important;
+  color: #fff !important;
+  font-weight: 700; font-size: 9.5px; padding: 5px 5px;
+  border-color: #4c1d95;
+}
+.words-row td {
+  background: #faf5ff !important; color: #5b21b6;
+  font-size: 8px; border-color: #ede9fe; padding: 5px;
+  border-top: 1.5px dashed #c4b5fd;
+}
+
+/* ── SIGNATURE ── */
+.sign-area {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  margin-top: 14px; margin-bottom: 8px;
+}
+.thank-you { font-size: 9.5px; color: #6b7280; }
+.sign-block { text-align: right; }
+.sign-for { font-size: 9px; font-weight: 800; color: #5b21b6; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 22px; }
+.sign-line { width: 130px; border-top: 2px solid #7c3aed; margin-left: auto; }
+.sign-label { font-size: 7.5px; color: #a78bfa; margin-top: 2px; }
+
+.page-footer { margin-top: auto; }
+</style>
+</head>
+<body>
+
+<div class="page-header">{{HEADER_SVG}}</div>
+
+<div class="content">
+
+  <div class="quotation-heading">Quotation</div>
+
+  <div class="meta-bar">
+    <div class="meta-ref">Ref: MME / {{YEAR}} / {{REF}}</div>
+    <div class="meta-date">Date: {{DATE}}</div>
+  </div>
+
+  <div class="client-block">
+    <div class="client-label">Quotation Addressed To</div>
+    <div class="client-name">{{CLIENT_NAME}}</div>
+    {{#if HAS_DEPARTMENT}}<div class="client-sub">{{DEPARTMENT}}</div>{{/if}}
+    {{#if HAS_ADDRESS}}<div class="client-sub">{{CLIENT_ADDRESS}}</div>{{/if}}
+  </div>
+
+  <div class="subject-wrap">
+    <span class="subject-text">Sub: {{SUBJECT}}</span>
+    <div class="salutation">Dear Sir / Madam,<em>Please find herewith our rates for the printing work requested.</em></div>
+  </div>
+
+  <table>
+    <thead>{{TABLE_HEAD}}</thead>
+    <tbody>
+      {{TABLE_BODY}}
+      {{TABLE_BILLING}}
+    </tbody>
+  </table>
+
+  <div class="sign-area">
+    <div class="thank-you">We look forward to serving you.</div>
+    <div class="sign-block">
+      <div class="sign-for">For {{SIGN_NAME}}</div>
+      <div class="sign-line"></div>
+      <div class="sign-label">Authorised Signatory</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="page-footer">{{FOOTER_SVG}}</div>
+</body>
+</html>
