@@ -68,7 +68,8 @@ import crmJobsRoutes from "./routes/jobFmsRoutes/crmJobs.routes.js";
 import commonDashboardRoutes from "./routes/jobFmsRoutes/commonDashboard.routes.js"
 import productionDashboardRoutes from "./routes/jobFmsRoutes/production.routes.js";
 import outboundRoutes from "./routes/jobFmsRoutes/outbound.routes.js";
-
+import quotationRoutes from "./routes/jobFmsRoutes/quotation.routes.js";
+import { closeBrowser } from "./controllers/jobFmsController/quotation.controller.js";
 
 import notFound from './middlewares/salesPipeline/notFound.js';
 import errorHandler from './middlewares/salesPipeline/error.js';
@@ -228,6 +229,8 @@ app.use("/api/fms/outbound",
   outboundRoutes);
 
 
+app.use("/api/fms/quotation", authenticate, quotationRoutes);
+
 //  FOR PENDING BILLS FROM GOOGLE SHEET
 app.use("/api/billing", billingRoutes);
 
@@ -292,5 +295,9 @@ process.once('SIGTERM', () => {
   if (taskBotRunning) taskBot.stop('SIGTERM');
 });
 
+
+
+process.on("SIGTERM", closeBrowser);
+process.on("SIGINT",  closeBrowser);
 
 export default app;
