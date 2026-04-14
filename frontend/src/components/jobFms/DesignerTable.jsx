@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useRef } from "react";
 import api from "../../lib/api.js";
 import { DateTime } from "luxon";
 import JobItemsSidebar from "./commonDashboard/JobItemsSidebar.jsx";
+import Input from "../salesPipeline/Input.jsx";
 
 export default function DesignerTable({ refresh }) {
   const [jobs, setJobs] = useState([]);
@@ -475,7 +476,7 @@ export default function DesignerTable({ refresh }) {
 
                   {/* Estimated Time Input */}
                   <td className="border p-1 sm:p-2 text-center sticky right-[260px] bg-white z-40 min-w-[250px] group-hover:bg-blue-500 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
-                    <input
+                    <Input
                       type="datetime-local"
                       value={toDateTimeLocal(
                         job.assignment.estimated_completion_time ??
