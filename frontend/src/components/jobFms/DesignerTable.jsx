@@ -519,7 +519,7 @@ export default function DesignerTable({ refresh }) {
                         clearTimeout(blurTimeoutRef.current);
                       }}
                       readOnly={!!job.assignment.estimated_completion_time}
-                      className={`border rounded-md p-2 text-xs w-full ${
+                      className={`border rounded-md p-2 text-xs w-full text-black ${
                         job.assignment.estimated_completion_time
                           ? "cursor-not-allowed"
                           : ""
