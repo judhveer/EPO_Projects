@@ -38,6 +38,8 @@ export default function DashboardTable({
               <th className="border p-2"> Job Created On</th>
               <th className="border p-2">Client Name</th>
               <th className="border p-2">Items</th>
+              <th className="border p-2">Delivery Date</th>
+              <th className="border p-2">Instructions</th>
               <th className="border p-2">Client Type</th>
               <th className="border p-2">Order Type</th>
               <th className="border p-2">Address</th>
@@ -45,11 +47,9 @@ export default function DashboardTable({
               <th className="border p-2">Email</th>
               <th className="border p-2">Order Handled By</th>
               <th className="border p-2">Execution Location</th>
-              <th className="border p-2">Delivery Date</th>
               <th className="border p-2 max-w-[500px] ">Delivery Location</th>
               <th className="border p-2">Proof Date</th>
               <th className="border p-2">Priority</th>
-              <th className="border p-2">Instructions</th>
               <th className="border p-2">Payment Status</th>
               <th className="border p-2 sticky right-0 bg-blue-800 z-30 text-center font-semibold">
                 Status
@@ -105,13 +105,6 @@ export default function DashboardTable({
                       </button>
                     )}
                   </td>
-                  <td className="border p-2">{job.client_type}</td>
-                  <td className="border p-2 ">{job.order_type}</td>
-                  <td className="border p-2 ">{job.address}</td>
-                  <td className="border p-2">{job.contact_number}</td>
-                  <td className="border p-2">{job.email_id}</td>
-                  <td className="border p-2">{job.order_handled_by}</td>
-                  <td className="border p-2">{job.execution_location}</td>
                   <td className="border p-2 font-semibold text-blue-600 hover:text-white">
                     <span className="bg-yellow-300 text-blue-900 rounded-md font-bold p-1">
                       {job.delivery_date
@@ -122,6 +115,14 @@ export default function DashboardTable({
                     </span>
                     {/* {new Date(job.delivery_date).toLocaleString()} */}
                   </td>
+                  <td className="border p-2">{job.instructions}</td>
+                  <td className="border p-2">{job.client_type}</td>
+                  <td className="border p-2 ">{job.order_type}</td>
+                  <td className="border p-2 ">{job.address}</td>
+                  <td className="border p-2">{job.contact_number}</td>
+                  <td className="border p-2">{job.email_id}</td>
+                  <td className="border p-2">{job.order_handled_by}</td>
+                  <td className="border p-2">{job.execution_location}</td>
                   <td className="border-r border-gray-200 px-2  max-w-[500px]">
                     {job.delivery_location?.replace(/_/g, " ")}
                     {job.delivery_address && (
@@ -148,7 +149,6 @@ export default function DashboardTable({
                       {job.task_priority}
                     </span>
                   </td>
-                  <td className="border p-2">{job.instructions}</td>
                   <td className="border p-2">
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-semibold ${
