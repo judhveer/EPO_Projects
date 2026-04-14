@@ -221,11 +221,6 @@ function buildEpoTable(items, billing) {
       <td colspan="${cols - 1}" class="r"><strong>Total Amount</strong></td>
       <td class="r"><strong>${fmt(billing.subtotal)}</strong></td>
     </tr>
-    ${billing.disc > 0 ? `
-    <tr class="subtotal-row">
-      <td colspan="${cols - 1}" class="r">Discount</td>
-      <td class="r">&minus; ${fmt(billing.disc)}</td>
-    </tr>` : ""}
     ${hasGst ? `
     <tr class="subtotal-row">
       <td colspan="${cols - 1}" class="r">GST @ ${gstRate}%</td>
@@ -281,11 +276,6 @@ function buildDtangTable(items, billing) {
       <td colspan="${cols - 1}" class="r"><strong>Total</strong></td>
       <td class="r"><strong>${fmt(billing.subtotal)}</strong></td>
     </tr>
-    ${billing.disc > 0 ? `
-    <tr class="subtotal-row">
-      <td colspan="${cols - 1}" class="r">Discount</td>
-      <td class="r">&minus; ${fmt(billing.disc)}</td>
-    </tr>` : ""}
     ${hasGst ? `
     <tr class="subtotal-row">
       <td colspan="${cols - 1}" class="r">GST @ ${gstRate}%</td>
@@ -339,11 +329,6 @@ function buildMmTable(items, billing) {
       <td colspan="${cols - 1}" class="r"><strong>Total Amount</strong></td>
       <td class="r"><strong>${fmt(billing.subtotal)}</strong></td>
     </tr>
-    ${billing.disc > 0 ? `
-    <tr class="subtotal-row">
-      <td colspan="${cols - 1}" class="r">Discount</td>
-      <td class="r">&minus; ${fmt(billing.disc)}</td>
-    </tr>` : ""}
     ${hasGst ? `
     <tr class="subtotal-row">
       <td colspan="${cols - 1}" class="r">GST @ ${gstRate}%</td>
@@ -400,11 +385,7 @@ function buildHillTable(items, billing) {
       <td colspan="${cols - 1}" class="r"><strong>Total (Excl. GST)</strong></td>
       <td class="r"><strong>${fmt(billing.subtotal)}</strong></td>
     </tr>
-    ${billing.disc > 0 ? `
-    <tr class="subtotal-row">
-      <td colspan="${cols - 1}" class="r">Discount</td>
-      <td class="r">&minus; ${fmt(billing.disc)}</td>
-    </tr>` : ""}
+
     ${hasGst ? `
     <tr class="subtotal-row">
       <td colspan="${cols - 1}" class="r">GST @ ${gstRate}%</td>
