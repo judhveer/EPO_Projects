@@ -6,7 +6,8 @@ import {
     updateJobCard,
     // deleteJobCard,
     getEnquiryForItems,
-    cancelJobCard
+    cancelJobCard,
+    getJobCardForFormLoad
 } from "../../controllers/jobFmsController/jobCard.controller.js";
 
 const router = express.Router();
@@ -17,6 +18,7 @@ router.get("/:job_no", getJobCardByJobNo);
 router.put("/:job_no", updateJobCard);
 // router.delete("/:job_no", deleteJobCard);
 router.patch("/:job_no/cancel", cancelJobCard);
+router.get("/:job_no/form-load", getJobCardForFormLoad);
 
 
 // list the enquiry for items:
