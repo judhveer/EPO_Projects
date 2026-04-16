@@ -175,7 +175,6 @@ export const getBindingsByCategory = async (req, res) => {
 
 // GET /api/fms/sizes?search=a
 export const getSizes = async (req, res) => {
-  console.log("getSizes called: ");
   try {
     const search = req.query.search || "";
 
@@ -249,7 +248,6 @@ const parseSize = (sizeStr, category) => {
 // ---------------------- UPS CALCULATION ----------------------
 // How many job-size pieces fit on one sheet (try normal + rotated orientation)
 const calculateUps = (sheet, job, requireEven = false) => {
-  console.log("calculateUps called: sheet", sheet);
   const normal = Math.floor(sheet.width / job.width) * Math.floor(sheet.height / job.height);
 
   const rotated = Math.floor(sheet.width / job.height) * Math.floor(sheet.height / job.width);
@@ -301,12 +299,6 @@ const pickBestSheet = (paperRows, jobSize, requireEvenUps = false) => {
     }
 
   }
-
-  console.log(
-    `pickBestSheet [evenRequired=${requireEvenUps}]: ` +
-    `${bestSheet?.size_name ?? "none"}, UPS=${bestUps}, wastage=${bestWastage?.toFixed?.(3) ?? "∞"}`
-  );
-
   return { bestSheet, bestUps };
 };
 
@@ -363,7 +355,6 @@ export const calculateItemController = async (req, res) => {
   try {
     const { item, all_items } = req.body;
 
-    console.log("item received for calculation: ", item);
     if (!item) {
       return res.status(400).json({ message: "Missing item data" });
     }
@@ -602,10 +593,6 @@ export const calculateItemController = async (req, res) => {
       // 🔥 calculate grand total same like normal flow
       const grandTotal = calcGrandTotal(item, all_items, finalItemTotal);
 
-      console.log("bestOption: ", bestOption);
-
-      console.log("bindingCostTotal: ", bindingCostTotal);
-      console.log("printingCost: ", printingCost);
       return res.json({
         inside: nullSheet(), // not applicable for wide format
         cover: nullSheet(),  // not applicable for wide format
@@ -892,13 +879,9 @@ export const calculateItemController = async (req, res) => {
         const paperSheets = Math.ceil(insideTotalPages / effectiveUps);
         const paperSheetsWithWastage = Math.ceil(paperSheets * 1.05);
 
-        console.log(`Paper ${i + 1}: bestSheet ${bestSheet.size_name}, bestUps ${bestUps}, effectiveUps ${effectiveUps}, paperSheets ${paperSheets}, paperSheetsWithWastage ${paperSheetsWithWastage}`);
-
         // 6. Sheet cost for this paper
         const sheetRate = Number(bestSheet.rate_per_sheet || 0);
         const sheetCost = paperSheetsWithWastage * sheetRate;
-        
-        console.log(`Paper ${i + 1}: sheetCost ${sheetCost}`);
 
         // 7. Printing cost — only if to_print is true
         let printingCost = 0;
@@ -1076,19 +1059,12 @@ export const calculateItemController = async (req, res) => {
       // ── Grand total (sum all job items) ──
       const grandTotal = calcGrandTotal(item, all_items, itemTotal);
 
-      console.log("totalInsideSheetCost:   ", totalInsideSheetCost);
-      console.log("totalInsidePrintingCost:", totalInsidePrintingCost);
-      console.log("coverTotalSheetCost:    ", coverTotalSheetCost);
-      console.log("coverPrintingCostTotal: ", coverPrintingCostTotal);
-      console.log("bindingCostTotal:       ", bindingCostTotal);
-      console.log("unitRate:               ", unitRate);
-      console.log("insidePapersResults:    ", insidePapersResults);
-      console.log("totalInsideSheetsAllPapers: ", totalInsideSheetsAllPapers);
-
       // ── Response ──────────────────────────────────────────────────────────
       // `inside` → first paper's data for backward compat with frontend display.
       // `inside_papers_results` → full array for sidebar and DB storage.
       const firstPaperResult = insidePapersResults[0] || {};
+
+      console.log("Final calculation result:", grandTotal);
 
       return res.json({
         // First paper info (backward compat — frontend reads data.inside for display)
@@ -1181,10 +1157,6 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
     perforationPaperCount = 1,    // ← NEW: how many papers have perforation
   } = context;
 
-  // console.log("Calculating binding cost with context: ", context);
-  // console.log("Binding rows: ", bindingRows);
-  // console.log("Quantity: ", qty);
-  // console.log("Item name: ", item);
 
   for (const b of bindingRows) {
     const name = b.binding_name.toLowerCase();
@@ -1218,15 +1190,12 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
         const totalSheets = insideSheets + (coverSheets || 0);
         // Rule 1: per 500 sheets slab ₹50
         const sheetSlabs = Math.ceil(totalSheets / 500);
-        console.log("Total sheets for cutting: ", totalSheets, " → slabs: ", sheetSlabs);
         const sheetCost = sheetSlabs * 50;
-        console.log("Cutting cost based on sheet slabs: ", sheetCost);
         // Rule 2: quantity slabs
         let qtyCost = 0;
         if (qty <= 500) qtyCost = qty * 2;
         else if (qty <= 2000) qtyCost = qty * 1.5;
         else qtyCost = qty * 1;
-        console.log("Cutting cost based on quantity slabs: ", qtyCost);
         cost = sheetCost + qtyCost;
       } else if (item.category === 'Single Sheet') {
         cost = rate * qty; // ₹1 per copy
@@ -1234,7 +1203,6 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
         // fallback to per_copy from DB
         cost = rate * qty;
       }
-      console.log("cuttingCostTotal: ", cost);
     }
     // ----- Matt Lamination / Gloss Lamination -----
     else if (name.includes('matt lamination') || name.includes('gloss lamination')) {
@@ -1334,7 +1302,6 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
         const totalPages = insidePages * numberingPaperCount * qty;
         const slabs = Math.ceil(totalPages / 500);
         cost = slabs * rate;
-        console.log(`Numbering: ${numberingPaperCount} paper(s), ${totalPages} total pages, ${slabs} slabs → ₹${cost}`);
       }
 
     }
@@ -1344,7 +1311,6 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
         const totalPages = insidePages * numInsidePapers * qty;
         const slabs = Math.ceil(totalPages / 500);
         cost = slabs * rate;
-        console.log(`Interleaf: ${numInsidePapers} paper(s), ` + `${totalPages} total pages, ${slabs} slabs → ₹${cost}`);
       }
 
     }
@@ -1354,7 +1320,6 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
         const totalPages = insidePages * perforationPaperCount * qty;
         const slabs = Math.ceil(totalPages / 500);
         cost = slabs * rate;
-        console.log(`Perforation: ${perforationPaperCount} paper(s), ${totalPages} total pages, ${slabs} slabs → ₹${cost}`);
       }
     }
     // ----- Hard Bound -----
@@ -1384,8 +1349,6 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
         } else {
           cost = (baseRate + (slabs - 1) * 30) * qty;
         }
-
-        console.log(`Hard Bound: totalPages=${totalPages}, slabs=${slabs}, baseRate=${baseRate}, totalCost=${cost}`);
       }
     }
 
@@ -1422,9 +1385,7 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
         }
         else{
           const foldsPersheet = calculateFoldsFromForma(ups);
-          console.log("foldsPerSheet: ", foldsPersheet);
           const totalFolds = foldsPersheet * insideSheets;
-          console.log("totalFolds: ", totalFolds);
           cost = totalFolds * 0.20;
         }
       } else if (item.category === 'Single Sheet') {
@@ -1547,8 +1508,6 @@ const calculatePrintingCost = async (pressType, colorScheme, sides, sheetCount, 
     else if(pressType === "HMT MULTICOLOR"){
       plateCost = 750 * pagesPerPlate;
     }
-
-    console.log("rates: ", rates);
 
     const slab = rates.find(r => r.min_qty === 1);
     if (!slab) return 0;
