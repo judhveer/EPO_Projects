@@ -756,6 +756,7 @@ export const getJobCardByJobNo = async (req, res) => {
           include: [
             { model: PaperMaster, as: "selectedPaper" }, // <-- important
             { model: PaperMaster, as: "selectedCoverPaper" },
+            { model: WideFormatMaterial, as: "selectedWideMaterial" },
             { model: ItemMaster, as: "itemMaster" },
           ],
         },
@@ -814,8 +815,8 @@ export const getJobCardForFormLoad = async (req, res) => {
           include: [
             { model: PaperMaster, as: "selectedPaper" },
             { model: PaperMaster, as: "selectedCoverPaper" },
-            { model: WideFormatMaterial, as: "selectedWideMaterial" },
             { model: ItemMaster, as: "itemMaster" },
+            { model: WideFormatMaterial, as: "selectedWideMaterial" },
             // ← CRITICAL: costing must be included so rebuildCostingSnapshotFromDB works
             { model: JobItemCosting, as: "costing" },
           ],
@@ -1118,15 +1119,51 @@ export const updateJobCard = async (req, res) => {
     // ── Strip DB-unknown fields helper ──
     const toSafeItem = (item) => {
       const {
-        selectedPaper, selectedCoverPaper, itemMaster, selectedWideMaterial,
-        available_items, available_papers, available_gsm, available_gsm_cover,
-        available_bindings, available_sizes, available_wide_materials, available_wide_gsm,
-        costing_snapshot, best_inside_sheet, best_cover_sheet, material_info,
-        // display-only fields
-        best_inside_dimensions, best_inside_ups, best_inside_sheet_name,
-        best_cover_dimensions, best_cover_ups,
-        selected_material, calculation_type, rolls_or_boards_used, wastage_sqft,
-        wide_ups,
+        // ── DB identity — never trust client-sent values ──────────────────────
+        id:            _id,
+        _temp_id:      _tempId,
+        job_no:        _jobNo,
+        created_at:    _ca,
+        updated_at:    _ua,
+        createdAt:     _Cat,
+        updatedAt:     _Uat,
+        item_master_id: _imi,   // resolved fresh below
+
+        // ── Sequelize eager-load association objects — not columns ────────────
+        selectedPaper:        _sp,
+        selectedCoverPaper:   _scp,
+        selectedWideMaterial: _swm,
+        itemMaster:           _im,
+        jobCard:              _jc,
+        costing:              _costing,
+        // ── Frontend calc snapshot — goes to JobItemCosting, not JobItem ──────
+        costing_snapshot: _cs,
+
+        // ── UI-only dropdown caches — never sent to DB ────────────────────────
+        available_items:          _ai,
+        available_papers:         _ap,
+        available_gsm:            _ag,
+        available_gsm_cover:      _agc,
+        available_bindings:       _ab,
+        available_sizes:          _as,
+        available_wide_materials: _awm,
+        available_wide_gsm:       _awg,
+
+        // ── Calc display fields — stored in JobItemCosting, not JobItem ───────
+        best_inside_sheet:      _bis,
+        best_inside_sheet_name: _bisn,
+        best_inside_dimensions: _bid,
+        best_inside_ups:        _biu,
+        best_cover_sheet:       _bcs,
+        best_cover_dimensions:  _bcd,
+        best_cover_ups:         _bcu,
+        selected_material:      _sm,
+        calculation_type:       _ct,
+        rolls_or_boards_used:   _rbu,
+        wastage_sqft:           _ws,
+        wide_ups:               _wu,
+        material_info:          _mi,
+        // ── Keep all remaining fields ───────
         ...safe
       } = item;
       return safe;
@@ -1161,10 +1198,36 @@ export const updateJobCard = async (req, res) => {
     for (const item of job_items) {
       if (!item.id || !existingItemIds.includes(item.id)) continue;
 
+      // ── Normalize enquiry_for (same as createJobCard) ─────────────────────
+      const normalizedEnquiryFor = item.enquiry_for
+        ? item.enquiry_for
+            .trim()
+            .replace(/\s+/g, " ")
+            .toLowerCase()
+            .replace(/\b\w/g, (c) => c.toUpperCase())
+        : "";
+
+
       let item_master_id = await ItemMaster.findOne({
-        where: { category: item.category, item_name: item.enquiry_for },
+        where: {
+          category: item.category,
+          item_name: db.sequelize.where(
+            db.sequelize.fn("UPPER", db.sequelize.col("item_name")),
+            "=",
+            normalizedEnquiryFor.toUpperCase()
+          ),
+        },
         attributes: ["id"],
+        transaction: t,
       });
+
+        if (!item_master_id) {
+          item_master_id = await ItemMaster.create(
+            { category: item.category, item_name: normalizedEnquiryFor },
+            { transaction: t }
+          );
+        }
+
       item.item_master_id = item_master_id?.dataValues.id;
 
       await resolvePaperIds(item);
@@ -1189,19 +1252,38 @@ export const updateJobCard = async (req, res) => {
       console.log("adding new Job items: ", newItems);
 
       for (const item of newItems) {
+
+        // ── Normalize enquiry_for ─────────────────────────────────────────────
+        const normalizedEnquiryFor = item.enquiry_for
+          ? item.enquiry_for
+              .trim()
+              .replace(/\s+/g, " ")
+              .toLowerCase()
+              .replace(/\b\w/g, (c) => c.toUpperCase())
+          : "";
+
+        if (!normalizedEnquiryFor) {
+          throw new Error(`enquiry_for is empty for a ${item.category} item. Cannot save.`);
+        }
+
         let item_master_id = await ItemMaster.findOne({
           where: {
             category: item.category,
-            item_name: item.enquiry_for,
+            item_name: db.sequelize.where(
+              db.sequelize.fn("UPPER", db.sequelize.col("item_name")),
+              "=",
+              normalizedEnquiryFor.toUpperCase()
+            ),
           },
           attributes: ["id"],
+          transaction: t,
         });
 
         if (!item_master_id) {
           console.log("ItemMaster not found for: ", item.category, item.enquiry_for);
           item_master_id = await ItemMaster.create({
             category: item.category,
-            item_name: item.enquiry_for,
+            item_name: normalizedEnquiryFor,
           }, { transaction: t });
         }
         item.item_master_id = item_master_id.dataValues.id;
