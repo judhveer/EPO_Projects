@@ -91,7 +91,6 @@ export const createJobCard = async (req, res) => {
   console.log("createJobCard called...");
   const t = await db.sequelize.transaction();
   try {
-    console.log("req.body: ", req.body.job_items);
 
     const {
       client_type,
