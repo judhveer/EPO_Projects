@@ -309,7 +309,7 @@ const calculateFoldsFromForma = (forma) => {
 
   // ensure it's power of 2
   if ((forma & (forma - 1)) !== 0) {
-    console.warn("Forma is not power of 2. Folding may be incorrect.");
+    console.warn("Forma is not power of 2. Folding may be incorrect.: forma = ", forma);
   }
 
   return Math.log2(forma/2); 
@@ -1384,8 +1384,10 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
           cost = 0; // no folding needed for single side printing because there will be direct cutting without folding
         }
         else{
+          console.log("Calculating folding cost for Multiple Sheet...ups: ", ups, ", insideSheets: ", insideSheets);
           const foldsPersheet = calculateFoldsFromForma(ups);
           const totalFolds = foldsPersheet * insideSheets;
+          console.log("foldsPerSheet: ", foldsPersheet, ", totalFolds: ", totalFolds);
           cost = totalFolds * 0.20;
         }
       } else if (item.category === 'Single Sheet') {
