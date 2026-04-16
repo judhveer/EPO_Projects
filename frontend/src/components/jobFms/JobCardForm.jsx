@@ -206,6 +206,7 @@ const normalizePayload = (payload) => {
 const cleanJobItems = (items) => {
   return items.map((item) => {
     const {
+      // ── UI-only dropdown caches ────
       available_items,
       available_papers,
       available_gsm,
@@ -214,6 +215,7 @@ const cleanJobItems = (items) => {
       available_sizes,
       available_wide_materials,
       available_wide_gsm,
+      // ── Calc display fields (stored in JobItemCosting, not JobItem) ──
       best_inside_sheet,
       best_inside_sheet_name,
       best_inside_dimensions,
@@ -227,6 +229,25 @@ const cleanJobItems = (items) => {
       wastage_sqft,
       wide_ups,
       material_info,
+      // ── DB-generated identity / timestamp fields ──────────────────────
+      // These must NEVER be sent when creating a new item — Sequelize
+      // would try to INSERT the old values → duplicate key or timestamp errors.
+      job_no: _jobNo,
+      created_at: _ca,
+      updated_at: _ua,
+      createdAt: _Cat,
+      updatedAt: _Uat,
+      item_master_id: _imi,
+
+      // ── DB association objects (not columns) ─────────────────────────
+      // Sequelize eagerly loads these as nested objects. Sending them back
+      // would be ignored at best, or cause "unknown column" errors.
+      costing: _costing,
+      selectedPaper: _sp,
+      selectedCoverPaper: _scp,
+      selectedWideMaterial: _swm,
+      itemMaster: _im,
+      jobCard: _jc,
       ...cleaned
     } = item;
 
@@ -438,6 +459,151 @@ const computeBilling = (totalAmount, discount, gstPct) => {
   return { subtotal, disc, afterDisc, gstAmount, finalAmount };
 };
 
+
+// ── NEW ──────────────────────────────────────────────────────────────────────
+// Pure module-level function. Takes a raw DB job object (same shape returned
+// by GET /api/fms/jobcards/:jobNo) and returns:
+//   { formState }   → ready to pass to setFormAndRef
+//   { mappedItems } → ready to pass to loadDropdownsForMappedItems
+//
+// Having this as a pure function means:
+//   1. Edit-mode useEffect calls it.
+//   2. Search handler calls it.
+//   Zero code duplication, single source of truth for mapping logic.
+// ─────────────────────────────────────────────────────────────────────────────
+const mapJobToForm = (job) => {
+  // ── Date formatters (pure, no state) ──────────────────────────────────────
+  const formatDateTimeLocal = (isoString) => {
+    if (!isoString) return "";
+    const date = new Date(isoString);
+    const offset = date.getTimezoneOffset();
+    const localDate = new Date(date.getTime() - offset * 60000);
+    return localDate.toISOString().slice(0, 16);
+  };
+
+  const formatDateOnly = (isoString) => {
+    if (!isoString) return "";
+    return new Date(isoString).toISOString().slice(0, 10);
+  };
+
+  // ── Map items ─────────────────────────────────────────────────────────────
+  const safeItems = Array.isArray(job?.items) ? job.items : [];
+
+  const mappedItems = safeItems.map((item) => {
+    let insidePapers;
+    if (item.category === "Multiple Sheet") {
+      if (
+        Array.isArray(item.inside_papers) &&
+        item.inside_papers.length > 0
+      ) {
+        // New format — ensure _id and available_gsm exist
+        insidePapers = item.inside_papers.map((p) => ({
+          ...p,
+          _id: (crypto.randomUUID?.() ?? Date.now().toString()),
+          available_gsm: [],
+        }));
+      } else {
+        // Old format: single paper stored at item level → migrate to array
+        insidePapers = [
+          {
+            _id: crypto.randomUUID?.() ?? Date.now().toString(),
+            paper_type: item.selectedPaper?.paper_name || "",
+            paper_gsm: item.selectedPaper?.gsm || "",
+            to_print: !!item.selectedPaper,
+            color_scheme: item.color_scheme || "",
+            press_type: item.inside_press_type || "",
+            available_gsm: [],
+          },
+        ];
+      }
+    } else {
+      insidePapers = [createEmptyInsidePaper()];
+    }
+
+    return {
+      ...item,
+// ── CRITICAL FIX 1: Strip ALL DB-generated identity fields ────────────
+      // Without this, every loaded item gets id=undefined AND _temp_id=undefined.
+      // removeItem/findItemIndexById use (item.id ?? item._temp_id) as the key.
+      // If both are undefined, every item matches undefined → all get removed..
+      id: undefined,
+      _temp_id: crypto.randomUUID?.() ?? (Date.now().toString() + Math.random()),
+
+      // ── CRITICAL FIX 2: Strip ALL timestamp/ownership fields ──────────────
+      // Sequelize with underscored:true serializes as snake_case in JSON.
+      // Stripping only camelCase (createdAt/updatedAt) misses the real keys.
+      // If these leak to the backend, Sequelize tries to INSERT the old timestamps.
+      created_at: undefined,    // ← actual key in JSON response (snake_case)
+      updated_at: undefined,    // ← actual key in JSON response (snake_case)
+      createdAt: undefined,     // ← camelCase fallback, strip both to be safe
+      updatedAt: undefined,
+      job_no: undefined,        // ← never carry old job_no into a new job
+      item_master_id: undefined, // ← regenerated by afterCreate hook
+
+      // ── Strip DB association object — not a column ────────────────────────
+      // item.costing is the JobItemCosting association, not a DB column.
+      // Sending it would cause "unknown column" errors.
+      costing: undefined,
+
+
+      available_sizes: [],
+      paper_type: item.selectedPaper?.paper_name || "",
+      paper_gsm: item.selectedPaper?.gsm || "",
+      cover_to_print:
+        item.cover_to_print !== undefined ? item.cover_to_print : true,
+      cover_paper_type: item.selectedCoverPaper?.paper_name || "",
+      cover_paper_gsm: item.selectedCoverPaper?.gsm || "",
+      wide_material_name: item.selectedWideMaterial?.material_name || "",
+      wide_material_gsm: item.selectedWideMaterial?.gsm || "",
+      wide_material_thickness: item.selectedWideMaterial?.thickness_mm || "",
+      binding_types: Array.isArray(item.binding_types)
+        ? item.binding_types
+        : [],
+      binding_targets: item.binding_targets || {
+        numbering_paper_ids: [],
+        perforation_paper_ids: [],
+      },
+      folds_per_sheet: item.no_of_foldings || "",
+      creases_per_sheet: item.no_of_creases || "",
+      available_items: [],
+      available_papers: [],
+      available_gsm: [],
+      available_gsm_cover: [],
+      available_bindings: [],
+      available_wide_materials: [],
+      available_wide_gsm: [],
+      inside_papers: insidePapers,
+      costing_snapshot: rebuildCostingSnapshotFromDB(item.category, item.costing),
+    };
+  });
+
+  // ── Build form state ───
+  // sanitize(job) spreads the entire job object including job_no, status,
+  // current_stage etc. We explicitly override the fields we don't want.
+  const formState = {
+    ...sanitize(job),
+    // ── Strip job-level identity fields ──────────────────────────────────
+    // job_no must NOT carry over — a new job gets auto-generated job_no.
+    // status/current_stage are controlled by createJobCard, not the form.
+    job_no: undefined,
+    status: undefined,
+    current_stage: undefined,
+    assigned_designer: undefined,
+    completed_at: undefined,
+    created_at: undefined,
+    updated_at: undefined,
+
+    delivery_date: undefined,
+    proof_date: undefined,
+    receiving_date_for_mm: undefined,
+    gst_percentage: job.gst_percentage ?? "",
+    job_items: mappedItems,
+  };
+
+  return { formState, mappedItems };
+};
+// ── END NEW ──────────────────────────────────────────────────────────────────
+
 export default function JobCardForm({
   onCreated,
   onUpdated,
@@ -468,6 +634,13 @@ export default function JobCardForm({
 
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // ── NEW: Job No search state ───────────────────────────────────────────────
+  const [searchJobNo, setSearchJobNo] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [searchSuccess, setSearchSuccess] = useState("");
+  // ── END NEW ───────────────────────────────────────────────────────────────
 
   const timeoutsRef = useRef([]);
 
@@ -775,6 +948,186 @@ export default function JobCardForm({
     },
     [patchItem, showSoftError],
   );
+
+
+  // ── NEW ──────────────────────────────────────────────────────────────────────
+  // Fires all dropdown-loading API calls for a list of already-mapped items.
+  // Called both from:
+  //   1. Edit-mode useEffect (after existingJob is received via props)
+  //   2. Search handler (after job is fetched by job no)
+  //
+  // IMPORTANT: Takes `mappedItems` (not `form.job_items`) so it works
+  // synchronously without needing a re-render first.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const loadDropdownsForMappedItems = useCallback(
+    (mappedItems) => {
+      mappedItems.forEach((item) => {
+        // item.id exists for DB-saved items; new temp items use _temp_id
+        const itemId = item.id ?? item._temp_id;
+
+        if (item.category) {
+          loadCategoryBindings(itemId, item.category);
+          if (item.category === "Wide Format") {
+            loadWideMaterials(itemId);
+          }
+        }
+
+        if (item.enquiry_for) {
+          loadItemPapers(itemId);
+        }
+
+        if (item.category === "Single Sheet" && item.paper_type) {
+          loadItemPapersGsm(itemId, item.paper_type, "inside");
+        }
+
+        if (item.category === "Multiple Sheet") {
+          item.inside_papers?.forEach((paper) => {
+            if (paper.paper_type) {
+              // clearGsm = false → preserve saved GSM selection
+              loadInsidePaperGsm(itemId, paper._id, paper.paper_type, false);
+            }
+          });
+        }
+
+        if (item.cover_paper_type) {
+          loadItemPapersGsm(itemId, item.cover_paper_type, "cover");
+        }
+
+        if (item.wide_material_name) {
+          loadWideMaterialGsm(itemId, item.wide_material_name);
+        }
+      });
+    },
+    [
+      loadCategoryBindings,
+      loadWideMaterials,
+      loadItemPapers,
+      loadItemPapersGsm,
+      loadInsidePaperGsm,
+      loadWideMaterialGsm,
+    ],
+  );
+  // ── END NEW ───────────────────────────────────────────────────────────────
+
+  // ── NEW ──────────────────────────────────────────────────────────────────────
+  // Search handler. Called on button click OR Enter key in the search input.
+  //
+  // Flow:
+  //   1. Validate input is not empty.
+  //   2. Call GET /api/fms/jobcards/:jobNo (same endpoint used by edit mode).
+  //   3. On 404  → show inline error next to search field.
+  //   4. On 200  → mapJobToForm → setFormAndRef → loadDropdownsForMappedItems.
+  //   5. Show brief success banner. Clear search input.
+  //
+  // Why NOT debounced: user explicitly presses Load/Enter.
+  // Debouncing would be dangerous here — auto-filling the entire form on each
+  // keystroke would be a UX disaster.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const handleSearchJob = useCallback(async () => {
+    const trimmed = searchJobNo.trim();
+
+    if (!trimmed) {
+      setSearchError("Please enter a Job No to search.");
+      return;
+    }
+
+    // Basic sanity: job no should be numeric
+    if (!/^\d+$/.test(trimmed)) {
+      setSearchError("Job No must be a number.");
+      return;
+    }
+
+    setSearchLoading(true);
+    setSearchError("");
+    setSearchSuccess("");
+
+    try {
+      // ── FIX: use the lean endpoint, not the full detail endpoint ──────────
+      // The full endpoint has problematic includes (FileAttachment etc.) that
+      // cause 500 errors. The form-load endpoint only includes what we need.
+      const { data } = await api.get(`/api/fms/jobcards/${trimmed}/form-load`);
+
+      // Map DB response → form state using the same pure function
+      // that the edit-mode useEffect uses
+      const { formState, mappedItems } = mapJobToForm(data);
+
+      // Populate the form
+      setFormAndRef(formState);
+
+      // Fire all dropdown loaders for the loaded items
+      loadDropdownsForMappedItems(mappedItems);
+
+      // Clear search input — job no is already in the form data (non-editable)
+      setSearchJobNo("");
+
+      // Show success banner with the loaded job no
+      setSearchSuccess(
+        `✅ Loaded Job #${trimmed} — modify and save as a new job"}`,
+      );
+
+      // Auto-dismiss after 4 seconds
+      setTimeout(() => setSearchSuccess(""), 4000);
+
+      // ── FIX: trigger recalculation for all ready items ────────────────────
+      // Why: even though rebuildCostingSnapshotFromDB fills costing_snapshot
+      // from the DB, we MUST recalculate when creating a new job because:
+      //   1. Paper prices may have changed since the original job.
+      //   2. The backend's createJobCard validates ms_cover_paper_id,
+      //      ss_paper_id, wf_material_id from a FRESH calculation result.
+      //   3. It gives the user accurate pricing before they submit.
+      //
+      // formRef.current is already updated by setFormAndRef above (synchronous),
+      // so we can read the items immediately in the setTimeout.
+      setTimeout(() => {
+        const items = formRef.current.job_items;
+        items.forEach((item, index) => {
+          if (isItemReady(item)) {
+            console.log(`Auto-calculating item ${index} on load:`, item);
+            calculateItemBackend(index);
+          }
+          else{
+            console.log(`Skipping calculation for item ${index} because it's not ready:`, item);
+          }
+        });
+      }, 0);
+      // ── END FIX ─────
+
+    } catch (error) {
+      if (error.response?.status === 404) {
+        setSearchError(`No job found with Job No: ${trimmed}`);
+      } else {
+        setSearchError(
+          error.response?.data?.message ||
+            "Failed to search. Please try again.",
+        );
+      }
+    } finally {
+      setSearchLoading(false);
+    }
+  }, [searchJobNo, isEditMode, setFormAndRef, loadDropdownsForMappedItems]);
+  // ── END NEW ───────────────────────────────────────────────────────────────
+
+  // ── NEW ──────────────────────────────────────────────────────────────────────
+  // Allow pressing Enter in the search input to trigger the search.
+  // Prevents form submission bubbling (important: the input is OUTSIDE <form>).
+  // ─────────────────────────────────────────────────────────────────────────────
+  const handleSearchKeyDown = useCallback(
+    (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault(); // never submit the main form
+        handleSearchJob();
+      }
+      // Clear inline error as soon as user starts correcting the input
+      if (e.key !== "Enter" && searchError) {
+        setSearchError("");
+      }
+    },
+    [handleSearchJob, searchError],
+  );
+  // ── END NEW 
+
+
+
 
   const calculateItemBackend = useCallback(
     async (index) => {
@@ -1364,171 +1717,17 @@ export default function JobCardForm({
   );
 
   // Edit mode: map existing DB job items to the new inside_papers structure.
+  // ── REFACTORED ────────────────────────────────────────────────────────────
+  // Edit-mode population. Now uses the extracted mapJobToForm and
+  // loadDropdownsForMappedItems — no logic lives here anymore.
+  // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!existingJob) return;
-
-    console.log("Mapping existing job for edit mode:", existingJob);
-    const formatDateTimeLocal = (isoString) => {
-      if (!isoString) return "";
-      const date = new Date(isoString);
-      const offset = date.getTimezoneOffset();
-      const localDate = new Date(date.getTime() - offset * 60000);
-      return localDate.toISOString().slice(0, 16);
-    };
-
-    const formatDateOnly = (isoString) => {
-      if (!isoString) return "";
-      const date = new Date(isoString);
-      return date.toISOString().slice(0, 10);
-    };
-
-    // Build job_items properly using DB values
-
-    const safeItems = Array.isArray(existingJob?.items)
-      ? existingJob.items
-      : [];
-
-    const mappedItems = safeItems.map((item, index) => {
-      console.log("existing item: ", item);
-
-      // For Multiple Sheet: rebuild inside_papers from the saved paper data.
-      // Old records only have one inside paper — we map it to inside_papers[0].
-      // New records saved with inside_papers will have the array already.
-      let insidePapers;
-      if (item.category === "Multiple Sheet") {
-        if (
-          Array.isArray(item.inside_papers) &&
-          item.inside_papers.length > 0
-        ) {
-          // Already in new format — just ensure _id and available_gsm exist
-          insidePapers = item.inside_papers.map((p) => ({
-            ...p,
-            _id: p._id || crypto.randomUUID?.() || Date.now().toString(),
-            available_gsm: [],
-          }));
-        } else {
-          // Old format: single paper stored at item level
-          insidePapers = [
-            {
-              _id: crypto.randomUUID?.() ?? Date.now().toString(),
-              paper_type: item.selectedPaper?.paper_name || "",
-              paper_gsm: item.selectedPaper?.gsm || "",
-              to_print: !!item.selectedPaper,
-              color_scheme: item.color_scheme || "",
-              press_type: item.inside_press_type || "",
-              available_gsm: [],
-            },
-          ];
-        }
-      } else {
-        insidePapers = [createEmptyInsidePaper()];
-      }
-
-      return {
-        ...item,
-        // enquiry_for: item.enquiry_for,
-        available_sizes: [],
-        // Single Sheet paper fields (still at item level)
-        // Rebuild paper fields from selectedPaper
-        paper_type: item.selectedPaper?.paper_name || "",
-        paper_gsm: item.selectedPaper?.gsm || "",
-
-        // Rebuild cover fields if available
-        cover_to_print:
-          item.cover_to_print !== undefined ? item.cover_to_print : true,
-        cover_paper_type: item.selectedCoverPaper?.paper_name || "",
-        cover_paper_gsm: item.selectedCoverPaper?.gsm || "",
-
-        // Wide format specific fields
-        wide_material_name: item.selectedWideMaterial?.material_name || "",
-        wide_material_gsm: item.selectedWideMaterial?.gsm || "",
-        wide_material_thickness: item.selectedWideMaterial?.thickness_mm || "",
-
-        // Ensure binding_types is an array
-        binding_types: Array.isArray(item.binding_types)
-          ? item.binding_types
-          : [],
-        binding_targets: item.binding_targets || {
-          numbering_paper_ids: [],
-          perforation_paper_ids: [],
-        },
-
-        // extra binding details
-        folds_per_sheet: item.no_of_foldings || "",
-        creases_per_sheet: item.no_of_creases || "",
-
-        // Client-side fields needed for dropdowns
-        available_items: [],
-        available_papers: [],
-        available_gsm: [],
-        available_gsm_cover: [],
-        available_bindings: [],
-        // Wide format specific dropdown data
-        available_wide_materials: [],
-        available_wide_gsm: [],
-        inside_papers: insidePapers,
-        costing_snapshot: rebuildCostingSnapshotFromDB(
-          item.category,
-          item.costing,
-        ),
-      };
-    });
-
-    setFormAndRef({
-      ...sanitize(existingJob),
-      delivery_date: formatDateTimeLocal(existingJob.delivery_date),
-      proof_date: formatDateOnly(existingJob.proof_date),
-      receiving_date_for_mm: formatDateOnly(existingJob.receiving_date_for_mm),
-      gst_percentage: existingJob.gst_percentage ?? "",
-      job_items: mappedItems,
-    });
-
-    // NOW LOAD DROPDOWN OPTIONS FOR EACH ITEM
-    mappedItems.forEach((item) => {
-      const itemId = item.id ?? item._temp_id;
-
-      if (item.category) {
-        // loadCategoryItems(itemId, item.category);
-        loadCategoryBindings(itemId, item.category);
-        if (item.category === "Wide Format") {
-          loadWideMaterials(itemId);
-        }
-      }
-
-      if (item.enquiry_for) {
-        loadItemPapers(itemId, item.enquiry_for);
-      }
-
-      // For Single Sheet: load GSM at item level (unchanged behaviour)
-      if (item.category === "Single Sheet" && item.paper_type) {
-        loadItemPapersGsm(itemId, item.paper_type, "inside");
-      }
-      // For Multiple Sheet: load GSM per inside paper
-      if (item.category === "Multiple Sheet") {
-        item.inside_papers?.forEach((paper) => {
-          if (paper.paper_type) {
-            loadInsidePaperGsm(itemId, paper._id, paper.paper_type, false);
-          }
-        });
-      }
-
-      if (item.cover_paper_type) {
-        loadItemPapersGsm(itemId, item.cover_paper_type, "cover");
-      }
-
-      if (item.wide_material_name) {
-        loadWideMaterialGsm(itemId, item.wide_material_name);
-      }
-    });
-  }, [
-    existingJob,
-    loadCategoryBindings,
-    loadWideMaterials,
-    loadItemPapers,
-    loadItemPapersGsm,
-    loadInsidePaperGsm,
-    loadWideMaterialGsm,
-  ]);
+    const { formState, mappedItems } = mapJobToForm(existingJob);
+    setFormAndRef(formState);
+    loadDropdownsForMappedItems(mappedItems);
+  }, [existingJob, setFormAndRef, loadDropdownsForMappedItems]);
+  // ── END REFACTORED ────────────────────────────────────────────────────────
 
   return (
     <FormCard title="Job Card Entry">
@@ -1547,6 +1746,120 @@ export default function JobCardForm({
           {err}
         </div>
       )}
+
+
+      {/* ── NEW: Job No Search Panel ────────────────────────────────────────
+          Sits ABOVE the <form> tag — intentionally outside it so pressing
+          Enter in the search input never accidentally submits the job form.
+          This is purely a data-loading utility, not a form field.
+      ─────────────────────────────────────────────────────────────────────── */}
+      {!isEditMode && (
+        <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">
+            🔍 Load from Existing Job
+          </p>
+          <p className="text-xs text-slate-500 mb-3">
+            Enter a Job No to pre-fill this form with that job's data.
+              <span className="ml-1 text-blue-600 font-medium">
+                Submitting will create a brand-new job.
+              </span>
+          </p>
+
+          <div className="flex items-start gap-2">
+            <div className="flex flex-col flex-1 max-w-xs">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="\d*"
+                value={searchJobNo}
+                onChange={(e) => {
+                  // Only allow digits
+                  const val = e.target.value.replace(/\D/g, "");
+                  setSearchJobNo(val);
+                  // Clear errors as user types
+                  if (searchError) setSearchError("");
+                  if (searchSuccess) setSearchSuccess("");
+                }}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="e.g. 10872"
+                disabled={searchLoading}
+                className={`border rounded px-3 py-2 text-sm w-full transition-colors ${
+                  searchError
+                    ? "border-red-400 bg-red-50 focus:ring-red-300"
+                    : "border-slate-300 bg-white focus:border-blue-400"
+                } focus:outline-none focus:ring-2`}
+                aria-label="Search by Job No"
+                aria-describedby={searchError ? "search-job-error" : undefined}
+              />
+              {/* Inline error — shown below the input, not in a global banner */}
+              {searchError && (
+                <p
+                  id="search-job-error"
+                  className="mt-1 text-xs text-red-600 font-medium"
+                  role="alert"
+                >
+                  {searchError}
+                </p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSearchJob}
+              disabled={searchLoading || !searchJobNo.trim()}
+              className={`px-4 py-2 rounded text-sm font-medium text-white transition-all
+                ${
+                  searchLoading || !searchJobNo.trim()
+                    ? "bg-blue-300 cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-700 active:scale-95"
+                }`}
+            >
+              {searchLoading ? (
+                <span className="flex items-center gap-1.5">
+                  <svg
+                    className="animate-spin h-3.5 w-3.5 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v8z"
+                    />
+                  </svg>
+                  Searching…
+                </span>
+              ) : (
+                "Load Job"
+              )}
+            </button>
+          </div>
+
+          {/* Success banner — auto-dismisses after 4 seconds */}
+          {searchSuccess && (
+            <div
+              className="mt-2 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700 font-medium"
+              role="status"
+            >
+              {searchSuccess}
+            </div>
+          )}
+        </div>
+      )}
+      {/* ── END NEW */}
+
+
+
+
 
       <form className="grid md:grid-cols-3 gap-4" onSubmit={onSubmit}>
         {/* ---------------- JOB CARD FIELDS ---------------- */}
