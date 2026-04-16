@@ -44,3 +44,9 @@ debug.log
 
 **/.DS_Store
 
+
+../.claude/
+.claude/
+.claude
+
+claude/
