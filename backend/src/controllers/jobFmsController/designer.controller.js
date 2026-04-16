@@ -145,6 +145,69 @@ export const setEstimatedTime = async (req, res) => {
   }
 };
 
+
+// ── Shared helper: pause any currently running job for this designer ──────────
+// Called before start and resume to enforce the single-active-job rule.
+// Returns the job_no that was paused (or null if nothing was running).
+//
+// Why JOIN through JobCard?
+//   JobAssignment has no direct designer FK — the designer is tracked on
+//   JobCard.assigned_designer. We find all in-progress, unpaused assignments
+//   whose parent job belongs to this designer, excluding the current job.
+const autoPauseActiveJob = async (designerUsername, currentJobNo, transaction) => {
+  // Find any in-progress, unpaused assignment for this designer (excluding current job)
+  const activeAssignment = await JobAssignment.findOne({
+    where: {
+      status: "in_progress",
+      is_paused: false,
+    },
+    include: [
+      {
+        model: JobCard,
+        as: "jobCard",
+        where: {
+          assigned_designer: designerUsername,
+          job_no: { [Op.ne]: currentJobNo }, // exclude the job being started/resumed
+        },
+        attributes: ["job_no"],
+      },
+    ],
+  });
+
+  if (!activeAssignment) return null;
+
+  const pausedJobNo = activeAssignment.jobCard.job_no;
+
+  // Run the same pause logic as designerPauseTask
+  const jobDesignTimeLog = await JobDesignTime.findOne({
+    where: {
+      assignment_id: activeAssignment.id,
+      end_time: null,
+    },
+    order: [["start_time", "DESC"]],
+    transaction,
+  });
+
+  const now = new Date();
+
+  if (jobDesignTimeLog) {
+    jobDesignTimeLog.end_time = now;
+    jobDesignTimeLog.duration_seconds = Math.round(
+      (now - new Date(jobDesignTimeLog.start_time)) / 1000,
+    );
+    activeAssignment.designer_duration_seconds =
+      (activeAssignment.designer_duration_seconds || 0) +
+      jobDesignTimeLog.duration_seconds;
+    await jobDesignTimeLog.save({ transaction });
+  }
+
+  activeAssignment.is_paused = true;
+  await activeAssignment.save({ transaction });
+
+  return pausedJobNo;
+};
+
+
 // Designer's API to START TASK
 export const designerStartTask = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -160,19 +223,33 @@ export const designerStartTask = async (req, res) => {
       return res.status(404).json({ error: "No assignment found to start" });
     }
 
-    assignment.status = "in_progress";
+    if (!assignment.estimated_completion_time) {
+      await t.rollback();
+      return res.status(400).json({
+        error: "Please set estimated completion time before starting.",
+      });
+    }
+
+    // ── Auto-pause any currently running job for this designer ────────────
+    const autoPausedJobNo = await autoPauseActiveJob(
+      req.user.username,  // designer identifier — matches JobCard.assigned_designer
+      job_no,
+      t,
+    );
+
     const startTime = new Date();
+    assignment.status = "in_progress";
     assignment.designer_start_time = startTime;
+    assignment.is_paused = false;
+    await assignment.save({ transaction: t });
 
     await JobDesignTime.create(
       {
         assignment_id: assignment.id,
-        start_time: new Date(),
+        start_time: startTime,
       },
       { transaction: t },
     );
-
-    await assignment.save({ transaction: t });
 
     const job = await JobCard.findByPk(job_no);
     if (!job) {
@@ -204,7 +281,12 @@ export const designerStartTask = async (req, res) => {
 
     await t.commit();
 
-    res.json({ message: "Task started", assignment });
+    res.json({ 
+      message: "Task started", 
+      assignment,
+      // null when nothing was running before
+      auto_paused_job_no: autoPausedJobNo,
+    });
 
     try{
       /* ------------------ EMAIL NOTIFICATIONS ------------------ */
@@ -276,7 +358,7 @@ export const designerStartTask = async (req, res) => {
     if (!t.finished) {
       await t.rollback();
     }
-    console.error(err);
+    console.error("designerStartTask error:", err);
     if (!res.headersSent) {
       res.status(500).json({ error: "Failed to start task" });
     }
@@ -286,14 +368,22 @@ export const designerStartTask = async (req, res) => {
 
 export const designerPauseTask = async (req, res) => {
   console.log("designerPauseTask called:");
+  const t = await db.sequelize.transaction(); // start transaction
   try {
     const { job_no } = req.params;
 
     const assignment = await JobAssignment.findOne({
-      where: { job_no, status: "in_progress" },
+      where: { 
+        job_no, 
+        status: "in_progress", 
+        is_paused: false, 
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE, // optional: prevents race conditions
     });
 
     if (!assignment) {
+      await t.rollback();
       return res.status(404).json({
         error: "No active task found",
       });
@@ -305,9 +395,12 @@ export const designerPauseTask = async (req, res) => {
         end_time: null,
       },
       order: [["start_time", "DESC"]],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
     });
 
     if (!jobDesignTimeLog) {
+      await t.rollback();
       return res.status(404).json({
         error: "No active design time log found",
       });
@@ -319,59 +412,86 @@ export const designerPauseTask = async (req, res) => {
     );
     assignment.designer_duration_seconds += jobDesignTimeLog.duration_seconds;
     assignment.is_paused = true;
-    await assignment.save();
-    await jobDesignTimeLog.save();
+    await assignment.save({ transaction: t });
+    await jobDesignTimeLog.save({ transaction: t });
 
     await ActivityLog.create({
       job_no,
       performed_by_id: req.user?.id || null,
       action: "Designer Pause Task",
       meta: { jobDesignTimeLog },
-    });
+    },{ transaction: t },
+    );
+
+    await t.commit(); // ✅ commit if everything succeeds
 
     res.json({
       message: "Task paused",
       jobDesignTimeLog,
     });
   } catch (err) {
+    await t.rollback(); // ❌ rollback on error
     console.error(err);
     res.status(500).json({ error: "Failed to pause task" });
   }
 };
 
 export const designerResumeTask = async (req, res) => {
+  const t = await db.sequelize.transaction();
   try {
     const { job_no } = req.params;
 
     const assignment = await JobAssignment.findOne({
-      where: { job_no, status: "in_progress" },
+      where: { 
+        job_no, 
+        status: "in_progress",
+        is_paused: true,
+      },
+      transaction: t,
     });
 
     if (!assignment) {
-      return res.status(404).json({
-        error: "No active task found",
+      await t.rollback();
+      return res.status(404).json({ 
+        error: "No paused task found to resume" 
       });
     }
 
-    await JobDesignTime.create({
-      assignment_id: assignment.id,
-      start_time: new Date(),
-    });
+    // ── Auto-pause any currently running job for this designer ────────────
+    const autoPausedJobNo = await autoPauseActiveJob(
+      req.user.username,
+      job_no,
+      t,
+    );
+
+
+    // ── Resume this job ───────────────────────────────────────────────────
+    await JobDesignTime.create(
+      { assignment_id: assignment.id, start_time: new Date() },
+      { transaction: t },
+    );
 
     assignment.is_paused = false;
-    await assignment.save();
+    await assignment.save({ transaction: t });
 
     await ActivityLog.create({
       job_no,
       performed_by_id: req.user?.id || null,
       action: "Designer Resume Task",
-      meta: { assignment },
-    });
+      meta: { assignment, auto_paused_job: autoPausedJobNo },
+    }, { transaction: t },);
 
-    res.json({ message: "Task resumed" });
+    await t.commit();
+    return res.json({
+      message: "Task resumed",
+      auto_paused_job_no: autoPausedJobNo,
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to resume task" });
+    if (!t.finished) await t.rollback();
+    console.error("designerResumeTask error:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to resume task" });
+    }
   }
 };
 
