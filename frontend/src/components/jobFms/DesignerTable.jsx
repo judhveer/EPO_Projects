@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import api from "../../lib/api.js";
 import { DateTime } from "luxon";
 import JobItemsSidebar from "./commonDashboard/JobItemsSidebar.jsx";
@@ -26,6 +26,27 @@ export default function DesignerTable({ refresh }) {
   const paginatedJobs = jobs.slice(startIdx, endIdx);
   const totalPages = Math.ceil(jobs.length / limit);
   const [totalJobs, setTotalJobs] = useState(0);
+
+  // Separate from showSuccessPopup — toast is non-blocking (bottom banner),
+  // popup is modal (center screen). Toast auto-dismisses in 4s.
+  const [autoPauseToast, setAutoPauseToast] = useState(null); // { jobNo, action }
+  const autoPauseToastTimerRef = useRef(null);
+
+  const showAutoPauseToast = useCallback((pausedJobNo, action) => {
+    // Clear any existing toast timer before setting a new one
+    clearTimeout(autoPauseToastTimerRef.current);
+    setAutoPauseToast({ jobNo: pausedJobNo, action });
+    autoPauseToastTimerRef.current = setTimeout(
+      () => setAutoPauseToast(null),
+      4000,
+    );
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => clearTimeout(autoPauseToastTimerRef.current);
+  }, []);
+
 
   const getTimerKey = (jobNo) => `designer_timer_${jobNo}`;
 
@@ -96,7 +117,8 @@ export default function DesignerTable({ refresh }) {
     }
 
     try {
-      await api.patch(`/api/fms/designers/${job.job_no}/start`);
+      const res = await api.patch(`/api/fms/designers/${job.job_no}/start`);
+      const { auto_paused_job_no } = res.data;
 
       const baseSeconds = job.assignment.designer_duration_seconds || 0;
 
@@ -109,7 +131,25 @@ export default function DesignerTable({ refresh }) {
       setTimers((prev) => ({
         ...prev,
         [job.job_no]: baseSeconds,
+        // If a job was auto-paused, freeze its timer at current value
+        ...(auto_paused_job_no
+          ? { [auto_paused_job_no]: prev[auto_paused_job_no] || 0 }
+          : {}),
       }));
+
+      // Stop localStorage timer for the auto-paused job
+      if (auto_paused_job_no) {
+        const stored = getTimerFromLS(auto_paused_job_no);
+        if (stored?.isRunning) {
+          const elapsed = Math.floor((Date.now() - stored.lastTick) / 1000);
+          saveTimerToLS(auto_paused_job_no, {
+            baseSeconds: stored.baseSeconds + elapsed,
+            lastTick: null,
+            isRunning: false,
+          });
+        }
+        showAutoPauseToast(auto_paused_job_no, "started");
+      }
 
       fetchJobs();
     } catch (err) {
@@ -141,7 +181,9 @@ export default function DesignerTable({ refresh }) {
 
   const handleResume = async (job) => {
     try {
-      await api.patch(`/api/fms/designers/${job.job_no}/resume`);
+      const res = await api.patch(`/api/fms/designers/${job.job_no}/resume`);
+      const { auto_paused_job_no } = res.data;
+
 
       const stored = getTimerFromLS(job.job_no);
       const baseSeconds =
@@ -152,6 +194,27 @@ export default function DesignerTable({ refresh }) {
         lastTick: Date.now(),
         isRunning: true,
       });
+
+      setTimers((prev) => ({
+        ...prev,
+        ...(auto_paused_job_no
+          ? { [auto_paused_job_no]: prev[auto_paused_job_no] || 0 }
+          : {}),
+      }));
+
+      // Stop localStorage timer for the auto-paused job
+      if (auto_paused_job_no) {
+        const stored2 = getTimerFromLS(auto_paused_job_no);
+        if (stored2?.isRunning) {
+          const elapsed = Math.floor((Date.now() - stored2.lastTick) / 1000);
+          saveTimerToLS(auto_paused_job_no, {
+            baseSeconds: stored2.baseSeconds + elapsed,
+            lastTick: null,
+            isRunning: false,
+          });
+        }
+        showAutoPauseToast(auto_paused_job_no, "resumed");
+      }
 
       fetchJobs(); // ensure sync
     } catch (err) {
@@ -332,6 +395,32 @@ export default function DesignerTable({ refresh }) {
           {err}
         </div>
       )}
+
+      {/* ── Auto-pause toast notification ─────────────────────────────────────
+    Non-blocking — appears at bottom of screen, auto-dismisses after 4s.
+    Shows which job was automatically paused when designer started/resumed
+      a different job. ───────────────────────────────────────── */}
+      {autoPauseToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-slate-800 text-white text-sm px-5 py-3 rounded-xl shadow-xl animate-fade-in">
+          <span className="text-yellow-400 text-base">⏸</span>
+          <span>
+            Job{" "}
+            <span className="font-bold text-yellow-300">
+              #{autoPauseToast.jobNo}
+            </span>{" "}
+            was automatically paused because you{" "}
+            {autoPauseToast.action === "started" ? "started" : "resumed"} another
+            job.
+          </span>
+          <button
+            onClick={() => setAutoPauseToast(null)}
+            className="ml-2 text-slate-400 hover:text-white text-xs"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
 
       {/* 🎛️ Filter Toggle Button */}
       <div className="flex justify-between items-center mb-4">
