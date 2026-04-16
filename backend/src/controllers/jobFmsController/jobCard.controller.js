@@ -10,10 +10,8 @@ import path, { resolve } from "path";
 const {
   JobCard,
   JobItem,
-  FileAttachment,
   ClientApproval,
   JobAssignment,
-  ProductionRecord,
   ActivityLog,
   ClientDetails,
   User,
@@ -228,21 +226,49 @@ export const createJobCard = async (req, res) => {
     // if job_items are provided, create them
     if (job_items && job_items.length > 0) {
       for (const item of job_items) {
+
+        const normalizedEnquiryFor = item.enquiry_for
+          ? item.enquiry_for
+              .trim()                          // remove leading/trailing spaces
+              .replace(/\s+/g, " ")           // collapse multiple spaces into one: "big  book" → "big book"
+              .toLowerCase()                   // "BOOK" → "book"
+              .replace(/\b\w/g, (c) => c.toUpperCase()) // capitalize first letter of each word: "book" → "Book"
+          : "";
+
+        if (!normalizedEnquiryFor) {
+          throw new Error(`enquiry_for is empty for a ${item.category} item. Cannot save.`);
+        }
+
+        // ── Case-insensitive search using Sequelize Op.eq on UPPER() ─────────────
+        // We use sequelize.fn("UPPER") so the comparison happens at DB level.
+        // This handles: "book" == "BOOK" == "Book" == "  book  "
         let item_master_id = await ItemMaster.findOne({
-          where: {
-            category: item.category,
-            item_name: item.enquiry_for,
+          where: { 
+            category: item.category, 
+            // db.sequelize.fn("UPPER", ...) tells MySQL: WHERE UPPER(item_name) = UPPER(?)
+            // So "Art Paper", "ART PAPER", "art paper" all match the same row.
+            item_name: db.sequelize.where(
+              db.sequelize.fn("UPPER", db.sequelize.col("item_name")),
+              "=",
+              normalizedEnquiryFor.toUpperCase()
+            ),
           },
           attributes: ["id"],
+          transaction: t,
         });
+
 
         if (!item_master_id) {
           console.log("ItemMaster not found for: ", item.category, item.enquiry_for, item_master_id);
+          // Create with the normalized (clean) version — not whatever the user typed
           item_master_id = await ItemMaster.create({
               category: item.category,
-              item_name: item.enquiry_for,
+              item_name: normalizedEnquiryFor, // "Book Writing" not "  BOOK   writing  "
           }, { transaction: t });
+        }else {
+          console.log(`ItemMaster found: [${item.category}] "${normalizedEnquiryFor}" → id: ${item_master_id.dataValues.id}`);
         }
+
 
         item.item_master_id = item_master_id.dataValues.id;
 
@@ -309,12 +335,69 @@ export const createJobCard = async (req, res) => {
           item.cover_pages               = Number(item.cover_pages);
         }
 
-        // Create JobItem
+        // ── STEP 3: Strip ALL fields that must never be sent to JobItem.create ──
+        // Doing this by explicit delete is safest — it mutates the loop variable
+        // so the subsequent spread is clean.
+        //
+        // Why both camelCase AND snake_case?
+        // Frontend JSON uses snake_case (Sequelize underscored:true).
+        // Belt-and-suspenders: strip both so no timestamp can ever leak through.
+        const STRIP_FIELDS = [
+          "id",                // old UUID — Sequelize auto-generates a fresh one
+          "_temp_id",          // frontend-only tracking key
+          "job_no",            // set explicitly below — never trust client-sent value
+          "created_at",        // snake_case timestamp from JSON
+          "updated_at",        // snake_case timestamp from JSON
+          "createdAt",         // camelCase fallback
+          "updatedAt",         // camelCase fallback
+          "costing_snapshot",  // frontend calc data — goes to JobItemCosting, not JobItem
+          "costing",           // Sequelize association object — not a column
+          "selectedPaper",     // Sequelize eager-load — not a column
+          "selectedCoverPaper",
+          "selectedWideMaterial",
+          "itemMaster",
+          "jobCard",
+          // UI-only display fields (cleanJobItems should have stripped these,
+          // but strip again here as a safety net)
+          "best_inside_sheet",
+          "best_inside_sheet_name",
+          "best_inside_dimensions",
+          "best_inside_ups",
+          "best_cover_sheet",
+          "best_cover_dimensions",
+          "best_cover_ups",
+          "selected_material",
+          "calculation_type",
+          "rolls_or_boards_used",
+          "wastage_sqft",
+          "wide_ups",
+          "material_info",
+          "available_items",
+          "available_papers",
+          "available_gsm",
+          "available_gsm_cover",
+          "available_bindings",
+          "available_sizes",
+          "available_wide_materials",
+          "available_wide_gsm",
+          "paper_type",        // display name — FK is selected_paper_id
+          "paper_gsm",         // display value — FK is selected_paper_id
+          "cover_paper_type",  // display name — FK is selected_cover_paper_id
+          "cover_paper_gsm",   // display value
+          "wide_material_name", // display name — FK is selected_wide_material_id
+          "wide_material_gsm",
+          "wide_material_thickness",
+        ];
+
+        for (const field of STRIP_FIELDS) {
+          delete item[field];
+        }
 
         const createdItem = await JobItem.create(
           {
-            job_no,
             ...item,
+            // Explicit overrides — always win over the spread
+            job_no: jobCard.job_no,
             selected_paper_id: item.selected_paper_id ?? null,
             selected_cover_paper_id: item.selected_cover_paper_id ?? null,
             selected_wide_material_id: item.selected_wide_material_id ?? null,
@@ -331,11 +414,6 @@ export const createJobCard = async (req, res) => {
             cover_press_type: item.cover_press_type === "" || item.cover_press_type === undefined ? null : item.cover_press_type,
             cover_color_scheme: item.cover_color_scheme === "" || item.cover_color_scheme === undefined ? null : item.cover_color_scheme,
             color_scheme: item.color_scheme?.trim() ? item.color_scheme : null,
-            // Strip frontend-only / calc fields that have no column in JobItem
-            costing_snapshot:    undefined,
-            best_inside_sheet:   undefined,
-            best_cover_sheet:    undefined,
-            material_info:       undefined,
           },
           { transaction: t }
         );
@@ -681,9 +759,7 @@ export const getJobCardByJobNo = async (req, res) => {
             { model: ItemMaster, as: "itemMaster" },
           ],
         },
-        { model: FileAttachment, as: "attachments" },
         { model: ClientApproval, as: "clientApprovals" },
-        { model: ProductionRecord, as: "production" },
         { model: JobAssignment, as: "assignments" },
         { model: ActivityLog, as: "activities" },
       ],
@@ -704,6 +780,65 @@ export const getJobCardByJobNo = async (req, res) => {
     });
   }
 };
+
+
+
+// jobCard.controller.js
+
+/**
+ * GET /api/fms/jobcards/:job_no/form-load
+ *
+ * Lean read used exclusively by the "Load from Job No" search panel.
+ * Only includes JobItem + its paper/material associations.
+ * Does NOT include FileAttachment, ClientApproval, ProductionRecord, etc.
+ * — those are only needed on the detail/timeline view, not the form.
+ *
+ * JobItemCosting IS included (as "costing") so rebuildCostingSnapshotFromDB
+ * can reconstruct the snapshot. This prevents the "Cover paper ID missing"
+ * error when the user saves a loaded job as new without recalculating.
+ * (Recalculation is also triggered on the frontend as a second safety net.)
+ */
+export const getJobCardForFormLoad = async (req, res) => {
+  try {
+    const { job_no } = req.params;
+
+    if (!job_no || !/^\d+$/.test(job_no)) {
+      return res.status(400).json({ message: "Valid Job No is required." });
+    }
+
+    const jobCard = await JobCard.findByPk(job_no, {
+      include: [
+        {
+          model: JobItem,
+          as: "items",
+          include: [
+            { model: PaperMaster, as: "selectedPaper" },
+            { model: PaperMaster, as: "selectedCoverPaper" },
+            { model: WideFormatMaterial, as: "selectedWideMaterial" },
+            { model: ItemMaster, as: "itemMaster" },
+            // ← CRITICAL: costing must be included so rebuildCostingSnapshotFromDB works
+            { model: JobItemCosting, as: "costing" },
+          ],
+        },
+      ],
+    });
+
+    if (!jobCard) {
+      return res.status(404).json({ message: `No job found with Job No: ${job_no}` });
+    }
+
+    return res.json(jobCard);
+  } catch (error) {
+    console.error("Error in getJobCardForFormLoad:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+
+
 
 /**
  * UPDATE JOB CARD
