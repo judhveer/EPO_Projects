@@ -213,6 +213,8 @@ export const getJobItemsByJobNo = async (req, res) => {
     });
 
     const normalizeFields = (value) => {
+      if (value === null || value === undefined) return [];
+      if (typeof value === "object") return value; // already parsed by MySQL/Node driver
       if (Array.isArray(value)) return value;
       if (typeof value === "string") {
         try {
@@ -245,7 +247,7 @@ export const getJobItemsByJobNo = async (req, res) => {
         }
     });
 
-    console.log("Fetched job items: ", cleanedItems);
+    
 
     res.json(cleanedItems);
   } catch (err) {
