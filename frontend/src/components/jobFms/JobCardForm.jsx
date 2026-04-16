@@ -499,7 +499,11 @@ const mapJobToForm = (job, { forNewJob = false } = {}) => {
         // New format — ensure _id and available_gsm exist
         insidePapers = item.inside_papers.map((p) => ({
           ...p,
-          _id: crypto.randomUUID?.() ?? (Date.now().toString() + Math.random()),
+        // Only generate a new _id if none exists (truly old/corrupted data).
+        // This applies to BOTH edit mode AND forNewJob=true (search load):
+        //   - Edit mode: _id must match DB binding_targets references.
+        //   - New job:   binding_targets is also loaded from DB with same UUIDs, so references must still match until user saves the new job.
+          _id: p._id || (crypto.randomUUID?.() ?? (Date.now().toString() + Math.random())),
           available_gsm: [],
         }));
       } else {
