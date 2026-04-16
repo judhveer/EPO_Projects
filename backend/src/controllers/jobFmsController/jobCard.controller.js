@@ -799,6 +799,49 @@ export const getJobCardByJobNo = async (req, res) => {
  * error when the user saves a loaded job as new without recalculating.
  * (Recalculation is also triggered on the frontend as a second safety net.)
  */
+
+// Pass defaultValue if you want {} instead of [] for object fields.
+const normalizeJsonField = (value, defaultValue = []) => {
+  if (value === null || value === undefined) return defaultValue;
+  if (typeof value === "object") return value; // already parsed by MySQL/Node driver
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return defaultValue;
+    }
+  }
+  return defaultValue;
+};
+
+const normalizeJobItem = (json) => {
+  const costing = json.costing
+    ? {
+        ...json.costing,
+        // ms_inside_costing is a JSON array of per-paper calc objects
+        ms_inside_costing: normalizeJsonField(json.costing.ms_inside_costing),
+      }
+    : null;
+
+  return {
+    ...json,
+    // JSON array columns
+    binding_types:   normalizeJsonField(json.binding_types),
+    inside_papers:   normalizeJsonField(json.inside_papers),
+    // binding_targets is a JSON object, not an array — default {}
+    binding_targets: normalizeJsonField(json.binding_targets, {
+      numbering_paper_ids: [],
+      perforation_paper_ids: [],
+    }),
+    // Boolean — MariaDB sometimes returns 0/1 instead of true/false
+    cover_to_print: json.cover_to_print !== false && json.cover_to_print !== 0,
+    costing,
+  };
+};
+
+
+
+
 export const getJobCardForFormLoad = async (req, res) => {
   try {
     const { job_no } = req.params;
@@ -828,7 +871,14 @@ export const getJobCardForFormLoad = async (req, res) => {
       return res.status(404).json({ message: `No job found with Job No: ${job_no}` });
     }
 
-    return res.json(jobCard);
+    // Convert to plain object so we can safely mutate JSON fields
+    const json = jobCard.toJSON();
+
+    // Normalize every item's JSON columns — MariaDB 11.x returns them as strings
+    json.items = (json.items || []).map(normalizeJobItem);
+
+    console.log("getJobCardForFormLoad - normalized response: ", json);
+    return res.json(json);
   } catch (error) {
     console.error("Error in getJobCardForFormLoad:", error);
     return res.status(500).json({
