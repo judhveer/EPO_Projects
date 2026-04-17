@@ -268,7 +268,16 @@ const calculateUps = (sheet, job, requireEven = false) => {
   // Example: if both orientations gave odd UPS, press operator leaves one cell blank to make it even. So 9 becomes 8, 7 becomes 6, etc.
   const best    = Math.max(normal, rotated);
   const rounded = best % 2 === 0 ? best : best - 1;
-  return rounded; // returns 0 if best was 1 → sheet will be skipped
+
+  // ── Phase 3: rounding gave 0 (best was 1, the only fit is odd=1) ─────────
+  // Returning 0 causes pickBestSheet to skip this sheet entirely, which can
+  // produce "Sheet / UPS selection failed" even though the sheet physically fits.
+  // Instead: return the odd UPS as-is. The caller (effectiveUps logic) will use
+  // it, and the press operator handles the odd count manually.
+  if (rounded === 0 && best > 0) {
+    return best; // best is odd (e.g. 1) — better than nothing
+  }
+  return rounded;
 };
 
 // ---------------------- BEST SHEET PICKING ----------------------
@@ -347,6 +356,43 @@ const nullSheet = () => ({
 
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DIGITAL PRESS — maximum sheet size gate
+//
+// The digital press physically accepts any sheet whose:
+//   short edge ≤ 13"  AND  long edge ≤ 19"
+// This is orientation-independent — we compare min/max of width & height,
+// so a sheet stored as 19×13 in the DB is treated the same as 13×19.
+//
+// Tolerance of ±0.15" covers floating-point GSM/size rounding in the DB
+// (e.g. A4 stored as 8.268×11.693 still passes).
+//
+// To change the press capacity in the future, update only these two constants.
+// ─────────────────────────────────────────────────────────────────────────────
+const DIGITAL_MAX_SHORT_EDGE = 13;   // inches
+const DIGITAL_MAX_LONG_EDGE  = 19;   // inches
+const DIGITAL_TOLERANCE      = 0.15; // inches — absorbs DB float imprecision
+
+/**
+ * Returns true if the paper-master row can physically pass through the digital press.
+ * Checks the short-edge / long-edge rule — handles portrait and landscape DB entries.
+ */
+const isWithinDigitalMaxSheet = (sheet) => {
+  const w = Number(sheet.width);
+  const h = Number(sheet.height);
+
+  // Guard against null / zero dimensions stored in DB
+  if (!w || !h || w <= 0 || h <= 0) return false;
+
+  const shortEdge = Math.min(w, h);
+  const longEdge  = Math.max(w, h);
+
+  return (
+    shortEdge <= DIGITAL_MAX_SHORT_EDGE + DIGITAL_TOLERANCE &&
+    longEdge  <= DIGITAL_MAX_LONG_EDGE  + DIGITAL_TOLERANCE
+  );
+};
+
 
 // MAIN CONTROLLER
 export const calculateItemController = async (req, res) => {
@@ -374,6 +420,11 @@ export const calculateItemController = async (req, res) => {
     } = item;
 
     const qty = Number(quantity);
+
+        // Guard: qty must be a positive integer — every division downstream uses qty as denominator.
+    if (!qty || qty <= 0 || !Number.isFinite(qty)) {
+      return res.status(400).json({ message: "Quantity must be a positive number." });
+    }
 
     // ── 1. Resolve job size ───
     const sizeMasterRow = await SizeMaster.findOne({
@@ -664,21 +715,23 @@ export const calculateItemController = async (req, res) => {
       const isDigital = pressType === "DIGITAL MULTICOLOR" || pressType === "DIGITAL BLACK WHITE";
       // DIGITAL PRESS → only allow 12x18 and 13x19
       if (isDigital) {
-        insidePaperRows = insidePaperRows.filter(
-          s =>
-            (Number(s.width) === 12 && Number(s.height) === 18) ||
-            (Number(s.width) === 13 && Number(s.height) === 19)
-        );
+        insidePaperRows = insidePaperRows.filter(isWithinDigitalMaxSheet);
+        if (insidePaperRows.length === 0) {
+          return res.status(404).json({
+            message: `No sheet found that fits the digital press for "${paper_type}" ${paper_gsm} GSM. ` +
+                    `Digital press accepts sheets up to ${DIGITAL_MAX_SHORT_EDGE}"×${DIGITAL_MAX_LONG_EDGE}".`,
+          });
+        }
       }
       
       const { bestSheet: bestInsideSheet, bestUps: bestUpsInside } = pickBestSheet(insidePaperRows, jobSize);
 
-
-      if (!bestInsideSheet || !bestUpsInside) {
-        return res.status(500).json({ 
-          message: "Inside sheet / UPS selection failed" 
+      if (!bestInsideSheet || bestUpsInside === 0 || !Number.isFinite(bestUpsInside)) {
+        return res.status(500).json({
+          message: `No sheet large enough to fit job size ${size} was found in paper master for ${paper_type} ${paper_gsm} GSM.`,
         });
       }
+
 
       // ------ 4. Compute sheets required ------
       // UPS NEVER changes for Single Sheet
@@ -785,10 +838,13 @@ export const calculateItemController = async (req, res) => {
     // 
 
     if(category === "Multiple Sheet") {
+      // Guard: inside_pages = 0 would make all sheet counts 0 → divide-by-zero in unit_rate.
+      if (!Number(inside_pages) || Number(inside_pages) <= 0) {
+        return res.status(400).json({ message: "Inside pages must be greater than 0 for Multiple Sheet." });
+      }
       // ── Resolve inside_papers ──
       // Support old single-paper payload (backward compat during transition)
       // as well as the new inside_papers[] array from the frontend.
-
       const insidePapers = Array.isArray(item.inside_papers) && item.inside_papers.length > 0 ? item.inside_papers : [
         // Old format fallback — map item-level fields to a single paper
             {
@@ -813,9 +869,26 @@ export const calculateItemController = async (req, res) => {
       // This array is stored back in the DB (inside_papers JSON column) and returned to the frontend for display in the sidebar.
       const insidePapersResults = [];
 
+      // ── BEFORE the for loop: batch-fetch all paper master rows in parallel ──
+      // Each inside paper may have a different paper_type + paper_gsm combo.
+      // We fetch them all at once and map results by index.
+
+      const paperMasterFetches = insidePapers.map((paper) => {
+        if (!paper.paper_type || !paper.paper_gsm) return Promise.resolve([]);
+        return PaperMaster.findAll({
+          where: { paper_name: paper.paper_type, gsm: paper.paper_gsm },
+        });
+      });
+
+      // Wait for all fetches in parallel — no race condition here because each
+      // fetch is an independent SELECT with no writes. Sequelize connection pool
+      // handles concurrent queries safely.
+      const allPaperRowsRaw = await Promise.all(paperMasterFetches);
+
       // ── Loop: calculate every inside paper ───
       for (let i = 0; i < insidePapers.length; i++) {
         const paper = insidePapers[i];
+        let paperRows  = allPaperRowsRaw[i];
 
         if (!paper.paper_type || !paper.paper_gsm) {
           // Skip incomplete papers — shouldn't happen if frontend validates,
@@ -823,14 +896,6 @@ export const calculateItemController = async (req, res) => {
           console.warn(`Inside paper ${i + 1} is missing paper_type or paper_gsm — skipping.`);
           continue;
         }
-
-        // 1. Fetch matching paper rows from PaperMaster
-        let paperRows = await PaperMaster.findAll({
-          where: { 
-            paper_name: paper.paper_type, 
-            gsm: paper.paper_gsm 
-          },
-        });
 
         if (!paperRows || paperRows.length === 0) {
           return res.status(404).json({
@@ -843,14 +908,12 @@ export const calculateItemController = async (req, res) => {
         const isDigitalForPaper = paperPressType === "DIGITAL MULTICOLOR" || paperPressType === "DIGITAL BLACK WHITE";
 
         if (paper.to_print && isDigitalForPaper) {
-          paperRows = paperRows.filter(
-            s =>
-              (Number(s.width) === 12 && Number(s.height) === 18) ||
-              (Number(s.width) === 13 && Number(s.height) === 19)
-          );
+          paperRows = paperRows.filter(isWithinDigitalMaxSheet);
           if (paperRows.length === 0) {
             return res.status(404).json({
-              message: `No 12x18 / 13x19 sheet found for inside paper ${i + 1} with digital press`,
+              message: `No digital-press compatible sheet found for inside paper ${i + 1} ` +
+                      `(${paper.paper_type} ${paper.paper_gsm} GSM). ` +
+                      `Digital press accepts sheets up to ${DIGITAL_MAX_SHORT_EDGE}"×${DIGITAL_MAX_LONG_EDGE}".`,
             });
           }
         }
@@ -858,9 +921,10 @@ export const calculateItemController = async (req, res) => {
         const requireEvenUps = sides === "Both Side" || sides === "Both Sides";
         // 3. Pick best sheet
         let { bestSheet, bestUps } = pickBestSheet(paperRows, jobSize, requireEvenUps);
-        if (!bestSheet || !bestUps) {
+        if (!bestSheet || bestUps === 0 || !Number.isFinite(bestUps)) {
           return res.status(500).json({
-            message: `Sheet / UPS selection failed for inside paper ${i + 1} (${paper.paper_type})`,
+            message: `No sheet large enough to fit job size ${size} was found for inside paper ${i + 1} ` +
+                    `(${paper.paper_type} ${paper.paper_gsm} GSM).`,
           });
         }
 
@@ -935,6 +999,14 @@ export const calculateItemController = async (req, res) => {
         });
       }
 
+      // Guard: if every inside paper was skipped (all had missing paper_type/paper_gsm),
+      // insidePapersResults will be empty — nothing to calculate cover against.
+      if (insidePapersResults.length === 0) {
+        return res.status(400).json({
+          message: "No valid inside paper data found. Please ensure all inside papers have paper type and GSM set.",
+        });
+      }
+
       // Cover calculation (same as original logic, only now it's after the inside papers loop)
       let coverPaperRows = await PaperMaster.findAll({
         where: { 
@@ -952,19 +1024,22 @@ export const calculateItemController = async (req, res) => {
 
       // DIGITAL PRESS → only allow 12x18 and 13x19
       if (isDigitalCover) {
-        coverPaperRows = coverPaperRows.filter(
-          s =>
-            (Number(s.width) === 12 && Number(s.height) === 18) ||
-            (Number(s.width) === 13 && Number(s.height) === 19)
-        );
+        coverPaperRows = coverPaperRows.filter(isWithinDigitalMaxSheet);
+        if (coverPaperRows.length === 0) {
+          return res.status(404).json({
+            message: `No digital-press compatible sheet found for cover paper ` +
+                    `(${cover_paper_type} ${cover_paper_gsm} GSM). ` +
+                    `Digital press accepts sheets up to ${DIGITAL_MAX_SHORT_EDGE}"×${DIGITAL_MAX_LONG_EDGE}".`,
+          });
+        }
       }
       // Cover requireEven: only when cover is 4 pages (both sides printed, folded)
       const coverRequiresEvenUps = Number(cover_pages) === 4;
       const { bestSheet: bestCoverSheet, bestUps: bestUpsCover } = pickBestSheet(coverPaperRows, jobSize, coverRequiresEvenUps);
-      if(bestUpsCover === 0){
+      if (!bestCoverSheet || bestUpsCover === 0 || !Number.isFinite(bestUpsCover)) {
         return res.status(400).json({
-            message: "Client Size does not fit the Cover Paper.!",
-          });
+          message: `Job size ${size} does not fit on any available cover paper (${cover_paper_type} ${cover_paper_gsm} GSM).`,
+        });
       }
       // ── Extract cover_to_print (default true for backward compat) ──────────
       const cover_to_print = item.cover_to_print !== false;
