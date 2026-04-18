@@ -664,6 +664,13 @@ export default function JobCardForm({
 
   const timeoutsRef = useRef([]);
 
+  // ── Per-item AbortControllers — cancel in-flight calc on new trigger ──────────
+  // key: uniqueKey (item.id ?? item._temp_id) → AbortController
+  const calcAbortControllersRef = useRef(new Map());
+  // ── Per-item debounce timers — collapse rapid field changes into one request ──
+  // key: uniqueKey → setTimeout id
+  const calcTimersRef = useRef(new Map());
+
   // Helper to register timeouts
   const safeTimeout = useCallback((fn, delay) => {
     const id = setTimeout(fn, delay);
@@ -679,6 +686,7 @@ export default function JobCardForm({
     setErr(message);
     setTimeout(() => setErr(""), 20000);
   }, []);
+
 
   useEffect(() => {
     async function loadUsers() {
@@ -705,7 +713,14 @@ export default function JobCardForm({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      // Cancel registered timeouts
       timeoutsRef.current.forEach(clearTimeout);
+      // Cancel all pending calc timers
+      calcTimersRef.current.forEach(clearTimeout);
+      calcTimersRef.current.clear();
+      // Abort all in-flight calculation requests
+      calcAbortControllersRef.current.forEach((ctrl) => ctrl.abort());
+      calcAbortControllersRef.current.clear();
     };
   }, []);
 
@@ -1037,11 +1052,29 @@ export default function JobCardForm({
 
 
   const calculateItemBackend = useCallback(
-    async (index) => {
-      console.log("calculateItemBackend Triggered:");
+    async (index, uniqueKey) => {
+      console.log("calculateItemBackend Triggered:", uniqueKey);
 
       const item = formRef.current.job_items[index];
       if (!item || !isItemReady(item)) return; // safety net — isItemReady already checked in handleItemChange
+
+      // ── Cancel any in-flight request for this item ────────────────────────
+      const prevController = calcAbortControllersRef.current.get(uniqueKey);
+      if (prevController) {
+        prevController.abort();
+      }
+      const controller = new AbortController();
+      calcAbortControllersRef.current.set(uniqueKey, controller);
+
+      // ── Mark item as "calculating" so UI can show spinner ─────────────────
+      setFormAndRef((prev) => {
+        const idx = findItemIndexById(prev.job_items, uniqueKey);
+        if (idx === -1) return prev;
+        const items = [...prev.job_items];
+        items[idx] = { ...items[idx], is_calculating: true, calc_error: null };
+        return { ...prev, job_items: items };
+      });
+
 
       // Clean the items before sending
       const cleanedItems = cleanJobItems(formRef.current.job_items);
@@ -1079,9 +1112,11 @@ export default function JobCardForm({
         const { data } = await api.post(
           `/api/fms/items/calculate-item`,
           payload,
+          { signal: controller.signal }, // ← abort signal
         );
-        // Backend returns: { unit_rate, item_total, total_amount }
-        console.log("Backend response:", data);
+
+        // Calculation succeeded — remove controller
+        calcAbortControllersRef.current.delete(uniqueKey);
 
         const qty = Number(formRef.current.job_items[index].quantity || 1);
 
@@ -1090,6 +1125,10 @@ export default function JobCardForm({
 
         // [FIX 1A] Merge inside_papers_results back into item.inside_papers
         setFormAndRef((prev) => {
+          // Guard: item may have been removed while request was in flight
+          const currentIdx = findItemIndexById(prev.job_items, uniqueKey);
+          if (currentIdx === -1) return prev;
+
           const updatedItems = [...prev.job_items];
           const currentInsidePapers = updatedItems[index].inside_papers || [];
 
@@ -1121,11 +1160,11 @@ export default function JobCardForm({
             // Store unit & item total
             unit_rate: data.totals.unit_rate,
             item_total: data.totals.item_total,
+            is_calculating:    false,
+            calc_error:        null,      // ← clear any previous error
             costing_snapshot: costingSnapshot, // ← sent to backend for JobItemCosting
-
             // ← NEW: inside papers now carry per-paper calc results
             inside_papers: mergedInsidePapers,
-
             // Store inside best-sheet details
             best_inside_sheet: data.inside.sheet_selected,
             best_inside_dimensions: data.inside.sheet_dimensions,
@@ -1135,7 +1174,6 @@ export default function JobCardForm({
             best_cover_sheet: data.cover.sheet_selected,
             best_cover_dimensions: data.cover.sheet_dimensions,
             best_cover_ups: data.cover.ups,
-
             // wide format fields
             selected_material: data.wide?.selected_material,
             calculation_type: data.wide?.calculation_type,
@@ -1145,26 +1183,102 @@ export default function JobCardForm({
             material_info: data.wide?.details?.selected_material_info,
           };
 
+          // Recompute grand total from all items
+          const grandTotal = updatedItems.reduce(
+            (sum, it) => sum + Number(it.item_total || 0),
+            0,
+          );
           return {
             ...prev,
             job_items: updatedItems,
-            total_amount: data.totals?.grand_total ?? prev.total_amount,
+            total_amount: grandTotal,
           };
         });
       } catch (err) {
-        console.error(
-          "Item calculation failed:",
-          err?.response?.data?.message || err,
-        );
-        showSoftError("Calculation failed: " + err?.response?.data?.message);
+        // ── Aborted request — not an error, silently ignore ──────────────────
+        // Axios wraps AbortController errors as CanceledError.
+        // Fetch wraps them as AbortError. Handle both.
+        if (
+          err.name === "AbortError" ||
+          err.name === "CanceledError" ||
+          err.code === "ERR_CANCELED"
+        ) {
+          return;
+        }
+
+        calcAbortControllersRef.current.delete(uniqueKey);
+
+        const errorMsg =
+          err?.response?.data?.message ||
+          "Calculation failed. Please check the selected paper, size, and press type.";
+
+        console.error("Item calculation failed:", errorMsg);
+
+        // ── Clear totals and set inline error on the item ────────────────────
+        setFormAndRef((prev) => {
+          const currentIdx = findItemIndexById(prev.job_items, uniqueKey);
+          if (currentIdx === -1) return prev;
+
+          const updatedItems = [...prev.job_items];
+          updatedItems[currentIdx] = {
+            ...updatedItems[currentIdx],
+            unit_rate:        "",
+            item_total:       "",
+            is_calculating:   false,
+            calc_error:       errorMsg,
+            costing_snapshot: null,
+          };
+
+          // Recompute grand total — this item now contributes 0
+          const grandTotal = updatedItems.reduce(
+            (sum, it) => sum + Number(it.item_total || 0),
+            0,
+          );
+
+          return {
+            ...prev,
+            job_items: updatedItems,
+            total_amount: grandTotal, // ← subtotal updates immediately
+          };
+        });
       }
     },
-    [showSoftError, setFormAndRef],
+    [findItemIndexById, setFormAndRef],
   );
 
-    // ── NEW ──────────────────────────────────────────────────────────────────────
+    // ── triggerCalculation ────────────────────────────────────────────────────────
+  // Debounced calculation trigger.
+  // - Clears any pending timer for this item (collapses rapid changes).
+  // - After 200ms of silence, reads latest item from formRef and fires calc.
+  // - AbortController inside calculateItemBackend handles in-flight cancellation.
+  // Called by handleItemChange and handleInsidePaperChange instead of raw setTimeout.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const triggerCalculation = useCallback(
+    (uniqueKey) => {
+      // Cancel pending timer for this item (debounce)
+      if (calcTimersRef.current.has(uniqueKey)) {
+        clearTimeout(calcTimersRef.current.get(uniqueKey));
+      }
+
+      const timerId = setTimeout(() => {
+        calcTimersRef.current.delete(uniqueKey);
+
+        const latestIndex = findItemIndexById(formRef.current.job_items, uniqueKey);
+        if (latestIndex === -1) return;
+
+        const latestItem = formRef.current.job_items[latestIndex];
+        if (isItemReady(latestItem)) {
+          calculateItemBackend(latestIndex, uniqueKey);
+        }
+      }, 200);
+
+      calcTimersRef.current.set(uniqueKey, timerId);
+    },
+    [findItemIndexById, calculateItemBackend],
+  );
+
+  // ── NEW ──────────────────────────────────────────────────────────────────────
   // Search handler. Called on button click OR Enter key in the search input.
-  //
   // Flow:
   //   1. Validate input is not empty.
   //   2. Call GET /api/fms/jobcards/:jobNo (same endpoint used by edit mode).
@@ -1234,9 +1348,10 @@ export default function JobCardForm({
       setTimeout(() => {
         const items = formRef.current.job_items;
         items.forEach((item, index) => {
+          const key = item.id ?? item._temp_id;
           if (isItemReady(item)) {
             console.log(`Auto-calculating item ${index} on load:`, item);
-            calculateItemBackend(index);
+            calculateItemBackend(index, key);
           }
           else{
             console.log(`Skipping calculation for item ${index} because it's not ready:`, item);
@@ -1362,19 +1477,7 @@ export default function JobCardForm({
       }
 
       if (CALC_TRIGGER_FIELDS.has(field)) {
-        // formRef is now updated synchronously inside setFormAndRef above,
-        // so by the time this setTimeout fires, formRef.current is already current
-        setTimeout(() => {
-          const latestIndex = findItemIndexById(formRef.current.job_items, id);
-          if (latestIndex === -1) return;
-          const latestItem = formRef.current.job_items[latestIndex];
-
-          // Only fire if ALL required fields for this category are filled
-          // No wasted API calls, no mid-fill error messages
-          if (isItemReady(latestItem)) {
-            calculateItemBackend(latestIndex);
-          }
-        }, 0);
+        triggerCalculation(id); // debounced + abort-safe
       }
     },
     // Dependencies: only stable functions (no form.job_items)
@@ -1388,7 +1491,7 @@ export default function JobCardForm({
       loadItemPapers,
       loadItemPapersGsm,
       loadSizes,
-      calculateItemBackend,
+      triggerCalculation,
     ],
   );
 
@@ -1446,24 +1549,14 @@ export default function JobCardForm({
       // field changes (paper_type triggers recalc only after GSM is also filled,
       // so isItemReady naturally guards that).
       if (INSIDE_PAPER_CALC_TRIGGER_FIELDS.has(field)) {
-        setTimeout(() => {
-          const latestIndex = findItemIndexById(
-            formRef.current.job_items,
-            itemId,
-          );
-          if (latestIndex === -1) return;
-          const latestItem = formRef.current.job_items[latestIndex];
-          if (isItemReady(latestItem)) {
-            calculateItemBackend(latestIndex);
-          }
-        }, 0);
+        triggerCalculation(itemId); // debounced + abort-safe
       }
     },
     [
       findItemIndexById,
       setFormAndRef,
       loadInsidePaperGsm,
-      calculateItemBackend,
+      triggerCalculation,
     ],
   );
 
