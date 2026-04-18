@@ -216,6 +216,7 @@ export default function JobWriterTable() {
               </th>
               <th className="border p-2"> Job Created On</th>
               <th className="border p-2">Client Name</th>
+              <th className="border p-2">Items</th>
               <th className="border p-2">Client Type</th>
               <th className="border p-2">Order Type</th>
               <th className="border p-2">Order Source</th>
@@ -236,7 +237,6 @@ export default function JobWriterTable() {
               <th className="border p-2">Payment Status</th>
               <th className="border p-2">Status</th>
               <th className="border p-2">Job Completion Deadline</th>
-              <th className="border p-2">Items</th>
               <th className="border p-2 sticky right-0 bg-blue-800 z-40">
                 Actions
               </th>
@@ -267,6 +267,18 @@ export default function JobWriterTable() {
                       .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border p-2">{job.client_name}</td>
+
+                  <td className="border p-2 text-center text-xs">
+                    {job.item_count || 0} items
+                    {job.item_count > 0 && (
+                      <button
+                        onClick={() => setItemSidebarJobNo(job.job_no)}
+                        className="ml-2 text-blue-600 hover:text-blue-800 underline text-xs cursor-pointer"
+                      >
+                        View
+                      </button>
+                    )}
+                  </td>
                   <td className="border p-2">{job.client_type}</td>
                   <td className="border p-2 ">{job.order_type}</td>
                   <td className="border p-2 ">{job.order_source}</td>
@@ -343,18 +355,6 @@ export default function JobWriterTable() {
                     {DateTime.fromJSDate(new Date(job.job_completion_deadline))
                       .setZone("Asia/Kolkata")
                       .toFormat("dd LLL yyyy, hh:mm a")}
-                  </td>
-
-                  <td className="border p-2 text-center text-xs">
-                    {job.item_count || 0} items
-                    {job.item_count > 0 && (
-                      <button
-                        onClick={() => setItemSidebarJobNo(job.job_no)}
-                        className="ml-2 text-blue-600 hover:text-blue-800 underline text-xs cursor-pointer"
-                      >
-                        View
-                      </button>
-                    )}
                   </td>
 
                   <td className="border p-2 sticky right-0 bg-white z-10 text-center relative action-dropdown">
