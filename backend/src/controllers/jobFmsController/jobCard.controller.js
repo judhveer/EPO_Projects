@@ -3,9 +3,14 @@ import { Op } from "sequelize";
 import { advanceStage } from "../../utils/jobFms/stageTracking.js";
 import { sendMailForFMS } from "../../email/sendMail.js";
 import { DateTime } from "luxon";
-import { orderConfirmationTemplate, crmJobAssignmentTemplate, coordinatorJobReviewTemplate } from "../../email/templates/emailTemplates.js";
+import {
+  orderConfirmationTemplate,
+  crmJobAssignmentTemplate,
+  coordinatorJobReviewTemplate,
+} from "../../email/templates/emailTemplates.js";
 import path, { resolve } from "path";
-
+// ✅ Fix 2 — import Sequelize directly (most reliable)
+import { Transaction } from "sequelize";
 
 const {
   JobCard,
@@ -18,9 +23,8 @@ const {
   ItemMaster,
   PaperMaster,
   WideFormatMaterial,
-  JobItemCosting
+  JobItemCosting,
 } = db;
-
 
 const calculateJobCompletionDeadline = (deliveryDateInput) => {
   // ⬅️ deliveryDateInput is already IST
@@ -71,14 +75,11 @@ const calculateJobCompletionDeadline = (deliveryDateInput) => {
     .toJSDate();
 };
 
-
-
-
 function computeGST(totalAmount, discount, gstPct) {
-  const subtotal   = parseFloat(Number(totalAmount || 0).toFixed(2));
-  const disc       = parseFloat(Math.min(Number(discount || 0), subtotal).toFixed(2));
+  const subtotal = parseFloat(Number(totalAmount || 0).toFixed(2));
+  const disc = parseFloat(Math.min(Number(discount || 0), subtotal).toFixed(2));
   const afterDiscount = parseFloat((subtotal - disc).toFixed(2));
-  const rate       = gstPct ? Number(gstPct) : 0;
+  const rate = gstPct ? Number(gstPct) : 0;
   const gst_amount = parseFloat(((afterDiscount * rate) / 100).toFixed(2));
   const final_amount = parseFloat((afterDiscount + gst_amount).toFixed(2));
   return { afterDiscount, gst_amount, final_amount };
@@ -91,7 +92,6 @@ export const createJobCard = async (req, res) => {
   console.log("createJobCard called...");
   const t = await db.sequelize.transaction();
   try {
-
     const {
       client_type,
       order_source,
@@ -104,10 +104,10 @@ export const createJobCard = async (req, res) => {
       email_id,
       order_handled_by,
       execution_location,
-      outbound_sent_to = null,       // if outbound then this fields will be required
-      paper_ordered_from = null,     // if outbound then this fields will be required
-      receiving_date_for_mm = null,   // if outbound then this fields will be required
-      delivery_location, 
+      outbound_sent_to = null, // if outbound then this fields will be required
+      paper_ordered_from = null, // if outbound then this fields will be required
+      receiving_date_for_mm = null, // if outbound then this fields will be required
+      delivery_location,
       delivery_address,
       delivery_date,
       proof_date,
@@ -168,16 +168,25 @@ export const createJobCard = async (req, res) => {
       gst_percentage !== "" &&
       ![5, 18].includes(Number(gst_percentage))
     ) {
-      return res.status(400).json({ message: "GST percentage must be 5 or 18" });
+      return res
+        .status(400)
+        .json({ message: "GST percentage must be 5 or 18" });
     }
 
-    const { gst_amount, final_amount } = computeGST(total_amount, discount, gst_percentage);
+    const { gst_amount, final_amount } = computeGST(
+      total_amount,
+      discount,
+      gst_percentage,
+    );
 
     // calculate job completion deadline
-    const job_completion_deadline = calculateJobCompletionDeadline(delivery_date);
+    const job_completion_deadline =
+      calculateJobCompletionDeadline(delivery_date);
     console.log("job completion deadline: ", job_completion_deadline);
 
-    const initialStage = is_direct_to_production ? "production" : "coordinator_review";
+    const initialStage = is_direct_to_production
+      ? "production"
+      : "coordinator_review";
 
     // ✅ 1. Create JobCard (auto-generates job_no via hook)
     const jobCard = await JobCard.create(
@@ -194,8 +203,8 @@ export const createJobCard = async (req, res) => {
         order_received_by,
         order_handled_by,
         execution_location,
-        outbound_sent_to,       // if outbound then this fields will be required
-        paper_ordered_from,    // if outbound then this fields will be required
+        outbound_sent_to, // if outbound then this fields will be required
+        paper_ordered_from, // if outbound then this fields will be required
         receiving_date_for_mm,
         delivery_date,
         delivery_location,
@@ -213,11 +222,11 @@ export const createJobCard = async (req, res) => {
         current_stage: initialStage,
         job_completion_deadline,
         discount: Number(discount) || 0,
-        gst_percentage: gst_percentage ? Number(gst_percentage) : null,  
-        gst_amount,      
-        final_amount,     
+        gst_percentage: gst_percentage ? Number(gst_percentage) : null,
+        gst_amount,
+        final_amount,
       },
-      { transaction: t }
+      { transaction: t },
     );
 
     const job_no = jobCard.job_no;
@@ -225,113 +234,120 @@ export const createJobCard = async (req, res) => {
     // if job_items are provided, create them
     if (job_items && job_items.length > 0) {
       for (const item of job_items) {
-
         const normalizedEnquiryFor = item.enquiry_for
           ? item.enquiry_for
-              .trim()                          // remove leading/trailing spaces
-              .replace(/\s+/g, " ")           // collapse multiple spaces into one: "big  book" → "big book"
-              .toLowerCase()                   // "BOOK" → "book"
+              .trim() // remove leading/trailing spaces
+              .replace(/\s+/g, " ") // collapse multiple spaces into one: "big  book" → "big book"
+              .toLowerCase() // "BOOK" → "book"
               .replace(/\b\w/g, (c) => c.toUpperCase()) // capitalize first letter of each word: "book" → "Book"
           : "";
 
         if (!normalizedEnquiryFor) {
-          throw new Error(`enquiry_for is empty for a ${item.category} item. Cannot save.`);
+          throw new Error(
+            `enquiry_for is empty for a ${item.category} item. Cannot save.`,
+          );
         }
 
         // ── Case-insensitive search using Sequelize Op.eq on UPPER() ─────────────
         // We use sequelize.fn("UPPER") so the comparison happens at DB level.
         // This handles: "book" == "BOOK" == "Book" == "  book  "
         let item_master_id = await ItemMaster.findOne({
-          where: { 
-            category: item.category, 
+          where: {
+            category: item.category,
             // db.sequelize.fn("UPPER", ...) tells MySQL: WHERE UPPER(item_name) = UPPER(?)
             // So "Art Paper", "ART PAPER", "art paper" all match the same row.
             item_name: db.sequelize.where(
               db.sequelize.fn("UPPER", db.sequelize.col("item_name")),
               "=",
-              normalizedEnquiryFor.toUpperCase()
+              normalizedEnquiryFor.toUpperCase(),
             ),
           },
           attributes: ["id"],
           transaction: t,
         });
 
-
         if (!item_master_id) {
-          console.log("ItemMaster not found for: ", item.category, item.enquiry_for, item_master_id);
+          console.log(
+            "ItemMaster not found for: ",
+            item.category,
+            item.enquiry_for,
+            item_master_id,
+          );
           // Create with the normalized (clean) version — not whatever the user typed
-          item_master_id = await ItemMaster.create({
+          item_master_id = await ItemMaster.create(
+            {
               category: item.category,
               item_name: normalizedEnquiryFor, // "Book Writing" not "  BOOK   writing  "
-          }, { transaction: t });
-        }else {
-          console.log(`ItemMaster found: [${item.category}] "${normalizedEnquiryFor}" → id: ${item_master_id.dataValues.id}`);
+            },
+            { transaction: t },
+          );
+        } else {
+          console.log(
+            `ItemMaster found: [${item.category}] "${normalizedEnquiryFor}" → id: ${item_master_id.dataValues.id}`,
+          );
         }
-
 
         item.item_master_id = item_master_id.dataValues.id;
 
         const cs = item.costing_snapshot;
 
         /* ── WIDE FORMAT ── */
-        if(item.category === "Wide Format") {
+        if (item.category === "Wide Format") {
           if (!cs?.wf_material_id) {
             throw new Error(
               `Wide Format material ID missing for item "${item.enquiry_for}". ` +
-              `Please recalculate before saving.`
+                `Please recalculate before saving.`,
             );
           }
           item.selected_wide_material_id = Number(cs.wf_material_id);
-          // Clean unrelated fields          
-          item.selected_paper_id         = null;
-          item.selected_cover_paper_id   = null;
-          item.cover_paper_type          = null;
-          item.cover_paper_gsm           = null;
-          item.cover_color_scheme        = null;
-          item.cover_press_type          = null;
-          item.color_scheme              = "Multicolor";
-        }
+          // Clean unrelated fields
+          item.selected_paper_id = null;
+          item.selected_cover_paper_id = null;
+          item.cover_paper_type = null;
+          item.cover_paper_gsm = null;
+          item.cover_color_scheme = null;
+          item.cover_press_type = null;
+          item.color_scheme = "Multicolor";
+        } else if (item.category === "Other") {
         /* ── OTHER ── */
-        else if(item.category === "Other"){
           item.selected_wide_material_id = null;
-          item.selected_paper_id         = null;
-          item.selected_cover_paper_id   = null;
-          item.cover_paper_type          = null;
-          item.cover_paper_gsm           = null;
-          item.cover_color_scheme        = null;
-          item.cover_press_type          = null;
-          item.color_scheme              = "Multicolor";
-          item.sides                     = null;
-        }
+          item.selected_paper_id = null;
+          item.selected_cover_paper_id = null;
+          item.cover_paper_type = null;
+          item.cover_paper_gsm = null;
+          item.cover_color_scheme = null;
+          item.cover_press_type = null;
+          item.color_scheme = "Multicolor";
+          item.sides = null;
+        } else if (item.category === "Single Sheet") {
         /* ── SINGLE SHEET & MULTIPLE SHEET ── */
-        else if(item.category === "Single Sheet"){
           if (!cs?.ss_paper_id) {
             throw new Error(
               `Paper ID missing for Single Sheet item "${item.enquiry_for}". ` +
-              `Please recalculate before saving.`
+                `Please recalculate before saving.`,
             );
           }
           // Use selected_paper_id from costing_snapshot (resolved during calculation)
           item.selected_paper_id = Number(cs.ss_paper_id);
           item.selected_wide_material_id = null;
-          item.selected_cover_paper_id   = null;
-          item.cover_paper_type          = null;
-          item.cover_paper_gsm           = null;
-          item.cover_color_scheme        = null;
-          item.cover_press_type          = null;
-        } else if(item.category === "Multiple Sheet"){
+          item.selected_cover_paper_id = null;
+          item.cover_paper_type = null;
+          item.cover_paper_gsm = null;
+          item.cover_color_scheme = null;
+          item.cover_press_type = null;
+        } else if (item.category === "Multiple Sheet") {
           if (!cs?.ms_cover_paper_id) {
             throw new Error(
               `Cover paper ID missing for Multiple Sheet item "${item.enquiry_for}". ` +
-              `Please recalculate before saving.`
+                `Please recalculate before saving.`,
             );
           }
           // selected_paper_id is NULL for Multiple Sheet — papers are in inside_papers[]
-          item.selected_paper_id         = null;  // papers live in inside_papers[] JSON
+          item.selected_paper_id = null; // papers live in inside_papers[] JSON
           item.selected_wide_material_id = null;
-          item.selected_cover_paper_id   = Number(cs.ms_cover_paper_id);
-          item.inside_pages              = Number(item.inside_pages);
-          item.cover_pages               = Number(item.cover_pages);
+          item.selected_cover_paper_id = Number(cs.ms_cover_paper_id);
+          item.inside_pages = Number(item.inside_pages);
+          item.cover_pages = Number(item.cover_pages);
         }
 
         // ── STEP 3: Strip ALL fields that must never be sent to JobItem.create ──
@@ -342,16 +358,16 @@ export const createJobCard = async (req, res) => {
         // Frontend JSON uses snake_case (Sequelize underscored:true).
         // Belt-and-suspenders: strip both so no timestamp can ever leak through.
         const STRIP_FIELDS = [
-          "id",                // old UUID — Sequelize auto-generates a fresh one
-          "_temp_id",          // frontend-only tracking key
-          "job_no",            // set explicitly below — never trust client-sent value
-          "created_at",        // snake_case timestamp from JSON
-          "updated_at",        // snake_case timestamp from JSON
-          "createdAt",         // camelCase fallback
-          "updatedAt",         // camelCase fallback
-          "costing_snapshot",  // frontend calc data — goes to JobItemCosting, not JobItem
-          "costing",           // Sequelize association object — not a column
-          "selectedPaper",     // Sequelize eager-load — not a column
+          "id", // old UUID — Sequelize auto-generates a fresh one
+          "_temp_id", // frontend-only tracking key
+          "job_no", // set explicitly below — never trust client-sent value
+          "created_at", // snake_case timestamp from JSON
+          "updated_at", // snake_case timestamp from JSON
+          "createdAt", // camelCase fallback
+          "updatedAt", // camelCase fallback
+          "costing_snapshot", // frontend calc data — goes to JobItemCosting, not JobItem
+          "costing", // Sequelize association object — not a column
+          "selectedPaper", // Sequelize eager-load — not a column
           "selectedCoverPaper",
           "selectedWideMaterial",
           "itemMaster",
@@ -379,10 +395,10 @@ export const createJobCard = async (req, res) => {
           "available_sizes",
           "available_wide_materials",
           "available_wide_gsm",
-          "paper_type",        // display name — FK is selected_paper_id
-          "paper_gsm",         // display value — FK is selected_paper_id
-          "cover_paper_type",  // display name — FK is selected_cover_paper_id
-          "cover_paper_gsm",   // display value
+          "paper_type", // display name — FK is selected_paper_id
+          "paper_gsm", // display value — FK is selected_paper_id
+          "cover_paper_type", // display name — FK is selected_cover_paper_id
+          "cover_paper_gsm", // display value
           "wide_material_name", // display name — FK is selected_wide_material_id
           "wide_material_gsm",
           "wide_material_thickness",
@@ -406,70 +422,90 @@ export const createJobCard = async (req, res) => {
               : [],
             inside_pages: item.inside_pages ? Number(item.inside_pages) : null,
             cover_pages: item.cover_pages ? Number(item.cover_pages) : null,
-            cover_to_print: item.cover_to_print !== false,  // default true
-            no_of_foldings: item.folds_per_sheet ? Number(item.folds_per_sheet) : null,
-            no_of_creases: item.creases_per_sheet ? Number(item.creases_per_sheet) : null,
-            press_type: item.press_type === '' || item.press_type === undefined ? null : item.press_type,
-            cover_press_type: item.cover_press_type === "" || item.cover_press_type === undefined ? null : item.cover_press_type,
-            cover_color_scheme: item.cover_color_scheme === "" || item.cover_color_scheme === undefined ? null : item.cover_color_scheme,
+            cover_to_print: item.cover_to_print !== false, // default true
+            no_of_foldings: item.folds_per_sheet
+              ? Number(item.folds_per_sheet)
+              : null,
+            no_of_creases: item.creases_per_sheet
+              ? Number(item.creases_per_sheet)
+              : null,
+            press_type:
+              item.press_type === "" || item.press_type === undefined
+                ? null
+                : item.press_type,
+            cover_press_type:
+              item.cover_press_type === "" ||
+              item.cover_press_type === undefined
+                ? null
+                : item.cover_press_type,
+            cover_color_scheme:
+              item.cover_color_scheme === "" ||
+              item.cover_color_scheme === undefined
+                ? null
+                : item.cover_color_scheme,
             color_scheme: item.color_scheme?.trim() ? item.color_scheme : null,
           },
-          { transaction: t }
+          { transaction: t },
         );
 
-        if(cs && item.category !== "Other"){
+        if (cs && item.category !== "Other") {
           // For Wide Format, set wf_material_id from the resolved FK
-          if(item.category === "Wide Format"){
+          if (item.category === "Wide Format") {
             cs.wf_material_id = item.selected_wide_material_id;
           }
-          await JobItemCosting.create({
-            job_no,
-            job_item_id: createdItem.id,
-            category: item.category,
-            // Single Sheet fields
-            ss_paper_id: cs.ss_paper_id || null,
-            ss_ups: cs.ss_ups || null,
-            ss_sheets: cs.ss_sheets || null,
-            ss_sheets_with_wastage: cs.ss_sheets_with_wastage || null,
-            ss_sheet_rate: cs.ss_sheet_rate || null,
-            ss_sheet_cost: cs.ss_sheet_cost || null,
-            ss_printing_cost: cs.ss_printing_cost || null,
-            // Multiple Sheet inside fields
-            ms_inside_costing:              cs.ms_inside_costing              ?? null,
-            ms_total_inside_sheet_cost:     cs.ms_total_inside_sheet_cost     ?? null,
-            ms_total_inside_printing_cost:  cs.ms_total_inside_printing_cost  ?? null,
-            // Multiple Sheet cover fields
-            ms_cover_paper_id:            cs.ms_cover_paper_id             ?? null,
-            ms_cover_ups:                 cs.ms_cover_ups                  ?? null,
-            ms_cover_sheets:              cs.ms_cover_sheets               ?? null,
-            ms_cover_sheets_with_wastage: cs.ms_cover_sheets_with_wastage  ?? null,
-            ms_cover_sheet_rate:          cs.ms_cover_sheet_rate            ?? null,
-            ms_cover_sheet_cost:          cs.ms_cover_sheet_cost            ?? null,
-            ms_cover_printing_cost:       cs.ms_cover_printing_cost         ?? null,
-            // Wide Format fields
-            wf_material_id:         cs.wf_material_id          ?? null,
-            wf_calculation_type:    cs.wf_calculation_type      ?? null,
-            wf_rolls_or_boards_used: cs.wf_rolls_or_boards_used ?? null,
-            wf_wastage_sqft:        cs.wf_wastage_sqft          ?? null,
-            wf_ups:                 cs.wf_ups                   ?? null,
-            wf_material_cost:       cs.wf_material_cost         ?? null,
-            wf_printing_cost:       cs.wf_printing_cost         ?? null,
-            // Binding
-            binding_cost:           cs.binding_cost          ?? 0,
-            binding_cost_per_copy:  cs.binding_cost_per_copy ?? 0,
-            // Summary
-            total_sheet_cost:       cs.total_sheet_cost       ?? 0,
-            total_printing_cost:    cs.total_printing_cost    ?? 0,
-            sheet_cost_per_copy:    cs.sheet_cost_per_copy    ?? 0,
-            printing_cost_per_copy: cs.printing_cost_per_copy ?? 0,
-            unit_rate:              Number(cs.unit_rate ?? 0),
-            item_total:             Number(cs.item_total ?? 0), 
-          }, { transaction: t });
+          await JobItemCosting.create(
+            {
+              job_no,
+              job_item_id: createdItem.id,
+              category: item.category,
+              // Single Sheet fields
+              ss_paper_id: cs.ss_paper_id || null,
+              ss_ups: cs.ss_ups || null,
+              ss_sheets: cs.ss_sheets || null,
+              ss_sheets_with_wastage: cs.ss_sheets_with_wastage || null,
+              ss_sheet_rate: cs.ss_sheet_rate || null,
+              ss_sheet_cost: cs.ss_sheet_cost || null,
+              ss_printing_cost: cs.ss_printing_cost || null,
+              // Multiple Sheet inside fields
+              ms_inside_costing: cs.ms_inside_costing ?? null,
+              ms_total_inside_sheet_cost: cs.ms_total_inside_sheet_cost ?? null,
+              ms_total_inside_printing_cost:
+                cs.ms_total_inside_printing_cost ?? null,
+              // Multiple Sheet cover fields
+              ms_cover_paper_id: cs.ms_cover_paper_id ?? null,
+              ms_cover_ups: cs.ms_cover_ups ?? null,
+              ms_cover_sheets: cs.ms_cover_sheets ?? null,
+              ms_cover_sheets_with_wastage:
+                cs.ms_cover_sheets_with_wastage ?? null,
+              ms_cover_sheet_rate: cs.ms_cover_sheet_rate ?? null,
+              ms_cover_sheet_cost: cs.ms_cover_sheet_cost ?? null,
+              ms_cover_printing_cost: cs.ms_cover_printing_cost ?? null,
+              // Wide Format fields
+              wf_material_id: cs.wf_material_id ?? null,
+              wf_calculation_type: cs.wf_calculation_type ?? null,
+              wf_rolls_or_boards_used: cs.wf_rolls_or_boards_used ?? null,
+              wf_wastage_sqft: cs.wf_wastage_sqft ?? null,
+              wf_ups: cs.wf_ups ?? null,
+              wf_material_cost: cs.wf_material_cost ?? null,
+              wf_printing_cost: cs.wf_printing_cost ?? null,
+              // Binding
+              binding_cost: cs.binding_cost ?? 0,
+              binding_cost_per_copy: cs.binding_cost_per_copy ?? 0,
+              // Summary
+              total_sheet_cost: cs.total_sheet_cost ?? 0,
+              total_printing_cost: cs.total_printing_cost ?? 0,
+              sheet_cost_per_copy: cs.sheet_cost_per_copy ?? 0,
+              printing_cost_per_copy: cs.printing_cost_per_copy ?? 0,
+              unit_rate: Number(cs.unit_rate ?? 0),
+              item_total: Number(cs.item_total ?? 0),
+            },
+            { transaction: t },
+          );
         }
       }
     }
 
-      // Log activity
+    // Log activity
     await ActivityLog.create(
       {
         job_no: job_no,
@@ -477,19 +513,19 @@ export const createJobCard = async (req, res) => {
         performed_by_id: req.user?.id || null,
         meta: { job_no },
       },
-      { transaction: t }
+      { transaction: t },
     );
 
-      // 4. Create StageTracking entry
-      await advanceStage({
-        job_no,
-        new_stage: initialStage,
-        performed_by_id: req.user?.id || null,
-        remarks: is_direct_to_production ? "(Job created -> Direct to Production) Job sent directly to production" : "(Job created -> Coordinator review) Job sent for coordinator review",
-        transaction: t,
-      });
-
-
+    // 4. Create StageTracking entry
+    await advanceStage({
+      job_no,
+      new_stage: initialStage,
+      performed_by_id: req.user?.id || null,
+      remarks: is_direct_to_production
+        ? "(Job created -> Direct to Production) Job sent directly to production"
+        : "(Job created -> Coordinator review) Job sent for coordinator review",
+      transaction: t,
+    });
 
     //  Commit transaction before sending email
     await t.commit();
@@ -538,18 +574,18 @@ export const createJobCard = async (req, res) => {
         jobNo: jobCard.job_no,
         clientName: client_name,
         contactNumber: contact_number,
-        clientType: client_type, 
+        clientType: client_type,
         orderType: order_type,
         orderSource: order_source,
-        orderReceivedBy: order_received_by,   
+        orderReceivedBy: order_received_by,
         executionLocation: execution_location,
         deliveryDate: delivery_date,
-        deliveryLocation: delivery_location, 
+        deliveryLocation: delivery_location,
         taskPriority: task_priority,
         totalAmount: total_amount,
         advancePayment: advance_payment || 0, // Fallback to 0 if undefined
-        paymentStatus: payment_status,    
-        dashboardUrl: dashboardUrl,           // Computed above
+        paymentStatus: payment_status,
+        dashboardUrl: dashboardUrl, // Computed above
       });
 
       await sendMailForFMS({
@@ -598,12 +634,6 @@ export const createJobCard = async (req, res) => {
   }
 };
 
-
-
-
-
-
-
 const buildWhereClause = (query) => {
   const {
     status,
@@ -629,12 +659,12 @@ const buildWhereClause = (query) => {
   // SIMPLE search (LIKE) — since no FULLTEXT
   if (search) {
     where[Op.or] = [
-        { job_no: { [Op.eq]: Number(search) || -1 } },
-        { client_name: { [Op.like]: `%${search}%` } },
-        { order_handled_by: { [Op.like]: `%${search}%` } },
-        { contact_number: { [Op.like]: `%${search}%` } },
-        { email_id: { [Op.like]: `%${search}%` } },
-        {assigned_designer: { [Op.like]: `%${search}%`} },
+      { job_no: { [Op.eq]: Number(search) || -1 } },
+      { client_name: { [Op.like]: `%${search}%` } },
+      { order_handled_by: { [Op.like]: `%${search}%` } },
+      { contact_number: { [Op.like]: `%${search}%` } },
+      { email_id: { [Op.like]: `%${search}%` } },
+      { assigned_designer: { [Op.like]: `%${search}%` } },
     ];
   }
 
@@ -662,12 +692,8 @@ const buildWhereClause = (query) => {
     }
   }
 
-
-
   return where;
 };
-
-
 
 /**
  * GET ALL JOB CARDS (with pagination & filters)
@@ -686,31 +712,30 @@ export const getAllJobCards = async (req, res) => {
       where: whereClause,
     });
 
-
     const jobCards = await JobCard.findAll({
       where: whereClause,
       // For items count
-            attributes: {
-              include: [
-                [
-                  db.sequelize.literal(`(
+      attributes: {
+        include: [
+          [
+            db.sequelize.literal(`(
                     SELECT COUNT(*)
                     FROM jobfms_job_items ji
                     WHERE ji.job_no = JobCard.job_no
                   )`),
-                  "item_count",
-                ],
-              ],
-            },
+            "item_count",
+          ],
+        ],
+      },
       include: [
-      //   { model: ClientApproval, 
-      //     as: "clientApprovals", 
-      //     separate: true,
-      //     limit: 1,
-      //     order: [["instance", "DESC"]],
-      //     required: false,
-      //   },
-      //   { model: ProductionRecord, as: "production" },
+        //   { model: ClientApproval,
+        //     as: "clientApprovals",
+        //     separate: true,
+        //     limit: 1,
+        //     order: [["instance", "DESC"]],
+        //     required: false,
+        //   },
+        //   { model: ProductionRecord, as: "production" },
         { model: JobAssignment, as: "assignments" },
       ],
       limit: parseInt(limit),
@@ -781,8 +806,6 @@ export const getJobCardByJobNo = async (req, res) => {
   }
 };
 
-
-
 // jobCard.controller.js
 
 /**
@@ -825,8 +848,8 @@ const normalizeJobItem = (json) => {
   return {
     ...json,
     // JSON array columns
-    binding_types:   normalizeJsonField(json.binding_types),
-    inside_papers:   normalizeJsonField(json.inside_papers),
+    binding_types: normalizeJsonField(json.binding_types),
+    inside_papers: normalizeJsonField(json.inside_papers),
     // binding_targets is a JSON object, not an array — default {}
     binding_targets: normalizeJsonField(json.binding_targets, {
       numbering_paper_ids: [],
@@ -837,9 +860,6 @@ const normalizeJobItem = (json) => {
     costing,
   };
 };
-
-
-
 
 export const getJobCardForFormLoad = async (req, res) => {
   try {
@@ -867,7 +887,9 @@ export const getJobCardForFormLoad = async (req, res) => {
     });
 
     if (!jobCard) {
-      return res.status(404).json({ message: `No job found with Job No: ${job_no}` });
+      return res
+        .status(404)
+        .json({ message: `No job found with Job No: ${job_no}` });
     }
 
     // Convert to plain object so we can safely mutate JSON fields
@@ -887,8 +909,25 @@ export const getJobCardForFormLoad = async (req, res) => {
   }
 };
 
-
-
+/**
+ * Safely parses a value that may be a JSON string.
+ * MariaDB 11.x stores JSON columns as longtext — Sequelize returns them as raw strings.
+ * Returns parsed array/object if valid JSON, otherwise returns the original value.
+ * Safe for: already-parsed arrays, null, undefined, plain non-JSON strings.
+ */
+const safeParseJson = (v) => {
+  if (v === null || v === undefined) return v;
+  if (typeof v !== "string") return v; // already parsed — array, object, number, etc.
+  const trimmed = v.trim();
+  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      /* invalid JSON — return as-is */
+    }
+  }
+  return v;
+};
 
 /**
  * UPDATE JOB CARD
@@ -896,54 +935,308 @@ export const getJobCardForFormLoad = async (req, res) => {
 export const updateJobCard = async (req, res) => {
   console.log("updateJobCard called...");
   // console.log("req.body: ", req.body);
-  const t = await db.sequelize.transaction();
-  try {
-    const { job_no } = req.params;
-    const { job_items = [], ...updates } = req.body;
+  const { job_no } = req.params;
+  const { job_items = [], ...updates } = req.body;
 
-    const jobCard = await JobCard.findByPk(job_no, {
-      include: [{ model: JobItem, as: "items" }],
-      transaction: t,
+  // PRE-FLIGHT READS (outside transaction — no locks held yet)
+  // Fetching the current state before we start writing keeps the
+  // transaction window narrow and prevents long-held read locks from
+  // blocking other writers.
+  let jobCard;
+  try {
+    jobCard = await JobCard.findByPk(job_no, {
+      include: [
+        {
+          model: JobItem,
+          as: "items",
+          include: [
+            {
+              model: PaperMaster,
+              as: "selectedPaper",
+              attributes: ["id", "paper_name", "gsm"],
+            },
+            {
+              model: PaperMaster,
+              as: "selectedCoverPaper",
+              attributes: ["id", "paper_name", "gsm"],
+            },
+            {
+              model: WideFormatMaterial,
+              as: "selectedWideMaterial",
+              attributes: ["id", "material_name", "gsm", "thickness_mm"],
+            },
+          ],
+        },
+        { model: JobAssignment, as: "assignments" },
+      ],
     });
-    if (!jobCard) {
-      await t.rollback();
-      return res.status(404).json({
-        message: "JobCard not found",
-      });
+  } catch (readErr) {
+    console.error("Pre-flight read failed:", readErr);
+    return res
+      .status(500)
+      .json({ message: "Failed to read job card", error: readErr.message });
+  }
+
+  if (!jobCard) {
+    return res.status(404).json({
+      message: "JobCard not found",
+    });
+  }
+
+  // ── Snapshot old state for diff (pure JS, no DB) ─────────────────────────
+  const oldJobCardData = jobCard.toJSON();
+  const TRACKED_JOBCARD_FIELDS = [
+    "client_name",
+    "client_type",
+    "order_type",
+    "order_source",
+    "address",
+    "contact_number",
+    "email_id",
+    "department",
+    "reference",
+    "execution_location",
+    "delivery_location",
+    "delivery_address",
+    "delivery_date",
+    "proof_date",
+    "task_priority",
+    "instructions",
+    "total_amount",
+    "advance_payment",
+    "mode_of_payment",
+    "payment_status",
+    "no_of_files",
+    "order_received_by",
+    "order_handled_by",
+    "is_direct_to_production",
+    "outbound_sent_to",
+    "paper_ordered_from",
+    "receiving_date_for_mm",
+    "discount",
+    "gst_percentage",
+  ];
+
+  // ── Epoch bounds — any number in this range is treated as a date, not an amount
+  // Jan 1 2000 → Jan 1 2100. Guards against quantities/amounts being mis-read as dates.
+  const EPOCH_MIN = 946684800000; // new Date("2000-01-01").getTime()
+  const EPOCH_MAX = 4102444800000; // new Date("2100-01-01").getTime()
+  // ── Fields that store date-only (no time component) ───────────────────────────
+  // These compare/display only the YYYY-MM-DD part, ignoring time.
+  const DATE_ONLY_FIELDS = new Set(["proof_date", "receiving_date_for_mm"]);
+
+  // ── Place this ONCE, before jobCardChanges and before modifiedItems ───────────
+  // Normalizes a value for equality comparison:
+  //   - null / undefined / "" → sentinel "__EMPTY__"
+  //   - Numeric strings / decimals → Number (0.00 === 0, 494.00 === 494)
+  //   - Date strings / Date objects → UTC epoch ms (same moment = same number)
+  //   - Arrays → sorted JSON string
+  //   - Everything else → trimmed string
+  const normForDiff = (v, fieldName = "") => {
+    if (v === null || v === undefined || v === "") return "__EMPTY__";
+
+    // ── Arrays ────────────────────────────────────────────────────────────────
+    if (Array.isArray(v)) return JSON.stringify([...v].sort());
+
+    // ── JSON array/object string (MariaDB stores JSON columns as longtext) ────
+    if (
+      typeof v === "string" &&
+      (v.trim().startsWith("[") || v.trim().startsWith("{"))
+    ) {
+      try {
+        const parsed = JSON.parse(v);
+        if (Array.isArray(parsed)) return JSON.stringify([...parsed].sort());
+        if (typeof parsed === "object") return JSON.stringify(parsed);
+      } catch {
+        /* not valid JSON — fall through */
+      }
     }
 
-    // ==============================
-    // STEP 1: SNAPSHOT OLD DATA
-    // ==============================
+    if (typeof v === "boolean") return String(v);
 
-    // Old JobCard snapshot (exclude status & current_stage later)
-    // const oldJobCard = jobCard.toJSON();
+    // ── Epoch number → treat as date ──────────────────────────────────────────
+    // MUST come before Number() check — epoch ms is a valid number but should
+    // be compared as a date, not as a quantity.
+    // new Date(epochMs) is the cleanest way to convert.
+    if (typeof v === "number" && v >= EPOCH_MIN && v <= EPOCH_MAX) {
+      const d = new Date(v);
+      if (!isNaN(d.getTime())) {
+        // Date-only fields: compare just YYYY-MM-DD (ignore time zone shifts)
+        if (DATE_ONLY_FIELDS.has(fieldName))
+          return d.toISOString().slice(0, 10);
+        // Datetime: round to minute — frontend datetime-local has minute precision only
+        return String(Math.floor(d.getTime() / 60000));
+      }
+    }
 
-    // Old JobItems snapshot
-    // const oldJobItems = jobCard.items.map(item => ({
-    //   id: item.id,
-    //   category: item.category,
-    //   enquiry_for: item.enquiry_for,
-    //   selected_paper_id: item.selected_paper_id,
-    //   inside_pages: item.inside_pages,
-    //   color_scheme: item.color_scheme,
-    //   selected_cover_paper_id: item.selected_cover_paper_id,
-    //   cover_pages: item.cover_pages,
-    //   cover_color_scheme: item.cover_color_scheme,
-    //   sides: item.sides,
-    //   size: item.size,
-    //   quantity: item.quantity,
-    //   binding_types: JSON.stringify(item.binding_types || []),
-    // }));
+    // ── Date string ───────────────────────────────────────────────────────────
+    // Covers: "2026-04-17T18:03", "Fri Apr 17 2026 18:03:00 GMT+0530...", "2026-04-16"
+    // new Date(string) handles all of these natively.
+    if (typeof v === "string" && /\d{4}/.test(v)) {
+      const d = new Date(v);
+      if (!isNaN(d.getTime())) {
+        if (DATE_ONLY_FIELDS.has(fieldName))
+          return d.toISOString().slice(0, 10);
+        return String(Math.floor(d.getTime() / 60000));
+      }
+    }
 
+    // ── Date object ───────────────────────────────────────────────────────────
+    if (v instanceof Date && !isNaN(v.getTime())) {
+      if (DATE_ONLY_FIELDS.has(fieldName)) return v.toISOString().slice(0, 10);
+      return String(Math.floor(v.getTime() / 60000));
+    }
 
-    // ── Handle Ready → Production transition ──
-    if (updates.is_direct_to_production === true && jobCard.is_direct_to_production === false) {
-      console.log("Job marked as Ready for Production");
+    // ── Regular number / decimal ──────────────────────────────────────────────
+    // "0.00" → 0, "494.00" → 494, "3694" → 3694
+    const asNum = Number(v);
+    if (!isNaN(asNum) && String(v).trim() !== "") return String(asNum);
 
+    return String(v).trim();
+  };
+
+  // Build readable field-level diff for JobCard
+  const jobCardChanges = {};
+  TRACKED_JOBCARD_FIELDS.forEach((field) => {
+    const oldVal = oldJobCardData[field];
+    const newVal = updates[field];
+    if (newVal === undefined) return; // field not sent — unchanged
+    if (normForDiff(oldVal, field) !== normForDiff(newVal, field)) {
+      jobCardChanges[field] = { from: oldVal ?? null, to: newVal ?? null };
+    }
+  });
+
+  // Build item diff maps for email
+  // Flatten association-derived fields into the item snapshot so diff works correctly.
+  // paper_type / paper_gsm / wide_material_name are NOT DB columns — they live in
+  // the eager-loaded association objects. Without this, old values always appear
+  // "empty" causing false-positive diffs on every save.
+  const oldItemMap = new Map(
+    (jobCard.items || []).map((i) => {
+      const raw = i.toJSON();
+      return [
+        i.id,
+        {
+          ...raw,
+          // Flatten association → flat field (same keys the frontend sends)
+          paper_type: raw.selectedPaper?.paper_name ?? null,
+          paper_gsm: raw.selectedPaper?.gsm ?? null,
+          cover_paper_type: raw.selectedCoverPaper?.paper_name ?? null,
+          cover_paper_gsm: raw.selectedCoverPaper?.gsm ?? null,
+          wide_material_name: raw.selectedWideMaterial?.material_name ?? null,
+          wide_material_gsm: raw.selectedWideMaterial?.gsm ?? null,
+          wide_material_thickness:
+            raw.selectedWideMaterial?.thickness_mm ?? null,
+        },
+      ];
+    }),
+  );
+  const incomingItemMap = new Map(
+    job_items.filter((i) => i.id).map((i) => [i.id, i]),
+  );
+
+  const existingItemIds = [...oldItemMap.keys()];
+  const updatedItemIds = [...incomingItemMap.keys()];
+  const itemsToDelete = existingItemIds.filter(
+    (id) => !updatedItemIds.includes(id),
+  );
+  const newItems = job_items.filter((i) => !i.id);
+  // Diff for modified items (field level, human-readable)
+  const TRACKED_ITEM_FIELDS = [
+    "category",
+    "enquiry_for",
+    "size",
+    "quantity",
+    "uom",
+    "sides",
+    "paper_type",
+    "paper_gsm",
+    "color_scheme",
+    "press_type",
+    "inside_pages",
+    "cover_pages",
+    "cover_paper_type",
+    "cover_paper_gsm",
+    "cover_color_scheme",
+    "cover_press_type",
+    "cover_to_print",
+    "binding_types",
+    "unit_rate",
+    "item_total",
+    "wide_material_name",
+    "wide_material_gsm",
+    "wide_material_thickness",
+  ];
+  const modifiedItems = [];
+  incomingItemMap.forEach((newItem, id) => {
+    if (!oldItemMap.has(id)) return;
+    const oldItem = oldItemMap.get(id);
+    const changes = {};
+
+    TRACKED_ITEM_FIELDS.forEach((field) => {
+      let oldVal = oldItem[field];
+      let newVal = newItem[field];
+
+      // MariaDB stores JSON columns (binding_types, binding_targets, inside_papers)
+      // as longtext strings. Parse both sides so comparison works correctly.
+      if (
+        field === "binding_types" ||
+        field === "binding_targets" ||
+        field === "inside_papers"
+      ) {
+        oldVal = safeParseJson(oldVal);
+        newVal = safeParseJson(newVal);
+      }
+
+      if (normForDiff(oldVal, field) !== normForDiff(newVal, field)) {
+        changes[field] = { from: oldVal ?? null, to: newVal ?? null };
+      }
+    });
+
+    if (Object.keys(changes).length > 0) {
+      modifiedItems.push({
+        enquiry_for: newItem.enquiry_for || oldItem.enquiry_for,
+        changes,
+      });
+    }
+  });
+
+  const removedItems = itemsToDelete.map((id) => ({
+    enquiry_for: oldItemMap.get(id)?.enquiry_for || `Item #${id}`,
+    category: oldItemMap.get(id)?.category || "",
+  }));
+
+  const addedItems = newItems.map((i) => ({
+    enquiry_for: i.enquiry_for || "(unnamed)",
+    category: i.category || "",
+  }));
+
+  const jobItemChanges = {
+    added: addedItems,
+    removed: removedItems,
+    modified: modifiedItems,
+  };
+  // ── Determine stage transition ────────────────────────────────────────────
+  const wasDirectToProduction = jobCard.is_direct_to_production === true;
+  const nowDirectToProduction = updates.is_direct_to_production === true;
+  const nowRevertedFromProd =
+    wasDirectToProduction && updates.is_direct_to_production === false;
+  const nowMovingToProduction = !wasDirectToProduction && nowDirectToProduction;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // TRANSACTION — writes only
+  // ─────────────────────────────────────────────────────────────────────────
+  const t = await db.sequelize.transaction({
+    // READ COMMITTED prevents phantom reads causing unnecessary lock escalation.
+    // SERIALIZABLE would be correct but causes far more deadlocks under load.
+    isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
+  });
+
+  try {
+    // ── Stage transitions ──────────────────────────────────────────────────
+    if (nowMovingToProduction) {
       updates.status = "production";
       updates.current_stage = "production";
-
       await advanceStage({
         job_no,
         new_stage: "production",
@@ -953,18 +1246,35 @@ export const updateJobCard = async (req, res) => {
       });
     }
 
-    if(jobCard.delivery_date !== req.body.delivery_date){
-      console.log("Delivery date has changed. Recalculating deadline...");
-      const job_completion_deadline = calculateJobCompletionDeadline(req.body.delivery_date);
-      console.log("job completion deadline: ", job_completion_deadline);
-      updates.job_completion_deadline = job_completion_deadline;
+    if (nowRevertedFromProd) {
+      // Revert: production → coordinator_review
+      updates.status = "coordinator_review";
+      updates.current_stage = "coordinator_review";
+      await advanceStage({
+        job_no,
+        new_stage: "coordinator_review",
+        performed_by_id: req.user?.id || null,
+        remarks:
+          "(Job updated → Direct to Production unchecked, reverted to Coordinator Review)",
+        transaction: t,
+      });
     }
 
-    // Recompute GST whenever billing-related fields change
+    // ── Delivery date change → recalculate deadline ───────────────────────
+    if (
+      updates.delivery_date &&
+      updates.delivery_date !== oldJobCardData.delivery_date
+    ) {
+      updates.job_completion_deadline = calculateJobCompletionDeadline(
+        updates.delivery_date,
+      );
+    }
+
+    // ── GST recompute ─────────────────────────────────────────────────────
     const billingFieldChanged =
-      "total_amount"    in updates ||
-      "discount"        in updates ||
-      "gst_percentage"  in updates;
+      "total_amount" in updates ||
+      "discount" in updates ||
+      "gst_percentage" in updates;
 
     if (billingFieldChanged) {
       // Validate GST if it was sent
@@ -975,141 +1285,94 @@ export const updateJobCard = async (req, res) => {
         ![5, 18].includes(Number(updates.gst_percentage))
       ) {
         await t.rollback();
-        return res.status(400).json({ message: "GST percentage must be 5 or 18" });
+        return res
+          .status(400)
+          .json({ message: "GST percentage must be 5 or 18" });
       }
 
       // Use updated values if present, otherwise fall back to current DB values
-      const latestTotal  = Number(updates.total_amount  ?? jobCard.total_amount  ?? 0);
-      const latestDisc   = Number(updates.discount       ?? jobCard.discount       ?? 0);
+      const latestTotal = Number(
+        updates.total_amount ?? jobCard.total_amount ?? 0,
+      );
+      const latestDisc = Number(updates.discount ?? jobCard.discount ?? 0);
       const latestGstPct =
         "gst_percentage" in updates
           ? updates.gst_percentage
           : jobCard.gst_percentage;
 
-      const { gst_amount, final_amount } = computeGST(latestTotal, latestDisc, latestGstPct);
+      const { gst_amount, final_amount } = computeGST(
+        latestTotal,
+        latestDisc,
+        latestGstPct,
+      );
 
-      await jobCard.update({ gst_amount, final_amount }, { transaction: t });
+      updates.gst_amount = gst_amount;
+      updates.final_amount = final_amount;
     }
-
+    // ── JobCard update — single write, lock acquired here ─────────────────
     await jobCard.update(updates, { transaction: t });
 
-
-    // ==============================
-    // STEP 2: JOB CARD FIELD CHANGES
-    // ==============================
-
-    // function normalizeValue(value) {
-    //   if (value === null || value === undefined) return value;
-
-    //   // Dates → timestamp
-    //   if (value instanceof Date) {
-    //     return value.getTime();
-    //   }
-
-    //   // Numbers / decimals → Number
-    //   if (!isNaN(value)) {
-    //     return Number(value);
-    //   }
-
-    //   return value;
-    // }
-
-
-    // const jobCardChanges = {};
-
-    // const ignoredFields = ["status", "current_stage"];
-    // const ignoredFields = [
-    //   "status",
-    //   "current_stage",
-    //   "updatedAt",
-    //   "createdAt",
-    //   "items",
-    // ];
-
-    // Object.keys(updates).forEach(field => {
-    //   if (ignoredFields.includes(field)) return;
-
-    //   const oldValue = oldJobCard[field];
-    //   const newValue = jobCard[field];
-
-    //   const oldNormalized = normalizeValue(oldValue);
-    //   const newNormalized = normalizeValue(newValue);
-
-    //   if (oldNormalized !== newNormalized) {
-    //     jobCardChanges[field] = {
-    //       from: oldValue,
-    //       to: newValue,
-    //     };
-    //   }
-    // });
-
-
-    // console.log("🟡 JobCard changes:", jobCardChanges);
-
-
-    // ── Resolve paper IDs — shared helper ──────────────────────────────────
-    // [FIX 2] Centralised so the same logic applies to both update-existing
-    // and add-new paths, keeping both DRY.
+    // ── Helpers (defined inside try so they share transaction `t`) ─────────
     async function resolvePaperIds(item) {
       const cs = item.costing_snapshot;
       if (item.category === "Wide Format") {
         if (!cs?.wf_material_id) {
           throw new Error(
             `Wide Format material ID missing for item "${item.enquiry_for}". ` +
-            `Please recalculate before saving.`
+              `Please recalculate before saving.`,
           );
         }
         item.selected_wide_material_id = Number(cs.wf_material_id);
-        item.selected_paper_id         = null;
-        item.selected_cover_paper_id   = null;
-        item.cover_paper_type          = null;
-        item.cover_paper_gsm           = null;
-        item.cover_color_scheme        = null;
-        item.cover_press_type          = null;
-        item.color_scheme              = "Multicolor";
+        item.selected_paper_id = null;
+        item.selected_cover_paper_id = null;
+        item.cover_paper_type = null;
+        item.cover_paper_gsm = null;
+        item.cover_color_scheme = null;
+        item.cover_press_type = null;
+        item.color_scheme = "Multicolor";
         return;
       }
 
       if (item.category === "Other") {
         item.selected_wide_material_id = null;
-        item.selected_paper_id         = null;
-        item.selected_cover_paper_id   = null;
-        item.cover_paper_type          = null;
-        item.cover_paper_gsm           = null;
-        item.cover_color_scheme        = null;
-        item.cover_press_type          = null;
-        item.color_scheme              = "Multicolor";
-        item.sides                     = null;
+        item.selected_paper_id = null;
+        item.selected_cover_paper_id = null;
+        item.cover_paper_type = null;
+        item.cover_paper_gsm = null;
+        item.cover_color_scheme = null;
+        item.cover_press_type = null;
+        item.color_scheme = "Multicolor";
+        item.sides = null;
         return;
       }
-      if(item.category === "Single Sheet"){
+      if (item.category === "Single Sheet") {
         if (!cs?.ss_paper_id) {
           throw new Error(
             `Paper ID missing for Single Sheet item "${item.enquiry_for}". ` +
-            `Please recalculate before saving.`
+              `Please recalculate before saving.`,
           );
         }
-        item.selected_paper_id         = Number(cs.ss_paper_id);
+        item.selected_paper_id = Number(cs.ss_paper_id);
         item.selected_wide_material_id = null;
-        item.selected_cover_paper_id   = null;
-        item.cover_paper_type          = null;
-        item.cover_paper_gsm           = null;
-        item.cover_color_scheme        = null;
-        item.cover_press_type          = null;
+        item.selected_cover_paper_id = null;
+        item.cover_paper_type = null;
+        item.cover_paper_gsm = null;
+        item.cover_color_scheme = null;
+        item.cover_press_type = null;
         return;
       }
-      if(item.category === "Multiple Sheet"){
+      if (item.category === "Multiple Sheet") {
         if (!cs?.ms_cover_paper_id) {
           throw new Error(
             `Cover paper ID missing for Multiple Sheet item "${item.enquiry_for}". ` +
-            `Please recalculate before saving.`
+              `Please recalculate before saving.`,
           );
         }
-        item.selected_paper_id         = null;    // Multiple Sheet doesn't have single selected_paper_id — papers are in inside_papers[]
+        item.selected_paper_id = null; // Multiple Sheet doesn't have single selected_paper_id — papers are in inside_papers[]
         item.selected_wide_material_id = null;
-        item.selected_cover_paper_id   = Number(cs.ms_cover_paper_id);
-        item.inside_pages              = Number(item.inside_pages);
-        item.cover_pages               = Number(item.cover_pages);
+        item.selected_cover_paper_id = Number(cs.ms_cover_paper_id);
+        item.inside_pages = Number(item.inside_pages);
+        item.cover_pages = Number(item.cover_pages);
         return;
       }
     }
@@ -1118,50 +1381,55 @@ export const updateJobCard = async (req, res) => {
     async function upsertCosting(jobItemId, item) {
       const cs = item.costing_snapshot;
       if (!cs || item.category === "Other") return;
-      if (item.category === "Wide Format") cs.wf_material_id = item.selected_wide_material_id;
+      if (item.category === "Wide Format")
+        cs.wf_material_id = item.selected_wide_material_id;
 
       const costingData = {
-        job_no, job_item_id: jobItemId, category: item.category,
-        ss_paper_id:            cs.ss_paper_id            ?? null,
-        ss_ups:                 cs.ss_ups                  ?? null,
-        ss_sheets:              cs.ss_sheets               ?? null,
-        ss_sheets_with_wastage: cs.ss_sheets_with_wastage  ?? null,
-        ss_sheet_rate:          cs.ss_sheet_rate            ?? null,
-        ss_sheet_cost:          cs.ss_sheet_cost            ?? null,
-        ss_printing_cost:       cs.ss_printing_cost         ?? null,
-        ms_inside_costing:              cs.ms_inside_costing              ?? null,
-        ms_total_inside_sheet_cost:     cs.ms_total_inside_sheet_cost     ?? null,
-        ms_total_inside_printing_cost:  cs.ms_total_inside_printing_cost  ?? null,
-        ms_cover_paper_id:            cs.ms_cover_paper_id             ?? null,
-        ms_cover_ups:                 cs.ms_cover_ups                  ?? null,
-        ms_cover_sheets:              cs.ms_cover_sheets               ?? null,
-        ms_cover_sheets_with_wastage: cs.ms_cover_sheets_with_wastage  ?? null,
-        ms_cover_sheet_rate:          cs.ms_cover_sheet_rate            ?? null,
-        ms_cover_sheet_cost:          cs.ms_cover_sheet_cost            ?? null,
-        ms_cover_printing_cost:       cs.ms_cover_printing_cost         ?? null,
-        wf_material_id:          cs.wf_material_id          ?? null,
-        wf_calculation_type:     cs.wf_calculation_type      ?? null,
-        wf_rolls_or_boards_used: cs.wf_rolls_or_boards_used  ?? null,
-        wf_wastage_sqft:         cs.wf_wastage_sqft           ?? null,
-        wf_ups:                  cs.wf_ups                    ?? null,
-        wf_material_cost:        cs.wf_material_cost          ?? null,
-        wf_printing_cost:        cs.wf_printing_cost          ?? null,
-        binding_cost:            cs.binding_cost           ?? 0,
-        binding_cost_per_copy:   cs.binding_cost_per_copy  ?? 0,
-        total_sheet_cost:        cs.total_sheet_cost        ?? 0,
-        total_printing_cost:     cs.total_printing_cost     ?? 0,
-        sheet_cost_per_copy:     cs.sheet_cost_per_copy     ?? 0,
-        printing_cost_per_copy:  cs.printing_cost_per_copy  ?? 0,
-        unit_rate:               Number(cs.unit_rate ?? 0),
-        item_total:              Number(cs.item_total ?? 0),
+        job_no,
+        job_item_id: jobItemId,
+        category: item.category,
+        ss_paper_id: cs.ss_paper_id ?? null,
+        ss_ups: cs.ss_ups ?? null,
+        ss_sheets: cs.ss_sheets ?? null,
+        ss_sheets_with_wastage: cs.ss_sheets_with_wastage ?? null,
+        ss_sheet_rate: cs.ss_sheet_rate ?? null,
+        ss_sheet_cost: cs.ss_sheet_cost ?? null,
+        ss_printing_cost: cs.ss_printing_cost ?? null,
+        ms_inside_costing: cs.ms_inside_costing ?? null,
+        ms_total_inside_sheet_cost: cs.ms_total_inside_sheet_cost ?? null,
+        ms_total_inside_printing_cost: cs.ms_total_inside_printing_cost ?? null,
+        ms_cover_paper_id: cs.ms_cover_paper_id ?? null,
+        ms_cover_ups: cs.ms_cover_ups ?? null,
+        ms_cover_sheets: cs.ms_cover_sheets ?? null,
+        ms_cover_sheets_with_wastage: cs.ms_cover_sheets_with_wastage ?? null,
+        ms_cover_sheet_rate: cs.ms_cover_sheet_rate ?? null,
+        ms_cover_sheet_cost: cs.ms_cover_sheet_cost ?? null,
+        ms_cover_printing_cost: cs.ms_cover_printing_cost ?? null,
+        wf_material_id: cs.wf_material_id ?? null,
+        wf_calculation_type: cs.wf_calculation_type ?? null,
+        wf_rolls_or_boards_used: cs.wf_rolls_or_boards_used ?? null,
+        wf_wastage_sqft: cs.wf_wastage_sqft ?? null,
+        wf_ups: cs.wf_ups ?? null,
+        wf_material_cost: cs.wf_material_cost ?? null,
+        wf_printing_cost: cs.wf_printing_cost ?? null,
+        binding_cost: cs.binding_cost ?? 0,
+        binding_cost_per_copy: cs.binding_cost_per_copy ?? 0,
+        total_sheet_cost: cs.total_sheet_cost ?? 0,
+        total_printing_cost: cs.total_printing_cost ?? 0,
+        sheet_cost_per_copy: cs.sheet_cost_per_copy ?? 0,
+        printing_cost_per_copy: cs.printing_cost_per_copy ?? 0,
+        unit_rate: Number(cs.unit_rate ?? 0),
+        item_total: Number(cs.item_total ?? 0),
       };
 
-      // Upsert via unique constraint on job_item_id
-      const existing = await JobItemCosting.findOne({ where: { job_item_id: jobItemId }, transaction: t });
-      if (existing) {
+      // findOrCreate avoids INSERT + UPDATE race — safe under concurrency.
+      const [existing, created] = await JobItemCosting.findOrCreate({
+        where: { job_item_id: jobItemId },
+        defaults: costingData,
+        transaction: t,
+      });
+      if (!created) {
         await existing.update(costingData, { transaction: t });
-      } else {
-        await JobItemCosting.create(costingData, { transaction: t });
       }
     }
 
@@ -1169,124 +1437,105 @@ export const updateJobCard = async (req, res) => {
     const toSafeItem = (item) => {
       const {
         // ── DB identity — never trust client-sent values ──────────────────────
-        id:            _id,
-        _temp_id:      _tempId,
-        job_no:        _jobNo,
-        created_at:    _ca,
-        updated_at:    _ua,
-        createdAt:     _Cat,
-        updatedAt:     _Uat,
-        item_master_id: _imi,   // resolved fresh below
+        id: _id,
+        _temp_id: _tempId,
+        job_no: _jobNo,
+        created_at: _ca,
+        updated_at: _ua,
+        createdAt: _Cat,
+        updatedAt: _Uat,
+        item_master_id: _imi, // resolved fresh below
 
-        // ── Sequelize eager-load association objects — not columns ────────────
-        selectedPaper:        _sp,
-        selectedCoverPaper:   _scp,
-        selectedWideMaterial: _swm,
-        itemMaster:           _im,
-        jobCard:              _jc,
-        costing:              _costing,
-        // ── Frontend calc snapshot — goes to JobItemCosting, not JobItem ──────
-        costing_snapshot: _cs,
-
-        // ── UI-only dropdown caches — never sent to DB ────────────────────────
-        available_items:          _ai,
-        available_papers:         _ap,
-        available_gsm:            _ag,
-        available_gsm_cover:      _agc,
-        available_bindings:       _ab,
-        available_sizes:          _as,
-        available_wide_materials: _awm,
-        available_wide_gsm:       _awg,
-
-        // ── Calc display fields — stored in JobItemCosting, not JobItem ───────
-        best_inside_sheet:      _bis,
-        best_inside_sheet_name: _bisn,
-        best_inside_dimensions: _bid,
-        best_inside_ups:        _biu,
-        best_cover_sheet:       _bcs,
-        best_cover_dimensions:  _bcd,
-        best_cover_ups:         _bcu,
-        selected_material:      _sm,
-        calculation_type:       _ct,
-        rolls_or_boards_used:   _rbu,
-        wastage_sqft:           _ws,
-        wide_ups:               _wu,
-        material_info:          _mi,
-        // ── Keep all remaining fields ───────
+        selectedPaper,
+        selectedCoverPaper,
+        selectedWideMaterial,
+        itemMaster,
+        jobCard: _jc,
+        costing,
+        costing_snapshot,
+        available_items,
+        available_papers,
+        available_gsm,
+        available_gsm_cover,
+        available_bindings,
+        available_sizes,
+        available_wide_materials,
+        available_wide_gsm,
+        best_inside_sheet,
+        best_inside_sheet_name,
+        best_inside_dimensions,
+        best_inside_ups,
+        best_cover_sheet,
+        best_cover_dimensions,
+        best_cover_ups,
+        selected_material,
+        calculation_type,
+        rolls_or_boards_used,
+        wastage_sqft,
+        wide_ups,
+        material_info,
+        is_calculating,
+        calc_error,
         ...safe
       } = item;
       return safe;
-    };    
-
-
-    // ── Delete removed items ──
-    const existingItemIds = jobCard.items.map((i) => i.id);
-    const updatedItemIds  = job_items.filter((i) => i.id).map((i) => i.id);
-    const itemsToDelete   = existingItemIds.filter(
-      (id) => !updatedItemIds.includes(id),
-    );
-
-    if (itemsToDelete.length > 0) {
-      await JobItem.destroy({ where: { id: itemsToDelete }, transaction: t });
-    }
+    };
 
     // Sanitizes fields that are MySQL ENUMs — empty string is not a valid ENUM value.
     // Applies to both update-existing and add-new item paths.
     const sanitizeItemEnums = (item) => ({
       ...item,
-      press_type:        item.press_type        || null,
-      color_scheme:      item.color_scheme?.trim() ? item.color_scheme : null,
-      cover_press_type:  item.cover_press_type   || null,
+      press_type: item.press_type || null,
+      color_scheme: item.color_scheme?.trim() ? item.color_scheme : null,
+      cover_press_type: item.cover_press_type || null,
       cover_color_scheme: item.cover_color_scheme || null,
-      cover_to_print:    item.cover_to_print !== false, // ensure boolean, never undefined
-      no_of_foldings:    item.folds_per_sheet  ? Number(item.folds_per_sheet)  : null,
-      no_of_creases:     item.creases_per_sheet ? Number(item.creases_per_sheet) : null,
+      cover_to_print: item.cover_to_print !== false, // ensure boolean, never undefined
+      no_of_foldings: item.folds_per_sheet
+        ? Number(item.folds_per_sheet)
+        : null,
+      no_of_creases: item.creases_per_sheet
+        ? Number(item.creases_per_sheet)
+        : null,
     });
 
-    // ── Update existing items ──
-    for (const item of job_items) {
-      if (!item.id || !existingItemIds.includes(item.id)) continue;
+    const normalizeEnquiryFor = (raw) =>
+      (raw || "")
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLowerCase()
+        .replace(/\b\w/g, (c) => c.toUpperCase());
 
-      // ── Normalize enquiry_for (same as createJobCard) ─────────────────────
-      const normalizedEnquiryFor = item.enquiry_for
-        ? item.enquiry_for
-            .trim()
-            .replace(/\s+/g, " ")
-            .toLowerCase()
-            .replace(/\b\w/g, (c) => c.toUpperCase())
-        : "";
-
-
-      let item_master_id = await ItemMaster.findOne({
-        where: {
-          category: item.category,
-          item_name: db.sequelize.where(
-            db.sequelize.fn("UPPER", db.sequelize.col("item_name")),
-            "=",
-            normalizedEnquiryFor.toUpperCase()
-          ),
-        },
-        attributes: ["id"],
+    // ── Delete removed items ──
+    // Sort ascending so MySQL locks rows in a predictable order → fewer deadlocks.
+    const sortedItemsToDelete = [...itemsToDelete].sort((a, b) => a - b);
+    if (sortedItemsToDelete.length > 0) {
+      await JobItem.destroy({
+        where: { id: sortedItemsToDelete },
         transaction: t,
       });
+    }
+    // ── Update existing items (ascending id order — consistent lock order) ──
+    const sortedExistingUpdates = job_items
+      .filter((i) => i.id && existingItemIds.includes(i.id))
+      .sort((a, b) => a.id - b.id);
 
-        if (!item_master_id) {
-          item_master_id = await ItemMaster.create(
-            { category: item.category, item_name: normalizedEnquiryFor },
-            { transaction: t }
-          );
-        }
+    for (const item of sortedExistingUpdates) {
+      const enquiryFor = normalizeEnquiryFor(item.enquiry_for);
 
-      item.item_master_id = item_master_id?.dataValues.id;
+      // findOrCreate: safe under concurrency — unique constraint on (category, item_name)
+      const [itemMaster] = await ItemMaster.findOrCreate({
+        where: { category: item.category, item_name: enquiryFor },
+        defaults: { category: item.category, item_name: enquiryFor },
+        transaction: t,
+      });
+      item.item_master_id = itemMaster.id;
 
       await resolvePaperIds(item);
-
       item.binding_types = Array.isArray(item.binding_types)
         ? item.binding_types
         : [];
-      // ── sanitize before update — prevents ENUM validation errors ──
-      await JobItem.update(
-        sanitizeItemEnums(toSafeItem(item)), {
+
+      await JobItem.update(sanitizeItemEnums(toSafeItem(item)), {
         where: { id: item.id },
         transaction: t,
       });
@@ -1294,162 +1543,62 @@ export const updateJobCard = async (req, res) => {
       await upsertCosting(item.id, item);
     }
 
-    // Add new items
-    const newItems = job_items.filter((i) => !i.id);
+    // ── Add new items ──
+    for (const item of newItems) {
+      const enquiryFor = normalizeEnquiryFor(item.enquiry_for);
+      if (!enquiryFor)
+        throw new Error(
+          `enquiry_for is empty for a ${item.category} item. Cannot save.`,
+        );
 
-    if (newItems.length > 0) {
-      console.log("adding new Job items: ", newItems);
+      const [itemMaster] = await ItemMaster.findOrCreate({
+        where: { category: item.category, item_name: enquiryFor },
+        defaults: { category: item.category, item_name: enquiryFor },
+        transaction: t,
+      });
+      item.item_master_id = itemMaster.id;
 
-      for (const item of newItems) {
+      await resolvePaperIds(item);
+      item.binding_types = Array.isArray(item.binding_types)
+        ? item.binding_types
+        : [];
+      item.inside_pages = item.inside_pages ? Number(item.inside_pages) : null;
+      item.cover_pages = item.cover_pages ? Number(item.cover_pages) : null;
 
-        // ── Normalize enquiry_for ─────────────────────────────────────────────
-        const normalizedEnquiryFor = item.enquiry_for
-          ? item.enquiry_for
-              .trim()
-              .replace(/\s+/g, " ")
-              .toLowerCase()
-              .replace(/\b\w/g, (c) => c.toUpperCase())
-          : "";
+      const created = await JobItem.create(
+        { ...sanitizeItemEnums(toSafeItem(item)), job_no },
+        { transaction: t },
+      );
 
-        if (!normalizedEnquiryFor) {
-          throw new Error(`enquiry_for is empty for a ${item.category} item. Cannot save.`);
-        }
-
-        let item_master_id = await ItemMaster.findOne({
-          where: {
-            category: item.category,
-            item_name: db.sequelize.where(
-              db.sequelize.fn("UPPER", db.sequelize.col("item_name")),
-              "=",
-              normalizedEnquiryFor.toUpperCase()
-            ),
-          },
-          attributes: ["id"],
-          transaction: t,
-        });
-
-        if (!item_master_id) {
-          console.log("ItemMaster not found for: ", item.category, item.enquiry_for);
-          item_master_id = await ItemMaster.create({
-            category: item.category,
-            item_name: normalizedEnquiryFor,
-          }, { transaction: t });
-        }
-        item.item_master_id = item_master_id.dataValues.id;
-
-        await resolvePaperIds(item);
-        item.binding_types = Array.isArray(item.binding_types)
-            ? item.binding_types
-            : [];
-        item.inside_pages = item.inside_pages ? Number(item.inside_pages) : null;
-        item.cover_pages = item.cover_pages ? Number(item.cover_pages) : null;
-
-        const safeItem = sanitizeItemEnums(toSafeItem(item));
-        const created = await JobItem.create({
-          ...safeItem,
-          job_no
-        }, { transaction: t });
-
-        await upsertCosting(created.id, item);
-        
-      }
+      await upsertCosting(created.id, item);
     }
 
+    // ── Activity log ─────────────────────────────────────────────────────
+    let actionLabel = "JobCard Updated";
+    if (nowMovingToProduction) actionLabel = "Job marked Direct to Production";
+    if (nowRevertedFromProd) actionLabel = "Job reverted to Coordinator Review";
 
-    // ==============================
-    // STEP 3: FETCH NEW JOB ITEMS
-    // ==============================
-
-    // const newJobItems = await JobItem.findAll({
-    //   where: { job_no },
-    //   transaction: t,
-    // });
-
-    // ==============================
-    // STEP 4: JOB ITEM CHANGES
-    // ==============================
-
-    // const jobItemChanges = {
-    //   added: [],
-    //   removed: [],
-    //   modified: [],
-    // };
-
-    // const oldMap = new Map(oldJobItems.map(i => [i.id, i]));
-    // const newMap = new Map(
-    //   newJobItems.map(i => [
-    //     i.id,
-    //     {
-    //       id: i.id,
-    //       category: i.category,
-    //       enquiry_for: i.enquiry_for,
-    //       selected_paper_id: i.selected_paper_id,
-    //       inside_pages: i.inside_pages,
-    //       color_scheme: i.color_scheme,
-    //       selected_cover_paper_id: i.selected_cover_paper_id,
-    //       cover_pages: i.cover_pages,
-    //       cover_color_scheme: i.cover_color_scheme,
-    //       sides: i.sides,
-    //       size: i.size,
-    //       quantity: i.quantity,
-    //       binding_types: JSON.stringify(i.binding_types || []),
-    //     }
-    //   ])
-    // );
-
-    // // ➕ Added items
-    // newMap.forEach((item, id) => {
-    //   if (!oldMap.has(id)) {
-    //     jobItemChanges.added.push(item.enquiry_for);
-    //   }
-    // });
-
-    // // ➖ Removed items
-    // oldMap.forEach((item, id) => {
-    //   if (!newMap.has(id)) {
-    //     jobItemChanges.removed.push(item.enquiry_for);
-    //   }
-    // });
-
-    // // ✏️ Modified items (FIELD LEVEL)
-    // newMap.forEach((newItem, id) => {
-    //   if (!oldMap.has(id)) return;
-
-    //   const oldItem = oldMap.get(id);
-    //   const fieldChanges = {};
-
-    //   Object.keys(newItem).forEach((field) => {
-    //     if (newItem[field] !== oldItem[field]) {
-    //       fieldChanges[field] = {
-    //         from: oldItem[field],
-    //         to: newItem[field],
-    //       };
-    //     }
-    //   });
-
-    //   if (Object.keys(fieldChanges).length > 0) {
-    //     jobItemChanges.modified.push({
-    //       enquiry_for: newItem.enquiry_for,
-    //       changes: fieldChanges,
-    //     });
-    //   }
-    // });
-
-    // console.log("🟢 JobItem changes:", jobItemChanges);
-
-    // Log activity
     await ActivityLog.create(
       {
         job_no,
-        action: updates.is_direct_to_production ? "Job marked Ready for Production" : "JobCard Updated",
+        action: actionLabel,
         performed_by_id: req.user?.id || null,
-        meta: updates,
+        meta: {
+          jobCardChanges,
+          jobItemChanges,
+          stage_transition: nowMovingToProduction
+            ? "pending → production"
+            : nowRevertedFromProd
+              ? "production → coordinator_review"
+              : null,
+        },
       },
-      { transaction: t }
+      { transaction: t },
     );
 
     await t.commit();
 
+    // ── Fetch final state for response + email (outside transaction) ──────
     const updatedJobCard = await JobCard.findByPk(job_no, {
       include: [
         { model: JobItem, as: "items" },
@@ -1462,19 +1611,40 @@ export const updateJobCard = async (req, res) => {
       updatedJobCard,
     });
 
-    // 🔔 Notify CRM + Coordinators + Designer
-    // await sendJobNotificationEmail({
-    //   job: updatedJobCard,
-    //   subject: `JobCard Updated | Job No: ${job_no}`,
-    //   actionType: "updated",
-    //   jobCardChanges,
-    //   jobItemChanges,
-    // });
+    // ── Email notification (fire-and-forget — never blocks response) ──────
+    const hasAnyChange =
+      Object.keys(jobCardChanges).length > 0 ||
+      addedItems.length > 0 ||
+      removedItems.length > 0 ||
+      modifiedItems.length > 0;
+
+    if (hasAnyChange || nowMovingToProduction || nowRevertedFromProd) {
+      sendJobNotificationEmail({
+        job: updatedJobCard,
+        subject: `JobCard Updated | Job No: ${job_no}`,
+        actionType: "updated",
+        jobCardChanges,
+        jobItemChanges,
+        stageTransition: nowMovingToProduction
+          ? "production"
+          : nowRevertedFromProd
+            ? "coordinator_review"
+            : null,
+        performedBy: req.user?.username || "Job Writer",
+      }).catch((emailErr) => {
+        // Email failure must NEVER fail the API response
+        console.error("Email send failed (non-fatal):", emailErr.message);
+      });
+    }
   } catch (error) {
-    await t.rollback();
+    // t.rollback() is safe to call even if already committed — Sequelize no-ops it
+    await t.rollback().catch(() => {});
     console.error("Error updating JobCard:", error);
-    res.status(500).json({
-      message: "Internal server error",
+    return res.status(500).json({
+      message:
+        error.message?.includes("missing") || error.message?.includes("empty")
+          ? error.message // business rule error — safe to surface
+          : "Internal server error",
       error: error.message,
     });
   }
@@ -1509,10 +1679,13 @@ export const cancelJobCard = async (req, res) => {
 
     await JobAssignment.update(
       { status: "cancelled" },
-      { where: { 
-        job_no: job_no,
-        status: ["assigned", "in_progress"],
-      }, transaction: t }
+      {
+        where: {
+          job_no: job_no,
+          status: ["assigned", "in_progress"],
+        },
+        transaction: t,
+      },
     );
 
     await job.save();
@@ -1538,7 +1711,7 @@ export const cancelJobCard = async (req, res) => {
       actionType: "cancelled",
     });
   } catch (error) {
-    if(!t.finished){
+    if (!t.finished) {
       await t.rollback();
     }
     console.error("Error cancelling job: ", error);
@@ -1568,9 +1741,6 @@ export const getEnquiryForItems = async (req, res) => {
   }
 };
 
-
-
-
 function renderCancelledEmail(job, color) {
   return `
     <h2 style="color:${color};">❌ JobCard Cancelled</h2>
@@ -1581,257 +1751,454 @@ function renderCancelledEmail(job, color) {
   `;
 }
 
+/**
+ * Renders the "what changed" section of the update email.
+ * Produces a human-readable HTML block showing:
+ *   - Stage transition (if any)
+ *   - JobCard field changes
+ *   - Items added
+ *   - Items removed
+ *   - Items modified (field level)
+ */
+function renderUpdatedChanges(
+  job,
+  jobCardChanges,
+  jobItemChanges,
+  stageTransition,
+  performedBy,
+) {
+  const sections = [];
 
-function prettyFieldName(field) {
-  const FIELD_LABELS = {
-    execution_location: "Execution Location",
-    delivery_date: "Delivery Date",
-    task_priority: "Priority",
-    total_amount: "Total Amount",
-    advance_payment: "Advance Payment",
-    quantity: "Quantity",
-    size: "Size",
-    color_scheme: "Color Scheme",
-    binding_types: "Binding Type",
+  // ── Stage transition banner ───────────────────────────────────────────
+  if (stageTransition === "production") {
+    sections.push(`
+      <div style="background:#fef9c3;border:1px solid #eab308;border-radius:6px;padding:12px;margin-bottom:16px">
+        <p style="margin:0;font-weight:bold;color:#713f12">
+          🏭 This job has been marked <span style="color:#16a34a">Direct to Production</span>
+          and moved to the Production stage.
+        </p>
+      </div>
+    `);
+  } else if (stageTransition === "coordinator_review") {
+    sections.push(`
+      <div style="background:#fef9c3;border:1px solid #eab308;border-radius:6px;padding:12px;margin-bottom:16px">
+        <p style="margin:0;font-weight:bold;color:#713f12">
+          🔄 "Direct to Production" was <span style="color:#dc2626">unchecked</span>.
+          This job has been <strong>reverted to Coordinator Review</strong>.
+        </p>
+      </div>
+    `);
+  }
+
+  // Fields to display without time
+  const DATE_ONLY_DISPLAY = new Set(["proof_date", "receiving_date_for_mm"]);
+
+  // ── Epoch bounds — any number in this range is treated as a date, not an amount
+  // Jan 1 2000 → Jan 1 2100. Guards against quantities/amounts being mis-read as dates.
+  const EPOCH_MIN = 946684800000; // new Date("2000-01-01").getTime()
+  const EPOCH_MAX = 4102444800000; // new Date("2100-01-01").getTime()
+
+  // ── Helper: format a value for display ────────────────────────────────
+  const fmt = (v, fieldName = "") => {
+    if (v === null || v === undefined || v === "") {
+      return '<em style="color:#aaa">empty</em>';
+    }
+    if (typeof v === "boolean") return v ? "Yes" : "No";
+
+    if (Array.isArray(v)) {
+      return v.length > 0 ? v.join(", ") : '<em style="color:#aaa">none</em>';
+    }
+
+    // JSON array/object string (MariaDB longtext)
+    if (
+      typeof v === "string" &&
+      (v.trim().startsWith("[") || v.trim().startsWith("{"))
+    ) {
+      try {
+        const parsed = JSON.parse(v);
+        if (Array.isArray(parsed)) {
+          return parsed.length > 0
+            ? parsed.join(", ")
+            : '<em style="color:#aaa">none</em>';
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+
+    // ── NEW: Date object (Sequelize toJSON() returns DATE columns as Date instances) ──
+    // MUST come before Number() check — Number(new Date()) = epoch ms = raw number if missed.
+    if (v instanceof Date && !isNaN(v.getTime())) {
+      if (DATE_ONLY_DISPLAY.has(fieldName)) {
+        return v.toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          timeZone: "Asia/Kolkata",
+        });
+      }
+      return v.toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: "Asia/Kolkata",
+      });
+    }
+
+    // Epoch number (e.g. stored as bigint in some MariaDB configs)
+    if (typeof v === "number" && v >= EPOCH_MIN && v <= EPOCH_MAX) {
+      const d = new Date(v);
+      if (!isNaN(d.getTime())) {
+        if (DATE_ONLY_DISPLAY.has(fieldName)) {
+          return d.toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            timeZone: "Asia/Kolkata",
+          });
+        }
+        return d.toLocaleString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: "Asia/Kolkata",
+        });
+      }
+    }
+
+    // Date string
+    if (typeof v === "string" && /\d{4}/.test(v)) {
+      const d = new Date(v);
+      if (!isNaN(d.getTime())) {
+        if (DATE_ONLY_DISPLAY.has(fieldName)) {
+          return d.toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            timeZone: "Asia/Kolkata",
+          });
+        }
+        return d.toLocaleString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: "Asia/Kolkata",
+        });
+      }
+    }
+
+    // Regular number — strip unnecessary decimal zeros
+    const asNum = Number(v);
+    if (!isNaN(asNum) && String(v).trim() !== "") {
+      return asNum % 1 === 0 ? String(asNum) : asNum.toFixed(2);
+    }
+
+    return String(v);
   };
 
-  return FIELD_LABELS[field] || field.replace(/_/g, " ");
-}
-
-function formatValue(value) {
-  if (value === null || value === undefined) return "-";
-
-  if (value instanceof Date) {
-    return value.toLocaleDateString("en-IN");
-  }
-
-  if (typeof value === "number") {
-    return value;
-  }
-
-  return value;
-}
-
-
-function renderUpdatedChanges(jobCardChanges, jobItemChanges) {
-  const hasJobCardChanges = Object.keys(jobCardChanges).length > 0;
-  const hasItemChanges =
-    Array.isArray(jobItemChanges.modified) &&
-    jobItemChanges.modified.length > 0;
-
-  // If NOTHING meaningful changed
-  if (!hasJobCardChanges && !hasItemChanges) {
-    return `
-      <h3>ℹ️ No business-critical fields were changed</h3>
-      <p>
-        Minor or system-level updates were made.
-      </p>
-    `;
-  }
-
-  let html = `<h3>🔄 What was updated</h3>`;
-
-  // =====================
-  // JobCard Changes
-  // =====================
-  if (hasJobCardChanges) {
-    html += `<h4>Job Details</h4><ul>`;
-
-    Object.entries(jobCardChanges).forEach(([field, { from, to }]) => {
-      html += `
-        <li>
-          <strong>${prettyFieldName(field)}</strong>:
-          ${formatValue(from)} → ${formatValue(to)}
-        </li>
+  // ── JobCard field changes ─────────────────────────────────────────────
+  const fieldEntries = Object.entries(jobCardChanges);
+  if (fieldEntries.length > 0) {
+    const rows = fieldEntries
+      .map(([field, { from, to }]) => {
+        const label = field
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+        return `
+        <tr>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;font-weight:600;white-space:nowrap">
+            ${label}
+          </td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;color:#dc2626;text-decoration:line-through">
+            ${fmt(from, field)}
+          </td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;color:#16a34a;font-weight:600">
+            ${fmt(to, field)}
+          </td>
+        </tr>
       `;
-    });
+      })
+      .join("");
 
-    html += `</ul>`;
+    sections.push(`
+      <h3 style="color:#2563eb;margin-bottom:6px">📋 Job Card Changes</h3>
+      <table border="0" cellpadding="0" cellspacing="0"
+        style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">
+        <thead>
+          <tr style="background:#f1f5f9">
+            <th style="padding:6px 8px;border:1px solid #e2e8f0;text-align:left">Field</th>
+            <th style="padding:6px 8px;border:1px solid #e2e8f0;text-align:left">Old Value</th>
+            <th style="padding:6px 8px;border:1px solid #e2e8f0;text-align:left">New Value</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `);
   }
 
-  // =====================
-  // JobItem Changes (MODIFIED ONLY)
-  // =====================
-  if (hasItemChanges) {
-    html += `<h4>Item Modifications</h4>`;
+  // ── Added items ───────────────────────────────────────────────────────
+  if (jobItemChanges.added?.length > 0) {
+    const rows = jobItemChanges.added
+      .map(
+        (i) => `
+      <tr>
+        <td style="padding:6px 8px;border:1px solid #e2e8f0">
+          <span style="color:#16a34a;font-weight:bold">➕ Added</span>
+        </td>
+        <td style="padding:6px 8px;border:1px solid #e2e8f0">${i.enquiry_for}</td>
+        <td style="padding:6px 8px;border:1px solid #e2e8f0;color:#64748b">${i.category}</td>
+      </tr>
+    `,
+      )
+      .join("");
 
-    jobItemChanges.modified.forEach(item => {
-      html += `<p><strong>${item.enquiry_for}</strong></p><ul>`;
-
-      Object.entries(item.changes).forEach(([field, { from, to }]) => {
-        html += `
-          <li>
-            ${prettyFieldName(field)}:
-            ${formatValue(from)} → ${formatValue(to)}
-          </li>
-        `;
-      });
-
-      html += `</ul>`;
-    });
+    sections.push(`
+      <h3 style="color:#16a34a;margin-bottom:6px">➕ Items Added (${jobItemChanges.added.length})</h3>
+      <table border="0" cellpadding="0" cellspacing="0"
+        style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">
+        <thead>
+          <tr style="background:#f0fdf4">
+            <th style="padding:6px 8px;border:1px solid #e2e8f0;text-align:left">Action</th>
+            <th style="padding:6px 8px;border:1px solid #e2e8f0;text-align:left">Item</th>
+            <th style="padding:6px 8px;border:1px solid #e2e8f0;text-align:left">Category</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `);
   }
 
-  return html;
+  // ── Removed items ─────────────────────────────────────────────────────
+  if (jobItemChanges.removed?.length > 0) {
+    const rows = jobItemChanges.removed
+      .map(
+        (i) => `
+      <tr>
+        <td style="padding:6px 8px;border:1px solid #e2e8f0">
+          <span style="color:#dc2626;font-weight:bold">➖ Removed</span>
+        </td>
+        <td style="padding:6px 8px;border:1px solid #e2e8f0">${i.enquiry_for}</td>
+        <td style="padding:6px 8px;border:1px solid #e2e8f0;color:#64748b">${i.category}</td>
+      </tr>
+    `,
+      )
+      .join("");
+
+    sections.push(`
+      <h3 style="color:#dc2626;margin-bottom:6px">➖ Items Removed (${jobItemChanges.removed.length})</h3>
+      <table border="0" cellpadding="0" cellspacing="0"
+        style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">
+        <thead>
+          <tr style="background:#fef2f2">
+            <th style="padding:6px 8px;border:1px solid #e2e8f0;text-align:left">Action</th>
+            <th style="padding:6px 8px;border:1px solid #e2e8f0;text-align:left">Item</th>
+            <th style="padding:6px 8px;border:1px solid #e2e8f0;text-align:left">Category</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `);
+  }
+
+  // ── Modified items ────────────────────────────────────────────────────
+  if (jobItemChanges.modified?.length > 0) {
+    const itemBlocks = jobItemChanges.modified
+      .map((modItem) => {
+        const fieldRows = Object.entries(modItem.changes)
+          .map(([field, { from, to }]) => {
+            const label = field
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (c) => c.toUpperCase());
+            return `
+        <tr>
+          <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:12px">${label}</td>
+          <td style="padding:5px 8px;border:1px solid #e2e8f0;color:#dc2626;text-decoration:line-through;font-size:12px">
+            ${fmt(from, field)}
+          </td>
+          <td style="padding:5px 8px;border:1px solid #e2e8f0;color:#16a34a;font-weight:600;font-size:12px">
+            ${fmt(to, field)}
+          </td>
+        </tr>
+      `;
+          })
+          .join("");
+
+        return `
+        <div style="margin-bottom:12px">
+          <p style="margin:0 0 4px;font-weight:bold;color:#1e40af">
+            ✏️ ${modItem.enquiry_for}
+          </p>
+          <table border="0" cellpadding="0" cellspacing="0"
+            style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead>
+              <tr style="background:#f8fafc">
+                <th style="padding:5px 8px;border:1px solid #e2e8f0;text-align:left">Field</th>
+                <th style="padding:5px 8px;border:1px solid #e2e8f0;text-align:left">Old</th>
+                <th style="padding:5px 8px;border:1px solid #e2e8f0;text-align:left">New</th>
+              </tr>
+            </thead>
+            <tbody>${fieldRows}</tbody>
+          </table>
+        </div>
+      `;
+      })
+      .join("");
+
+    sections.push(`
+      <h3 style="color:#d97706;margin-bottom:8px">✏️ Items Modified (${jobItemChanges.modified.length})</h3>
+      <div style="margin-bottom:16px">${itemBlocks}</div>
+    `);
+  }
+
+  // ── No changes (should not happen since we guard before calling, but safe fallback) ──
+  if (sections.length === 0) {
+    sections.push(
+      `<p style="color:#64748b">No field-level changes detected. Job metadata was updated.</p>`,
+    );
+  }
+
+  return `
+    <h2 style="color:#2563eb">🔄 Job Card Updated — Job No: ${job.job_no}</h2>
+    <p style="color:#64748b;margin-bottom:16px">
+      The following changes were made to Job <strong>#${job.job_no}</strong>
+      (Client: <strong>${job.client_name}</strong>) by <strong>${performedBy}</strong>:
+    </p>
+    ${sections.join("")}
+  `;
 }
 
-
-
-
-
-
-
-
+/**
+ * Stage → which roles receive the notification email.
+ *
+ * "coordinator_review" → Process Coordinators + CRM
+ * "production"         → Production team + Process Coordinators + CRM
+ * null / other         → Process Coordinators + CRM + Designer (if assigned)
+ */
+const STAGE_ROLE_MAP = {
+  production: ["Production", "Process Coordinator", "CRM"],
+  coordinator_review: ["Process Coordinator", "CRM"],
+};
 
 // =====================================================
 // 4. ✉️ Helper: Sends notification mail to CRM, Coordinators, Designer for Updated / Cancelled Job
 // =====================================================
-async function sendJobNotificationEmail({ job, subject, actionType, jobCardChanges = {}, jobItemChanges = {}, }) {
+async function sendJobNotificationEmail({
+  job,
+  subject,
+  actionType,
+  jobCardChanges = {},
+  jobItemChanges = {},
+  stageTransition = null,
+  performedBy = "System",
+}) {
   try {
     const {
       job_no,
-      client_name,
-      order_type,
       order_handled_by,
-      execution_location,
       delivery_date,
       task_priority,
+      // client_name,
+      // order_type,
+      // execution_location,
     } = job;
 
-    const isCancelled = actionType === "cancelled";
-    const isUpdated = actionType === "updated";
+    // ── Resolve recipient roles based on new stage ────────────────────────
+    const targetRoles = STAGE_ROLE_MAP[stageTransition] || [
+      "Process Coordinator",
+      "CRM",
+    ];
+    const includeDesigner = !stageTransition; // only include designer on plain updates
 
+    // ── Fetch CRM user (the person named in order_handled_by) ─────────────
+    const crmUser = order_handled_by
+      ? await User.findOne({ where: { username: order_handled_by } })
+      : null;
 
-    // Fetch CRM
-    const crmUser = await User.findOne({
-      where: { username: order_handled_by},
-    });
+    // ── Fetch Process Coordinators ─────────────────────────────────────────
+    const coordinators = targetRoles.includes("Process Coordinator")
+      ? await User.findAll({ where: { department: "Process Coordinator" } })
+      : [];
 
-    // Fetch all Process Coordinators
-    const coordinators = await User.findAll({
-      where: { department: "Process Coordinator" },
-    });
+    // ── Fetch Production team ──────────────────────────────────────────────
+    const productionUsers = targetRoles.includes("Production")
+      ? await User.findAll({ where: { department: "Production" } })
+      : [];
 
-    // Fetch Designer (optional)
-    const designer =
+    // ── Fetch Designer (only if assigned and stage warrants it) ───────────
+    let designerUser = null;
+    if (
+      includeDesigner &&
+      Array.isArray(job.assignments) &&
       job.assignments.length > 0
-        ? await User.findOne({
-            where: {
-              id: job?.assignments[0]?.designer_id,
-              department: "Designer",
-            },
-          })
+    ) {
+      const designerAssignment = job.assignments[0];
+      designerUser = designerAssignment?.designer_id
+        ? await User.findOne({ where: { id: designerAssignment.designer_id } })
         : null;
+    }
 
+    // ── Deduplicate recipients ─────────────────────────────────────────────
+    const seen = new Set();
     const recipients = [
       ...(crmUser?.email ? [crmUser.email] : []),
       ...coordinators.map((u) => u.email).filter(Boolean),
-      ...(designer?.email ? [designer.email] : []),
-    ];
+      ...productionUsers.map((u) => u.email).filter(Boolean),
+      ...(designerUser?.email ? [designerUser.email] : []),
+    ].filter((email) => {
+      if (seen.has(email)) return false;
+      seen.add(email);
+      return true;
+    });
 
     if (recipients.length === 0) {
       console.warn("⚠️ No recipients found for job notification.");
       return;
     }
 
-    // ✅ Allowed actions only
-    const actionConfig = {
-      cancelled: {
-        label: "Cancelled",
-        color: "#ff4444",
-      },
-      updated: {
-        label: "Updated",
-        color: "#2563eb",
-      },
-    };
-
-    const action =
-      actionConfig[actionType] || actionConfig.updated;
-
-    const { label, color } = action;
-
-    // const emailHTML = `
-    //   <div style="font-family:Arial, sans-serif; color:#333; line-height:1.6">
-
-    //     <img src="cid:epo-logo" height="50" style="margin-bottom:20px" />
-
-    //     <h2 style="color:${color};">⚠️ JobCard ${label}</h2>
-
-    //     <p>
-    //       This is to inform you that the following job has been
-    //       <strong>${label.toUpperCase()}</strong> by the Job Writer.
-    //     </p>
-
-    //     <table border="1" cellpadding="8" cellspacing="0"
-    //       style="border-collapse:collapse; width:100%; font-size:14px;">
-    //       <tr><th align="left">Job No</th><td>${job_no}</td></tr>
-    //       <tr><th align="left">Client</th><td>${client_name}</td></tr>
-    //       <tr><th align="left">Order Type</th><td>${order_type}</td></tr>
-    //       <tr><th align="left">Handled By (CRM)</th><td>${order_handled_by}</td></tr>
-    //       <tr><th align="left">Execution Location</th><td>${execution_location}</td></tr>
-    //       <tr>
-    //         <th align="left">Delivery Date</th>
-    //         <td>${new Date(delivery_date).toLocaleString()}</td>
-    //       </tr>
-    //       <tr><th align="left">Priority</th><td>${task_priority}</td></tr>
-    //       <tr>
-    //         <th align="left">Action Performed By</th>
-    //         <td>${job.updatedBy || "Job Writer"}</td>
-    //       </tr>
-    //       <tr>
-    //         <th align="left">Status</th>
-    //         <td style="color:${color}; font-weight:bold;">
-    //           ${label}
-    //         </td>
-    //       </tr>
-    //     </table>
-
-    //     <p style="margin-top:20px; color:#555;">
-    //       Please update related records or notify relevant departments if needed.
-    //       This action is logged in the system for tracking purposes.
-    //     </p>
-
-    //     <hr style="border:none; border-top:1px solid #ccc; margin:20px 0;" />
-
-    //     <p style="font-size:13px; color:#888;">
-    //       — Automated Notification | Eastern Panorama Offset
-    //     </p>
-
-    //   </div>
-    // `;
-
-    const hasJobCardChanges = Object.keys(jobCardChanges).length > 0;
-    const hasItemChanges =
-      Array.isArray(jobItemChanges.modified) &&
-      jobItemChanges.modified.length > 0;
-
-
-    const mainContent = isCancelled ? renderCancelledEmail(job, color) : renderUpdatedChanges(jobCardChanges, jobItemChanges);
+    // ── Build HTML ─────────────────────────────────────────────────────────
+    const isCancelled = actionType === "cancelled";
+    const mainContent = isCancelled
+      ? renderCancelledEmail(job)
+      : renderUpdatedChanges(
+          job,
+          jobCardChanges,
+          jobItemChanges,
+          stageTransition,
+          performedBy,
+        );
 
     const emailHTML = `
-      <div style="font-family:Arial, sans-serif; color:#333; line-height:1.6">
-
+      <div style="font-family:Arial,sans-serif;color:#333;line-height:1.6;max-width:720px;margin:auto">
         <img src="cid:epo-logo" height="50" style="margin-bottom:20px" />
 
         ${mainContent}
 
         <table border="1" cellpadding="8" cellspacing="0"
-          style="border-collapse:collapse; width:100%; font-size:14px; margin-top:20px;">
-          <tr><th align="left">Job No</th><td>${job.job_no}</td></tr>
-          <tr><th align="left">Client</th><td>${job.client_name}</td></tr>
-          <tr><th align="left">Order Type</th><td>${job.order_type}</td></tr>
-          <tr><th align="left">Handled By</th><td>${job.order_handled_by}</td></tr>
+          style="border-collapse:collapse;width:100%;font-size:14px;margin-top:20px">
+          <tr><th align="left">Job No</th>        <td>${job.job_no}</td></tr>
+          <tr><th align="left">Client</th>         <td>${job.client_name}</td></tr>
+          <tr><th align="left">Order Type</th>     <td>${job.order_type}</td></tr>
+          <tr><th align="left">Handled By</th>     <td>${job.order_handled_by}</td></tr>
+          <tr><th align="left">Delivery Date</th>  <td>${delivery_date ? new Date(delivery_date).toLocaleString() : "—"}</td></tr>
+          <tr><th align="left">Priority</th>       <td>${task_priority}</td></tr>
+          <tr><th align="left">Updated By</th>     <td>${performedBy}</td></tr>
         </table>
 
-        <hr style="border:none; border-top:1px solid #ccc; margin:20px 0;" />
-
-        <p style="font-size:13px; color:#888;">
-          — Automated Notification | Eastern Panorama Offset
-        </p>
+        <hr style="border:none;border-top:1px solid #ccc;margin:20px 0" />
+        <p style="font-size:13px;color:#888">— Automated Notification | Eastern Panorama Offset</p>
       </div>
     `;
 
-   const attachments = [
+    const attachments = [
       {
         filename: "epo-logo.jpg",
         path: path.resolve("assets/epo-logo.jpg"),
@@ -1845,13 +2212,11 @@ async function sendJobNotificationEmail({ job, subject, actionType, jobCardChang
       html: emailHTML,
       attachments,
     });
-
-    console.log(`📧 Job ${label} notification sent to:`, recipients);
+    console.log(`📧 Job update notification sent to: ${recipients.join(", ")}`);
   } catch (err) {
     console.error("❌ Failed to send job notification email:", err.message);
   }
 }
-
 
 /**
  * DELETE JOB CARD
