@@ -847,8 +847,11 @@ const JobItem = React.memo(function JobItem({
 
                 handleItemChange(uniqueKey, "size", value);
 
-                // 👉 Instant validation
-                if (!validateSize(value, item.available_sizes, item.category)) {
+                // Instant validation
+                // Other category me koi validation nahi
+                if (category === "Other") {
+                  e.target.setCustomValidity("");
+                } else if (!validateSize(value, item.available_sizes, item.category)) {
                   e.target.setCustomValidity(
                     item.category === "Wide Format"
                       ? "Use format: 2x3 ft (or mm/cm/in)"
@@ -859,18 +862,22 @@ const JobItem = React.memo(function JobItem({
                 }
               }}
               onInvalid={(e) => {
-                e.target.setCustomValidity(
-                  item.category === "Wide Format"
-                    ? "Use format: 2x3 ft (or mm/cm/in)"
-                    : "Use format: 2x3 mm | 2x3 cm | 2x3 in (ft not allowed)",
-                );
+                // ✅ Other category me invalid message bhi nahi
+                if (category !== "Other") {
+                  e.target.setCustomValidity(
+                    item.category === "Wide Format"
+                      ? "Use format: 2x3 ft (or mm/cm/in)"
+                      : "Use format: 2x3 mm | 2x3 cm | 2x3 in (ft not allowed)",
+                  );
+                }
               }}
               placeholder={
-                item.category === "Wide Format"
-                  ? "e.g. 2x3 ft"
-                  : "e.g. 4x6 in or 2x3 cm or 2x3 mm"
+                category === "Other"
+                  ? "e.g. Small, Large, 12x18 ft..."   // ✅ generic placeholder
+                : item.category === "Wide Format" ? "e.g. 2x3 ft" : "e.g. 4x6 in or 2x3 cm or 2x3 mm"
               }
               className={`border rounded px-3 py-2 w-full text-sm ${
+                category !== "Other" &&  // Other me red border nahi 
                 item.size &&
                 !validateSize(item.size, item.available_sizes, item.category)
                   ? "border-red-500"
@@ -1175,7 +1182,7 @@ const JobItem = React.memo(function JobItem({
                 }
               }}
               onChange={(e) =>
-                handleItemChange(uniqueKey, "unit_rate", parseFloat(e.target.value))
+                handleItemChange(uniqueKey, "unit_rate", e.target.value)
               }
               className={item.is_calculating ? "bg-blue-50 text-blue-400 italic" : ""}
             />
