@@ -100,7 +100,7 @@ export default (sequelize) => {
         type: DataTypes.TEXT,
       },
       proof_date: {
-        type: DataTypes.DATE,
+        type: DataTypes.DATEONLY,
       },
       task_priority: {
         type: DataTypes.ENUM("Urgent", "High", "Medium", "Low"),
@@ -176,7 +176,7 @@ export default (sequelize) => {
         allowNull: true,
       },
       receiving_date_for_mm: {
-        type: DataTypes.DATE,
+        type: DataTypes.DATEONLY,
         allowNull: true,
       },
       discount: {
