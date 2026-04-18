@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useCallback } from "react";
+import React, { useEffect, useMemo, useCallback, useState } from "react";
 import FormCard from "../../components/salesPipeline/FormCard.jsx";
 import Field from "../../components/salesPipeline/Field.jsx";
 import Input from "../../components/salesPipeline/Input.jsx";
@@ -186,6 +186,9 @@ const JobItem = React.memo(function JobItem({
   );
   const cs = item.costing_snapshot;
 
+  const [editingField, setEditingField] = useState(null);
+
+  const isEditing = editingField === uniqueKey;
   // ─── Cover press types —─
   const allowedCoverPressTypes = useMemo(() => {
     // No printing → no press type needed
@@ -1149,12 +1152,30 @@ const JobItem = React.memo(function JobItem({
               value={
                 item.is_calculating
                   ? ""
-                  : item.unit_rate?.toLocaleString("en-IN", { minimumFractionDigits: 2 }) || ""
+                  : isEditing
+                  ? item.unit_rate ?? ""
+                  : item.unit_rate
+                  ? Number(item.unit_rate).toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                    })
+                  : ""
               }
               readOnly={category !== "Other"}
               placeholder={item.is_calculating ? "Calculating…" : ""}
+              onFocus={() => {
+                if (category === "Other") {
+                  setEditingField(uniqueKey);
+                }
+              }}
+              onBlur={() => {
+                setEditingField(null);
+                const num = parseFloat(item.unit_rate);
+                if (!isNaN(num)) {
+                  handleItemChange(uniqueKey, "unit_rate", num.toFixed(2));
+                }
+              }}
               onChange={(e) =>
-                handleItemChange(uniqueKey, "unit_rate", parseFloat(e.target.value) || 0)
+                handleItemChange(uniqueKey, "unit_rate", parseFloat(e.target.value))
               }
               className={item.is_calculating ? "bg-blue-50 text-blue-400 italic" : ""}
             />
