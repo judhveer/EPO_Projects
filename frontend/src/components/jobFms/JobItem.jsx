@@ -100,6 +100,74 @@ const getAllowedPressTypesForPaper = (colorScheme) => {
 const rs = (v) => v != null ? `₹${Number(v).toFixed(2)}` : null;
 
 
+// ── CalcErrorBanner ───────────────────────────────────────────────────────────
+// Inline error shown directly inside the item card when backend calc fails.
+// Visible immediately — no scrolling required.
+// ─────────────────────────────────────────────────────────────────────────────
+const CalcErrorBanner = ({ message }) => {
+  if (!message) return null;
+  return (
+    <div
+      role="alert"
+      className="col-span-2 flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-sm text-red-700"
+    >
+      {/* Icon */}
+      <svg
+        className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        aria-hidden="true"
+      >
+        <path
+          fillRule="evenodd"
+          d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-4.75a.75.75 0 001.5 0v-4.5a.75.75 0 00-1.5 0v4.5zm.75-7a.75.75 0 100 1.5.75.75 0 000-1.5z"
+          clipRule="evenodd"
+        />
+      </svg>
+      <div>
+        <p className="font-semibold">Calculation Error</p>
+        <p className="mt-0.5 text-xs text-red-600">{message}</p>
+        <p className="mt-0.5 text-xs text-red-500">
+          Unit rate and item total have been cleared. Fix the issue above and the
+          form will recalculate automatically.
+        </p>
+      </div>
+    </div>
+  );
+};
+
+// ── CalcSpinner ───────────────────────────────────────────────────────────────
+// Tiny pill shown beside the unit rate field while a calc request is in flight.
+// ─────────────────────────────────────────────────────────────────────────────
+const CalcSpinner = () => (
+  <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+    <svg
+      className="h-3 w-3 animate-spin text-blue-500"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8v8z"
+      />
+    </svg>
+    Calculating…
+  </span>
+);
+
+
 const JobItem = React.memo(function JobItem({
   item,
   index,
@@ -270,6 +338,17 @@ const JobItem = React.memo(function JobItem({
           🗑 Remove
         </Button>
       </div>
+
+      {/* ── Inline calculation error — shown at the TOP of the item card ───────
+          Positioned here (not page top) so the user sees it immediately when
+          they interact with the item. Uses role="alert" for screen readers.
+      ──────────────────────────────────────────────────────────────────────── */}
+      {item.calc_error && (
+        <div className="mt-2 mb-1">
+          <CalcErrorBanner message={item.calc_error} />
+        </div>
+      )}
+
 
       <div className="grid md:grid-cols-2 gap-3">
         <Field label="Category" required>
@@ -1063,29 +1142,54 @@ const JobItem = React.memo(function JobItem({
           </Select>
         </Field>
 
+        {/* ── Unit Rate — with calculating spinner ── */}
         <Field label="Unit Rate" required>
-          <Input
-            value={item.unit_rate?.toLocaleString("en-IN", {
-                    minimumFractionDigits: 2,
-                  }) || ""}
-            readOnly={category !== "Other"}
-            onChange={(e) =>
-              handleItemChange(uniqueKey, "unit_rate", parseFloat(e.target.value) || 0)
-            }
-          />
+          <div className="relative">
+            <Input
+              value={
+                item.is_calculating
+                  ? ""
+                  : item.unit_rate?.toLocaleString("en-IN", { minimumFractionDigits: 2 }) || ""
+              }
+              readOnly={category !== "Other"}
+              placeholder={item.is_calculating ? "Calculating…" : ""}
+              onChange={(e) =>
+                handleItemChange(uniqueKey, "unit_rate", parseFloat(e.target.value) || 0)
+              }
+              className={item.is_calculating ? "bg-blue-50 text-blue-400 italic" : ""}
+            />
+            {item.is_calculating && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                <svg
+                  className="h-4 w-4 animate-spin text-blue-500"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+              </span>
+            )}
+          </div>
         </Field>
 
         <Field label="Item Total" required>
           <Input
-            value={item.item_total?.toLocaleString("en-IN", {
-                    minimumFractionDigits: 2,
-                  }) || ""}
+            value={
+              item.is_calculating
+                ? ""
+                : item.item_total?.toLocaleString("en-IN", { minimumFractionDigits: 2 }) || ""
+            }
+            placeholder={item.is_calculating ? "Calculating…" : ""}
             onChange={(e) =>
               handleItemChange(uniqueKey, "item_total", e.target.value)
             }
             readOnly
+            className={item.is_calculating ? "bg-blue-50 text-blue-400 italic" : ""}
           />
         </Field>
+
 
         {/* ---------- Best Sheet Results (Inside + Cover) ---------- */}
         {/* ── [FIX 4] Best Sheet Results — all inside papers + cover + wide ── */}
