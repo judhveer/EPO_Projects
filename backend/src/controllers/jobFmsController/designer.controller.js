@@ -154,7 +154,7 @@ export const setEstimatedTime = async (req, res) => {
 //   JobAssignment has no direct designer FK — the designer is tracked on
 //   JobCard.assigned_designer. We find all in-progress, unpaused assignments
 //   whose parent job belongs to this designer, excluding the current job.
-const autoPauseActiveJob = async (designerUsername, currentJobNo, transaction) => {
+const autoPauseActiveJob = async (designerUsername, currentJobNo, t) => {
   // Find any in-progress, unpaused assignment for this designer (excluding current job)
   const activeAssignment = await JobAssignment.findOne({
     where: {
@@ -172,6 +172,9 @@ const autoPauseActiveJob = async (designerUsername, currentJobNo, transaction) =
         attributes: ["job_no"],
       },
     ],
+    transaction: t,
+    lock: t.LOCK.UPDATE,    // row-level lock on JobAssignment
+    skipLocked: false,       // wait if locked — don't skip silently
   });
 
   if (!activeAssignment) return null;
@@ -185,7 +188,8 @@ const autoPauseActiveJob = async (designerUsername, currentJobNo, transaction) =
       end_time: null,
     },
     order: [["start_time", "DESC"]],
-    transaction,
+    transaction: t,
+    lock: t.LOCK.UPDATE,
   });
 
   const now = new Date();
@@ -198,11 +202,11 @@ const autoPauseActiveJob = async (designerUsername, currentJobNo, transaction) =
     activeAssignment.designer_duration_seconds =
       (activeAssignment.designer_duration_seconds || 0) +
       jobDesignTimeLog.duration_seconds;
-    await jobDesignTimeLog.save({ transaction });
+    await jobDesignTimeLog.save({ transaction: t });
   }
 
   activeAssignment.is_paused = true;
-  await activeAssignment.save({ transaction });
+  await activeAssignment.save({ transaction: t });
 
   return pausedJobNo;
 };
@@ -217,9 +221,12 @@ export const designerStartTask = async (req, res) => {
 
     const assignment = await JobAssignment.findOne({
       where: { job_no, status: "assigned" },
+      transaction: t,
+      lock: t.LOCK.UPDATE, 
     });
 
     if (!assignment) {
+      await t.rollback();
       return res.status(404).json({ error: "No assignment found to start" });
     }
 
@@ -251,7 +258,10 @@ export const designerStartTask = async (req, res) => {
       { transaction: t },
     );
 
-    const job = await JobCard.findByPk(job_no);
+    const job = await JobCard.findByPk(job_no, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
     if (!job) {
       throw new Error("Job not found");
     }
@@ -430,7 +440,7 @@ export const designerPauseTask = async (req, res) => {
       jobDesignTimeLog,
     });
   } catch (err) {
-    await t.rollback(); // ❌ rollback on error
+    if (!t.finished) await t.rollback();
     console.error(err);
     res.status(500).json({ error: "Failed to pause task" });
   }
@@ -448,6 +458,7 @@ export const designerResumeTask = async (req, res) => {
         is_paused: true,
       },
       transaction: t,
+      lock: t.LOCK.UPDATE,
     });
 
     if (!assignment) {
