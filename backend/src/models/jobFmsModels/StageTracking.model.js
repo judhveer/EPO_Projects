@@ -19,6 +19,13 @@ export default (sequelize) => {
       },
       performed_by_id: {
         type: DataTypes.UUID,
+        allowNull: true,   // ← must be true for SET NULL to work
+        references: {
+          model: "users",
+          key: "id",
+        },
+        onDelete: "SET NULL",  // ← was NO ACTION, which keeps the orphaned value
+        onUpdate: "CASCADE",
       },
       stage_name: {
         type: DataTypes.ENUM(
