@@ -312,6 +312,13 @@ export default (sequelize) => {
           this.setDataValue("item_total", parseFloat(value) || 0);
         },
       },
+      // Add after the `item_total` field, before the closing of the fields object:
+      item_instructions: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        defaultValue: null,
+        comment: "Per-item instructions from the job writer.",
+      },
     },
     {
       tableName: "jobfms_job_items",
