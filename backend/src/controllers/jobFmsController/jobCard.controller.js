@@ -1166,6 +1166,7 @@ export const updateJobCard = async (req, res) => {
     "wide_material_name",
     "wide_material_gsm",
     "wide_material_thickness",
+    "item_instructions",
   ];
   const modifiedItems = [];
   incomingItemMap.forEach((newItem, id) => {
