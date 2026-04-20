@@ -30,6 +30,19 @@ if (saved) {
 }
 
 
+
+// ── Pause-on-logout registry ──────────────────────────────────────────────────
+// AuthContext registers `firePauseOnLogout` here so the 401 interceptor
+// can call it without a circular import (api.js → AuthContext → api.js).
+// Only one function is ever registered — the one from AuthProvider.
+let _firePauseOnLogout = null;
+
+
+export const registerPauseOnLogout = (fn) => {
+  _firePauseOnLogout = fn;
+};
+
+
 api.interceptors.response.use(
   r => r,
   (err) => {
@@ -38,6 +51,14 @@ api.interceptors.response.use(
 
     const isAuthLogin = url.includes('/api/auth/login');
     if (status === 401 && !isAuthLogin) {
+      // ── Fire pause BEFORE clearing token ───────────────────────────────
+      // Token is still in localStorage at this point — backend can verify it.
+      // _firePauseOnLogout is null for non-designer roles → safe no-op.
+      if (_firePauseOnLogout) {
+        const token = localStorage.getItem('token');
+        _firePauseOnLogout(token);
+      }
+      
       setAuthToken(null);
       if(window.location.pathname !== '/login'){
         window.location.replace('/login');
