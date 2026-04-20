@@ -167,6 +167,10 @@ function ItemCard({ item, index, viewMode }) {
                 )}
             </div>
           )}
+
+          {item.item_instructions && (
+            <Row label="Item Instructions" value={item.item_instructions} />
+          )}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════
