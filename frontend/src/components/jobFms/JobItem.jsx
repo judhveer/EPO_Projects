@@ -1152,6 +1152,19 @@ const JobItem = React.memo(function JobItem({
           </Select>
         </Field>
 
+        {/* ── Per-item Instructions ── */}
+        <Field label="Item Instructions" className="col-span-2">
+          <textarea
+            value={item.item_instructions || ""}
+            onChange={(e) =>
+              handleItemChange(uniqueKey, "item_instructions", e.target.value)
+            }
+            placeholder="Special instructions for this item (e.g. special finish, Serial No)..."
+            rows={2}
+            className="border border-slate-300 rounded px-3 py-2 w-full text-sm resize-none"
+          />
+        </Field>
+
         {/* ── Unit Rate — with calculating spinner ── */}
         <Field label="Unit Rate" required>
           <div className="relative">
