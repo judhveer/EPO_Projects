@@ -1,4 +1,5 @@
 import { Op, where } from "sequelize";
+import jwt from "jsonwebtoken";
 import db from "../../models/index.js";
 const {
   JobCard,
@@ -662,4 +663,92 @@ const calculateTotalSeconds = (logs) => {
   });
 
   return total;
+};
+
+// ── POST /api/fms/designers/pause-on-logout ───────────────────────────────────
+// Called when designer explicitly logs out OR JWT expires.
+// Finds any active (in_progress, not paused) assignment for this designer
+// and pauses it. No job_no needed — resolved from req.user.
+//
+// Uses regular auth middleware (token still valid at logout time).
+// For JWT expiry path: called BEFORE token is cleared, while 401 hasn't
+// fired yet — this is why we call it from the logout function directly.
+//
+// Idempotent: safe to call multiple times. If nothing is running → no-op.
+// ─────────────────────────────────────────────────────────────────────────────
+export const pauseOnLogout = async (req, res) => {
+  // Respond immediately — don't make logout wait for DB operations
+  res.status(200).json({ ok: true });
+
+  // All DB work happens after response is sent (fire-and-forget pattern)
+  try {
+    let designerUsername = req.user?.username;
+    let userId = req.user?.id;
+
+    // If req.user wasn't populated (sendBeacon path — no auth middleware hit)
+    if (!designerUsername && req.body?.token) {
+      try {
+        const decoded = jwt.verify(req.body.token, process.env.JWT_SECRET);
+        designerUsername = decoded.username;
+        userId = decoded.id;
+      } catch {
+        console.warn("pause-on-logout: invalid token in body, ignoring.");
+        return;
+      }
+    }
+
+    if (!designerUsername) return;
+
+    // Find any active assignment for this designer via JobCard join
+    const activeAssignment = await JobAssignment.findOne({
+      where: {
+        status: "in_progress",
+        is_paused: false,
+      },
+      include: [
+        {
+          model: JobCard,
+          as: "jobCard",
+          where: { assigned_designer: designerUsername },
+          attributes: ["job_no"],
+        },
+      ],
+    });
+
+    if (!activeAssignment) return; // nothing running — no-op
+
+    const job_no = activeAssignment.jobCard.job_no;
+    const now = new Date();
+
+    // Close the open time log
+    const openLog = await JobDesignTime.findOne({
+      where: { assignment_id: activeAssignment.id, end_time: null },
+      order: [["start_time", "DESC"]],
+    });
+
+    if (openLog) {
+      openLog.end_time = now;
+      openLog.duration_seconds = Math.round(
+        (now - new Date(openLog.start_time)) / 1000,
+      );
+      activeAssignment.designer_duration_seconds =
+        (activeAssignment.designer_duration_seconds || 0) +
+        openLog.duration_seconds;
+      await openLog.save();
+    }
+
+    activeAssignment.is_paused = true;
+    await activeAssignment.save();
+
+    await ActivityLog.create({
+      job_no,
+      performed_by_id: userId ?? null,
+      action: "Designer Auto-Pause (Logout)",
+      meta: { trigger: "logout", username: designerUsername },
+    });
+
+    console.log(`pause-on-logout: Job #${job_no} paused for ${designerUsername}`);
+  } catch (err) {
+    console.error("pause-on-logout error:", err);
+  }
 };
