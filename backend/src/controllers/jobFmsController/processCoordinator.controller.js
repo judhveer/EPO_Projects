@@ -248,15 +248,19 @@ export const getDesignerStatus = async (req, res) => {
         name: designer.username,
         status: activeJobs.length > 0 ? "active" : "idle",
         active_jobs: activeJobs.map((j) => ({
-          job_no: j.job_no,
-          priority: j.jobCard?.task_priority,
-          start_time: j.designer_start_time,
-          designer_end_time: j.designer_end_time,
+          job_no:          j.job_no,
+          client_name:     j.jobCard?.client_name,
+          priority:        j.jobCard?.task_priority,
+          delivery_date:   j.jobCard?.delivery_date,   // ← ADD
+          start_time:      j.designer_start_time,
+          estimated_done:  j.estimated_completion_time, // ← rename for clarity
         })),
         pending_jobs: pendingJobs.map((j) => ({
-          job_no: j.job_no,
-          priority: j.jobCard?.task_priority,
-          assigned_at: j.assigned_at,
+          job_no:        j.job_no,
+          client_name:   j.jobCard?.client_name,
+          priority:      j.jobCard?.task_priority,
+          delivery_date: j.jobCard?.delivery_date,      
+          assigned_at:   j.assigned_at,
         })),
         today_completed: todayCompletedJobs.length,
         today_jobs:
