@@ -20,7 +20,7 @@ export async function getSheetData() {
     spreadsheetId: sheetId,
     range,
   });
-  // console.log('Google Sheet data: ', res.data.values);
+
   return res.data.values;
 }
 
