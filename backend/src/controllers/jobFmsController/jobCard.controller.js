@@ -31,22 +31,17 @@ const calculateJobCompletionDeadline = (deliveryDateInput) => {
   const deliveryIST = DateTime.fromISO(deliveryDateInput, {
     zone: "Asia/Kolkata",
   });
-  console.log("deliveryIST: ", deliveryIST);
 
   if (!deliveryIST.isValid) {
     throw new Error("Invalid delivery date input");
   }
 
   const nowIST = DateTime.now().setZone("Asia/Kolkata");
-  console.log("nowIST: ", nowIST);
 
   const todayIST = nowIST.startOf("day");
-  console.log("todayIST: ", todayIST);
   const tomorrowIST = todayIST.plus({ days: 1 });
-  console.log("tomorrowIST: ", tomorrowIST);
 
   const deliveryDayIST = deliveryIST.startOf("day");
-  console.log("deliveryDayIST: ", deliveryDayIST);
 
   // ⏱ SAME DAY delivery → 2 hours before delivery
   if (deliveryDayIST.equals(todayIST)) {
@@ -147,7 +142,6 @@ export const createJobCard = async (req, res) => {
       });
     }
 
-    console.log("job_items.length: ", job_items.length);
 
     if (!job_items || job_items.length === 0) {
       return res.status(400).json({
@@ -182,7 +176,6 @@ export const createJobCard = async (req, res) => {
     // calculate job completion deadline
     const job_completion_deadline =
       calculateJobCompletionDeadline(delivery_date);
-    console.log("job completion deadline: ", job_completion_deadline);
 
     const initialStage = is_direct_to_production
       ? "production"
@@ -702,7 +695,6 @@ export const getAllJobCards = async (req, res) => {
   console.log("getAllJobCards called...");
   try {
     const { page = 1, limit = 50 } = req.query;
-    console.log("req.query: ", req.query);
     const offset = (page - 1) * limit;
 
     const whereClause = buildWhereClause(req.query);
@@ -898,7 +890,6 @@ export const getJobCardForFormLoad = async (req, res) => {
     // Normalize every item's JSON columns — MariaDB 11.x returns them as strings
     json.items = (json.items || []).map(normalizeJobItem);
 
-    console.log("getJobCardForFormLoad - normalized response: ", json);
     return res.json(json);
   } catch (error) {
     console.error("Error in getJobCardForFormLoad:", error);
@@ -934,7 +925,6 @@ const safeParseJson = (v) => {
  */
 export const updateJobCard = async (req, res) => {
   console.log("updateJobCard called...");
-  // console.log("req.body: ", req.body);
   const { job_no } = req.params;
   const { job_items = [], ...updates } = req.body;
 
