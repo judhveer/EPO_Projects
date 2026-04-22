@@ -214,7 +214,7 @@ export default function JobWriterTable() {
               <th className="border p-2 sticky left-0 bg-blue-800 z-40  text-center font-semibold">
                 Job No
               </th>
-              <th className="border p-2"> Job Created On</th>
+              <th className="border p-2 min-w-[170px]"> Job Created On</th>
               <th className="border p-2">Client Name</th>
               <th className="border p-2">Items</th>
               <th className="border p-2">Client Type</th>
@@ -225,7 +225,7 @@ export default function JobWriterTable() {
               <th className="border p-2">Email</th>
               <th className="border p-2">Order Handled By</th>
               <th className="border p-2">Execution Location</th>
-              <th className="border p-2">Delivery Date</th>
+              <th className="border p-2 min-w-[170px]">Delivery Date</th>
               <th className="border p-2 max-w-[500px] ">Delivery Location</th>
               <th className="border p-2">Proof Date</th>
               <th className="border p-2">Priority</th>
