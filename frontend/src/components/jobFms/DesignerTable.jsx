@@ -369,7 +369,6 @@ export default function DesignerTable({ refresh }) {
           if (!assignment) return null;
 
           const latestApproval = job.clientApprovals?.[0];
-          console.log("clientApprovals: ", job.clientApprovals?.[0]);
           const isRework =
             job.clientApprovals?.[0]?.status === "changes_requested";
 
@@ -384,8 +383,6 @@ export default function DesignerTable({ refresh }) {
           };
         })
         .filter(Boolean);
-
-      console.log("Fetched jobs for designer:", normalized);
 
       setJobs(normalized);
       setTotalJobs(res.data.total || normalized.length);
