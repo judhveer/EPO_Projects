@@ -1,4 +1,3 @@
-console.log("itemMaster routes loaded");
 import express from "express";
 import { getItemsByCategory, getAllPaperTypes, getGsmByPaperType, getWideMaterialTypes, getGsmByWideMaterialTypes, getBindingsByCategory, getSizes, calculateItemController, } from "../../controllers/jobFmsController/itemMaster.controller.js";
 
