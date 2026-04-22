@@ -110,8 +110,6 @@ export default function TaskDashboard() {
           validateStatus: () => true, // we'll handle non-2xx ourselves
         });
 
-        console.log(res);
-
         const ct = (res.headers?.["content-type"] || "").toLowerCase();
         const data = res.data;
 
