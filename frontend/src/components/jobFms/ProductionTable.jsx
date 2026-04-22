@@ -131,7 +131,7 @@ export default function ProductionTable() {
               <th className="border p-2">Job Created On</th>
               <th className="border p-2">Client Name</th>
               <th className="border p-2">Items</th>
-              <th className="border p-2">Delivery Date</th>
+              <th className="border p-2 min-w-[170px]">Delivery Date</th>
               <th className="border p-2 max-w-[500px]">Delivery Location</th>
               <th className="border p-2">Instructions</th>
               <th className="border p-2">Status</th>
