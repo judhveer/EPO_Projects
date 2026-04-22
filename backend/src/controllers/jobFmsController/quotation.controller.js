@@ -347,7 +347,6 @@ function buildMmTable(items, billing) {
 
 // Hill Publication: Serial No | Item | QTY | UOM | Rate | Total Excl. GST [| GST | Total Incl. GST]
 function buildHillTable(items, billing) {
-  console.log("Inside Hill Table: Items -> ",items, "\nBilling -> " ,billing);
   const hasGst  = billing.gstPct && Number(billing.gstPct) > 0;
   const gstRate = Number(billing.gstPct || 0);
 
