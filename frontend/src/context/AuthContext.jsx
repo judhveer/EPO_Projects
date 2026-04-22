@@ -21,7 +21,6 @@ const firePauseOnLogout = (token) => {
       [JSON.stringify({ token })],
       { type: "application/json" },
     );
-    console.log("blob: ", blob);
     navigator.sendBeacon(url, blob);
     return;
   }
@@ -78,7 +77,6 @@ export function AuthProvider({ children }) {
     const login = async (identifier, password) => {
         console.log("login called");
         const { data } = await api.post('/api/auth/login', { identifier, password });
-        console.log("data: ", data);
         setAuthToken(data.token);
         setUser(data.user);
         return data.user;
