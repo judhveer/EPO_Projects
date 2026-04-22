@@ -133,7 +133,6 @@ export default function ProductionTable() {
               <th className="border p-2">Items</th>
               <th className="border p-2 min-w-[170px]">Delivery Date</th>
               <th className="border p-2 max-w-[500px]">Delivery Location</th>
-              <th className="border p-2">Instructions</th>
               <th className="border p-2">Status</th>
               <th className="border p-2">Client Type</th>
               <th className="border p-2">Order Type</th>
@@ -203,7 +202,6 @@ export default function ProductionTable() {
                       </div>
                     )}
                   </td>
-                  <td className="border p-2 group-hover:text-white">{job.instructions}</td>
                   <td className="border p-2">
                     <span
                       className={`px-2 py-1 rounded-md text-xs font-semibold ${
