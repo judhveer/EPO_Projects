@@ -160,7 +160,7 @@ export default function DashboardTable({
                       {job.payment_status}
                     </span>
                   </td>
-                  <td className="border p-2 sticky right-0 bg-inherit z-20">
+                  <td className="border p-2 sticky right-0 bg-inherit z-20 text-center">
                     <span
                       className={`px-2 py-1 rounded-md text-xs font-semibold ${
                         job.status === "completed"
