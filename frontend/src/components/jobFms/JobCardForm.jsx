@@ -1052,8 +1052,6 @@ export default function JobCardForm({
 
   const calculateItemBackend = useCallback(
     async (index, uniqueKey) => {
-      console.log("calculateItemBackend Triggered:", uniqueKey);
-
       const item = formRef.current.job_items[index];
       if (!item || !isItemReady(item)) return; // safety net — isItemReady already checked in handleItemChange
 
