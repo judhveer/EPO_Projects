@@ -155,8 +155,6 @@ export async function getUsers(req, res) {
           where: { [LEAD_STAGE_FIELD]: STAGE_CRM },
         });
 
-        console.log("pending crms: ", aggregatedPending);
-
         return normalizeUserRow(u, { totalCount, todayCount, pendingCount: aggregatedPending });
       }
 
