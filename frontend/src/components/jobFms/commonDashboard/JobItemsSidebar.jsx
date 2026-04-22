@@ -617,7 +617,6 @@ export default function JobItemsSidebar({
       .get(`/api/fms/common-dashboard/jobs/${jobNo}/items`)
       .then((res) => {
         setItems(res.data);
-        console.log("Loaded job items:", res.data);
       })
       .catch((err) => console.error("Failed to load job items", err))
       .finally(() => setLoading(false));
