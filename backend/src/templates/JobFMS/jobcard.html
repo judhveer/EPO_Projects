@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10px;
+    color: #111;
+    background: #fff;
+  }
+
+  /* ── One page = one job item ─────────────────────────────── */
+  .job-card-page {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 6mm 8mm;
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+  }
+  .job-card-page:last-child { page-break-after: avoid; }
+
+  /* ── TOP HEADER STRIP ────────────────────────────────────── */
+  .top-header {
+    background: #1a3a6e;
+    color: #fff;
+    padding: 6px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: 4px 4px 0 0;
+    margin-bottom: 1px;
+  }
+  .top-header .firm-name {
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .top-header .firm-tagline {
+    font-size: 7px;
+    color: #93c5fd;
+    margin-top: 1px;
+    letter-spacing: 1.5px;
+  }
+  .top-header .job-badge {
+    text-align: right;
+  }
+  .top-header .job-no {
+    font-size: 20px;
+    font-weight: 900;
+    color: #fbbf24;
+    letter-spacing: 1px;
+  }
+  .top-header .job-date {
+    font-size: 8px;
+    color: #bfdbfe;
+    margin-top: 1px;
+  }
+
+  /* ── JOB META BAR ─────────────────────────────────────────── */
+  .meta-bar {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 1px;
+    background: #e2e8f0;
+    border: 1px solid #cbd5e1;
+    margin-bottom: 4px;
+  }
+  .meta-cell {
+    background: #f8fafc;
+    padding: 4px 6px;
+  }
+  .meta-cell.wide { grid-column: span 2; }
+  .meta-cell.full { grid-column: span 4; }
+  .meta-label {
+    font-size: 7px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+  }
+  .meta-value {
+    font-size: 9.5px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .meta-value.highlight { color: #1d4ed8; }
+  .meta-value.red { color: #dc2626; }
+
+  /* ── ITEM BADGE ───────────────────────────────────────────── */
+  .item-badge {
+    background: #1a3a6e;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 3px 10px;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .item-badge .item-name {
+    font-size: 11px;
+    font-weight: 900;
+    color: #fbbf24;
+  }
+
+  /* ── TWO-COLUMN BODY ─────────────────────────────────────── */
+  .card-body {
+    display: grid;
+    grid-template-columns: 1fr 1px 1fr;
+    gap: 0;
+    border: 1.5px solid #1a3a6e;
+    flex: 1;
+  }
+  .divider-line {
+    background: #1a3a6e;
+  }
+
+  /* ── SECTION HEADERS ─────────────────────────────────────── */
+  .section {
+    padding: 5px 8px;
+  }
+  .section-title {
+    font-size: 10px;
+    font-weight: 900;
+    text-align: center;
+    color: #1a3a6e;
+    border-bottom: 1.5px solid #1a3a6e;
+    padding-bottom: 3px;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ── FIELD ROWS ──────────────────────────────────────────── */
+  .field-row {
+    display: flex;
+    align-items: baseline;
+    margin-bottom: 5px;
+    border-bottom: 1px dotted #94a3b8;
+    padding-bottom: 2px;
+    min-height: 16px;
+  }
+  .field-row:last-child { border-bottom: none; }
+  .field-label {
+    font-size: 8.5px;
+    color: #374151;
+    font-weight: 600;
+    white-space: nowrap;
+    min-width: 0;
+    flex-shrink: 0;
+  }
+  .field-colon {
+    margin: 0 3px;
+    color: #374151;
+    font-size: 8.5px;
+    flex-shrink: 0;
+  }
+  .field-value {
+    font-size: 9px;
+    font-weight: 700;
+    color: #111827;
+    flex: 1;
+    word-break: break-word;
+  }
+  .field-value.empty {
+    border-bottom: 1px solid #d1d5db;
+    min-width: 60px;
+    color: transparent;
+  }
+  .field-value.blue { color: #1d4ed8; }
+  .field-value.red  { color: #dc2626; }
+  .field-value.green { color: #15803d; }
+
+  /* ── INLINE GRID (for paper details) ─────────────────────── */
+  .field-grid {
+    display: grid;
+    grid-template-columns: auto 1fr auto 1fr;
+    gap: 2px 4px;
+    align-items: center;
+    margin-bottom: 5px;
+  }
+  .fg-label { font-size: 8px; color: #4b5563; font-weight: 600; }
+  .fg-value {
+    font-size: 9px; font-weight: 700; color: #111;
+    border-bottom: 1px solid #d1d5db;
+    padding-bottom: 1px;
+  }
+
+  /* ── PRESS TYPE CHECKBOXES ───────────────────────────────── */
+  .press-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    margin-bottom: 5px;
+  }
+  .press-item {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 8.5px;
+    font-weight: 600;
+  }
+  .checkbox {
+    width: 10px; height: 10px;
+    border: 1.5px solid #374151;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    font-weight: 900;
+    flex-shrink: 0;
+  }
+  .checkbox.checked {
+    background: #1a3a6e;
+    border-color: #1a3a6e;
+    color: #fff;
+  }
+
+  /* ── INSIDE PAPERS TABLE ─────────────────────────────────── */
+  .papers-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 5px;
+    font-size: 8px;
+  }
+  .papers-table th {
+    background: #e2e8f0;
+    color: #1a3a6e;
+    padding: 2px 4px;
+    font-weight: 700;
+    border: 1px solid #cbd5e1;
+    text-align: center;
+  }
+  .papers-table td {
+    padding: 2px 4px;
+    border: 1px solid #e2e8f0;
+    text-align: center;
+    font-weight: 600;
+  }
+  .papers-table tr:nth-child(even) td { background: #f8fafc; }
+
+  /* ── BINDING TAGS ────────────────────────────────────────── */
+  .binding-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 2px;
+  }
+  .binding-tag {
+    background: #dbeafe;
+    border: 1px solid #93c5fd;
+    color: #1e40af;
+    font-size: 7.5px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ── PRIORITY BADGE ──────────────────────────────────────── */
+  .priority-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .priority-Urgent { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
+  .priority-High   { background: #ffedd5; color: #ea580c; border: 1px solid #fdba74; }
+  .priority-Medium { background: #fef9c3; color: #ca8a04; border: 1px solid #fde047; }
+  .priority-Low    { background: #dcfce7; color: #16a34a; border: 1px solid #86efac; }
+
+  /* ── OPERATOR FIELDS (right column blank lines) ───────────── */
+  .operator-field {
+    margin-bottom: 7px;
+  }
+  .operator-label {
+    font-size: 8px;
+    color: #374151;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .operator-line {
+    border-bottom: 1px solid #374151;
+    height: 14px;
+    width: 100%;
+  }
+
+  /* ── APPROVAL CHECKBOXES ─────────────────────────────────── */
+  .approval-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+    font-size: 8.5px;
+    font-weight: 600;
+  }
+
+  /* ── SIGNATURE AREA ──────────────────────────────────────── */
+  .signature-area {
+    margin-top: 10px;
+    text-align: right;
+  }
+  .signature-line {
+    border-top: 1px solid #374151;
+    width: 110px;
+    margin-left: auto;
+    margin-top: 24px;
+  }
+  .signature-label {
+    font-size: 7.5px;
+    color: #6b7280;
+    margin-top: 2px;
+    text-align: center;
+    width: 110px;
+    margin-left: auto;
+  }
+
+  /* ── FOOTER ──────────────────────────────────────────────── */
+  .card-footer {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-top: none;
+    padding: 4px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 7.5px;
+    color: #64748b;
+  }
+  .card-footer strong { color: #1a3a6e; }
+
+  /* ── SPECIAL INSTRUCTION BOX ──────────────────────────────── */
+  .special-box {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 3px;
+    padding: 4px 6px;
+    margin-top: 3px;
+    font-size: 8.5px;
+    font-weight: 700;
+    color: #92400e;
+    min-height: 20px;
+  }
+
+  /* ── COST SUMMARY BOX ────────────────────────────────────── */
+  .cost-box {
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: 3px;
+    padding: 4px 6px;
+    margin-top: 4px;
+  }
+  .cost-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 8px;
+    padding: 1px 0;
+    border-bottom: 1px dashed #bbf7d0;
+  }
+  .cost-row:last-child { border: none; font-weight: 800; font-size: 9px; color: #15803d; }
+  .cost-label { color: #374151; }
+  .cost-value { font-weight: 700; }
+</style>
+</head>
+<body>
+{{PAGES}}
+</body>
+</html>
