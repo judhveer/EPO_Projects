@@ -1139,8 +1139,6 @@ export const calculateItemController = async (req, res) => {
       // `inside_papers_results` → full array for sidebar and DB storage.
       const firstPaperResult = insidePapersResults[0] || {};
 
-      console.log("Final calculation result:", grandTotal);
-
       return res.json({
         // First paper info (backward compat — frontend reads data.inside for display)
         inside: {
