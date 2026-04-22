@@ -10,6 +10,8 @@ import {
     getJobCardForFormLoad
 } from "../../controllers/jobFmsController/jobCard.controller.js";
 
+import { downloadJobCard } from "../../controllers/jobFmsController/jobcardDownload.controller.js";
+
 const router = express.Router();
 
 router.post("/", createJobCard);
@@ -19,6 +21,7 @@ router.put("/:job_no", updateJobCard);
 // router.delete("/:job_no", deleteJobCard);
 router.patch("/:job_no/cancel", cancelJobCard);
 router.get("/:job_no/form-load", getJobCardForFormLoad);
+router.get("/:job_no/download-card", downloadJobCard);
 
 
 // list the enquiry for items:
