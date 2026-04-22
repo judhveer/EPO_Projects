@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import api from "../../lib/api.js";
 import Button from "../../components/salesPipeline/Button.jsx";
 import JobCardForm from "../jobFms/JobCardForm.jsx"; // 👈 Import your form component
@@ -153,6 +153,26 @@ export default function JobWriterTable() {
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
   }, [showModal, confirmCancel, itemSidebarJobNo]);
+
+  const handleDownloadCard = useCallback(async (job) => {
+    try {
+      const response = await api.get(
+        `/api/fms/jobcards/${job.job_no}/download-card`,
+        { responseType: "blob" }
+      );
+      const url  = URL.createObjectURL(new Blob([response.data], { type: "application/pdf" }));
+      const link = document.createElement("a");
+      link.href     = url;
+      link.download = `JobCard_${job.job_no}_${job.client_name.replace(/\s/g, "_")}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed:", err);
+      alert(`Failed to download job card for Job #${job.job_no}`);
+    }
+  }, []);
 
   const handleEditClick = async (job) => {
     // 1️⃣ Fetch items for this job
@@ -407,6 +427,16 @@ export default function JobWriterTable() {
                               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-100 hover:text-blue-700 transition-all flex items-center gap-2"
                             >
                               ✏️ Edit
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setOpenActionDropdown(null);
+                                handleDownloadCard(job);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-green-100 hover:text-green-700 transition-all flex items-center gap-2"
+                            >
+                              📄 Download Card
                             </button>
 
                             <button
