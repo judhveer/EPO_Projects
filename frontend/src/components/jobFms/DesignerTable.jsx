@@ -450,7 +450,7 @@ export default function DesignerTable({ refresh }) {
               <th className="border p-1 sm:p-2">Order Type</th>
               <th className="border p-1 sm:p-2">Order Handled By</th>
               <th className="border p-1 sm:p-2">Execution Location</th>
-              <th className="border p-1 sm:p-2">Delivery Date</th>
+              <th className="border p-1 sm:p-2 min-w-[170px]">Delivery Date</th>
               <th className="border p-1 sm:p-2 max-w-[500px] ">
                 Delivery Location
               </th>
@@ -519,9 +519,11 @@ export default function DesignerTable({ refresh }) {
                     {job.execution_location}
                   </td>
                   <td className="border p-1 sm:p-2 font-semibold text-blue-600 hover:text-white">
-                    {DateTime.fromJSDate(new Date(job.delivery_date))
+                    <span className="bg-yellow-300 text-blue-900 rounded-md font-bold p-1">
+                      {DateTime.fromJSDate(new Date(job.delivery_date))
                       .setZone("Asia/Kolkata")
                       .toFormat("dd LLL yyyy, hh:mm a")}
+                    </span>
                   </td>
                   <td className="border-r border-gray-200 px-2  max-w-[500px]">
                     {job.delivery_location?.replace(/_/g, " ")}
