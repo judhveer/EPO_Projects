@@ -32,7 +32,6 @@ const EMPTY_FORM = {
   delivery_date: "",
   proof_date: "",
   task_priority: "",
-  instructions: "",
   total_amount: "",
   advance_payment: "",
   mode_of_payment: "",
@@ -2269,15 +2268,6 @@ export default function JobCardForm({
               </option>
             ))}
           </Select>
-        </Field>
-
-        <Field label="Instructions">
-          <textarea
-            name="instructions"
-            value={form.instructions || ""}
-            onChange={onChange}
-            className="border border-slate-300 rounded px-3 py-2 w-full text-sm"
-          />
         </Field>
 
         <Field label="Production Flow">
