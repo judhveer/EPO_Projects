@@ -187,9 +187,7 @@ export const getDashboardJobDetails = async (req, res) => {
     }
     const data = job.toJSON();
 
-    console.log("Assignments:", data.assignments);
-    console.log("Client Approvals:", data.clientApprovals);
-    res.json(job);
+    res.json(data);
   } catch (err) {
     console.error("Dashboard job details error:", err);
     res.status(500).json({ message: "Failed to load job details" });
