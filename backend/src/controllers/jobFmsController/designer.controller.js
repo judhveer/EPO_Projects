@@ -94,12 +94,43 @@ export const getAllJobsForDesginer = async (req, res) => {
   }
 };
 
+// ── Pure helper — same logic runs on frontend too ──────────────────────────
+// deliveryDate, jobCreatedAt: JS Date objects
+// priority: "Urgent" | "High" | "Medium" | "Low"
+export function calculateMaxDesignDeadline(deliveryDate, jobCreatedAt, priority) {
+  
+  const now         = new Date();
+  const totalMs     = deliveryDate.getTime() - jobCreatedAt.getTime();
+  const totalDays   = totalMs / (1000 * 60 * 60 * 24);
+
+  let deadline;
+
+  // ── Rule 1: Urgent OR same-day delivery → 4 hours from now ─────────────
+  if (priority === "Urgent" || totalDays < 1) {
+    deadline = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+  }
+
+  // ── Rule 2: Next-day delivery → day before delivery at 19:30 IST ───────
+  else if (totalDays <= 2) {
+    // Work with IST (UTC+5:30)
+    const d = new Date(deliveryDate);
+    d.setUTCDate(d.getUTCDate() - 1);
+    d.setUTCHours(14, 0, 0, 0);
+    deadline = d;
+  }
+  else{
+    // ── Rule 3: Any longer delivery → 30% of total duration ────────────────
+    deadline = new Date(jobCreatedAt.getTime() + totalMs * 0.30);
+  }
+
+  // ── HARD CAP ──────────────────────────────────────────────────────
+  return deadline > deliveryDate ? deliveryDate : deadline;
+}
+
 export const setEstimatedTime = async (req, res) => {
   console.log("setEstimatedTime called:");
   try {
     const { job_no, estimated_completion_time } = req.body;
-
-    console.log("Estimated Completion Time:", estimated_completion_time);
 
     if (!estimated_completion_time) {
       return res.status(400).json({
@@ -112,9 +143,12 @@ export const setEstimatedTime = async (req, res) => {
         status: { [Op.in]: ["assigned", "in_progress"] },
       },
       order: [["created_at", "DESC"]],
+      include: [{
+        model:      JobCard,
+        as:         "jobCard",
+        attributes: ["delivery_date", "created_at", "task_priority"],
+      }],
     });
-
-    console.log("Found Assignment:", assignment);
 
     if (!assignment) {
       return res.status(404).json({
@@ -122,21 +156,60 @@ export const setEstimatedTime = async (req, res) => {
       });
     }
 
+    const estimatedTime = new Date(estimated_completion_time);
+    const now = new Date();
+
+    // ── Guard 1: no past dates ──────────────────────────────────────────
+    if (estimatedTime <= now) {
+      return res.status(400).json({
+        error: "Estimated completion time cannot be in the past.",
+      });
+    }
+
+    // ── Guard 2: enforce deadline rule ──────────────────────────────────
+    const deliveryDate  = new Date(assignment.jobCard.delivery_date);
+    const jobCreatedAt  = new Date(assignment.jobCard.created_at);
+    const priority      = assignment.jobCard.task_priority;
+    const maxAllowed    = calculateMaxDesignDeadline(deliveryDate, jobCreatedAt, priority);
+
+    if (estimatedTime > maxAllowed) {
+      // Format in IST for the error message
+      const maxStr = maxAllowed.toLocaleString("en-IN", {
+        timeZone:    "Asia/Kolkata",
+        day:         "2-digit",
+        month:       "short",
+        year:        "numeric",
+        hour:        "2-digit",
+        minute:      "2-digit",
+        hour12:      true,
+      });
+      return res.status(400).json({
+        error: `Estimated completion time cannot exceed ${maxStr} based on the delivery schedule.`,
+        max_allowed_iso: maxAllowed.toISOString(),   // frontend uses this to clamp the picker
+      });
+    }
+
     assignment.estimated_completion_time = estimated_completion_time;
     await assignment.save();
-    console.log("Updated Assignment:", assignment);
 
     // Log Action
     await ActivityLog.create({
       job_no,
       performed_by_id: req.user?.id,
       action: "Set Estimated Time",
-      meta: { estimated_completion_time },
+      meta: {
+        estimated_completion_time,
+        max_allowed: maxAllowed.toISOString(),
+        rule_applied: priority === "Urgent" ? "urgent_4h"
+          : (deliveryDate - jobCreatedAt) / 86400000 <= 2 ? "next_day_1930"
+          : "thirty_percent",
+      },
     });
 
     res.json({
       message: "Estimated time set successfully",
       assignment,
+      max_allowed_iso: maxAllowed.toISOString(),
     });
   } catch (err) {
     console.error(err);
