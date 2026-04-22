@@ -39,7 +39,6 @@ export default function DashboardTable({
               <th className="border p-2">Client Name</th>
               <th className="border p-2">Items</th>
               <th className="border p-2 min-w-[170px]">Delivery Date</th>
-              <th className="border p-2">Instructions</th>
               <th className="border p-2">Client Type</th>
               <th className="border p-2">Order Type</th>
               <th className="border p-2">Address</th>
@@ -115,7 +114,6 @@ export default function DashboardTable({
                     </span>
                     {/* {new Date(job.delivery_date).toLocaleString()} */}
                   </td>
-                  <td className="border p-2">{job.instructions}</td>
                   <td className="border p-2">{job.client_type}</td>
                   <td className="border p-2 ">{job.order_type}</td>
                   <td className="border p-2 ">{job.address}</td>
