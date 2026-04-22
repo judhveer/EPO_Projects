@@ -39,12 +39,10 @@ export default function ApprovalForm() {
       try {
         // Adjust endpoint if you prefer /api/users?department=Sales&role=Telecaller
         const res = await api.get('/api/auth/users/telecallers');
-        console.log("res: ", res);
         if (!mounted) return;
         // assume res.data is an array of { id, name, email? }
         setTelecallers(res.data || []);
       } catch (e) {
-        console.log("res: ");
         if (!mounted) return;
         setTelecallersError(e.response?.data?.error || e.message || 'Failed to load telecallers');
         setTelecallers([]);
