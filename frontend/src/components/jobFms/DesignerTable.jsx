@@ -4,6 +4,72 @@ import { DateTime } from "luxon";
 import JobItemsSidebar from "./commonDashboard/JobItemsSidebar.jsx";
 import Input from "../salesPipeline/Input.jsx";
 
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PURE HELPER — mirrors server logic exactly (no API call needed)
+// Returns a JS Date representing the latest allowed estimated completion time.
+// ─────────────────────────────────────────────────────────────────────────────
+function calcMaxDesignDeadline(deliveryDateISO, createdAtISO, priority) {
+  const deliveryDate = new Date(deliveryDateISO);
+  const jobCreatedAt = new Date(createdAtISO);
+  const now          = new Date();
+  const totalMs      = deliveryDate.getTime() - jobCreatedAt.getTime();
+  const totalDays    = totalMs / (1000 * 60 * 60 * 24);
+
+  let deadline;
+
+  if (priority === "Urgent" || totalDays < 1) {
+    // 4 hours from now
+    deadline = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+  }
+  else if (totalDays <= 2) {
+    // Day before delivery at 19:30 IST (= 14:00 UTC)
+    deadline = new Date(deliveryDate);
+    deadline.setDate(deadline.getDate() - 1);
+    deadline.setUTCHours(14, 0, 0, 0); // 19:30 IST
+  }
+  else{
+    // 30% of total duration from job creation
+    deadline = new Date(jobCreatedAt.getTime() + totalMs * 0.30);
+  }
+  // ── HARD CAP: estimated completion can never exceed delivery date ──
+  return deadline > deliveryDate ? deliveryDate : deadline;
+}
+
+// Converts a JS Date → "YYYY-MM-DDTHH:mm" for datetime-local input max/min
+function toDateTimeLocalStr(date) {
+  if (!date) return "";
+  // Use local time (matches what the browser datetime-local input uses)
+  const pad   = (n) => String(n).padStart(2, "0");
+  const year  = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day   = pad(date.getDate());
+  const hour  = pad(date.getHours());
+  const min   = pad(date.getMinutes());
+  return `${year}-${month}-${day}T${hour}:${min}`;
+}
+
+
+// Human-readable deadline label shown under the input
+function deadlineLabel(deliveryDateISO, createdAtISO, priority) {
+  const deliveryDate = new Date(deliveryDateISO);
+  const jobCreatedAt = new Date(createdAtISO);
+  const totalDays    = (deliveryDate - jobCreatedAt) / 86400000;
+
+  if (priority === "Urgent" || totalDays < 1) {
+    return { rule: "Urgent — 4 hrs from now", color: "text-red-600" };
+  }
+  if (totalDays <= 2) {
+    return { rule: "Next day — by 7:30 PM today", color: "text-orange-600" };
+  }
+  const pct = Math.round(totalDays * 0.30);
+  return { rule: `~${pct} day${pct !== 1 ? "s" : ""} (30% of delivery window)`, color: "text-blue-600" };
+}
+
+
+
+
 export default function DesignerTable({ refresh }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -12,6 +78,7 @@ export default function DesignerTable({ refresh }) {
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [err, setErr] = useState("");
+  const [estimationErrors, setEstimationErrors] = useState({}); // { [job_no]: errorString }
 
   const [openActionDropdown, setOpenActionDropdown] = useState(null);
   const [selectedJobNo, setSelectedJobNo] = useState(null);
@@ -254,6 +321,9 @@ export default function DesignerTable({ refresh }) {
   const estimatedCompletionTimes = async (job_no, time) => {
     if (!time) return;
 
+    // Clear any previous error for this job
+    setEstimationErrors((prev) => ({ ...prev, [job_no]: null }));
+
     const payload = {
       job_no: job_no,
       estimated_completion_time: time,
@@ -279,7 +349,8 @@ export default function DesignerTable({ refresh }) {
       );
     } catch (err) {
       console.error("Failed to save estimated completion time", err);
-      alert("Failed to save estimated completion time");
+      const msg = err?.response?.data?.error || "Failed to save estimated completion time.";
+      setEstimationErrors((prev) => ({ ...prev, [job_no]: msg }));
     }
   };
 
@@ -308,7 +379,7 @@ export default function DesignerTable({ refresh }) {
             // 👇 THIS IS THE KEY LINE
             instructions: latestApproval?.client_feedback
               ? latestApproval.client_feedback
-              : job.instructions,
+              : "",
             isRework,
           };
         })
@@ -458,7 +529,7 @@ export default function DesignerTable({ refresh }) {
               <th className="border p-1 sm:p-2 min-w-[150px text-center">
                 Priority
               </th>
-              <th className="border p-1 sm:p-2">Instructions</th>
+              <th className="border p-1 sm:p-2">Client Instructions</th>
               <th className="border p-1 sm:p-2">No of Files</th>
               <th className="border p-1 sm:p-2">Job Completion Deadline</th>
               <th className="border p-1 sm:p-2 bg-blue-800 sticky right-[220px] sm:right-[260px] min-w-[200px] sm:min-w-[250px] z-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
@@ -567,62 +638,99 @@ export default function DesignerTable({ refresh }) {
 
                   {/* Estimated Time Input */}
                   <td className="border p-1 sm:p-2 text-center sticky right-[260px] bg-white z-40 min-w-[250px] group-hover:bg-blue-500 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
-                    <Input
-                      type="datetime-local"
-                      value={toDateTimeLocal(
-                        job.assignment.estimated_completion_time ??
-                          job.tempEstimatedCompletionTime,
-                      )}
-                      onChange={(e) => {
-                        if (job.assignment.estimated_completion_time) return;
+                    {(() => {
+                      const maxDate   = calcMaxDesignDeadline(job.delivery_date, job.createdAt, job.task_priority);
+                      const maxStr    = toDateTimeLocalStr(maxDate);
+                      const minStr    = toDateTimeLocalStr(new Date());  // never allow past
+                      const isLocked  = !!job.assignment.estimated_completion_time;
+                      const label     = deadlineLabel(job.delivery_date, job.createdAt, job.task_priority);
+                      const errMsg   = estimationErrors[job.job_no];
+                      const validate = (val) => {
+                        if (!val) return null;
+                        if (val < minStr) return "Cannot be in the past.";
+                        if (val > maxStr) return `Must be on or before ${maxStr.replace("T", " ")}`;
+                        return null;
+                      };
 
-                        const val = e.target.value;
+                      return (
+                        <>
+                          <Input
+                            type="datetime-local"
+                            min={isLocked ? undefined : minStr}
+                            max={isLocked ? undefined : maxStr}
+                            value={toDateTimeLocal(
+                              job.assignment.estimated_completion_time ??
+                              job.tempEstimatedCompletionTime,
+                            )}
+                            onChange={(e) => {
+                              if (isLocked) return;
+                              const val = e.target.value;
+                              const error = validate(val);
+                              // Clear server error on any change
+                              setEstimationErrors((prev) => ({ ...prev, [job.job_no]: null }));
+                              e.target.setCustomValidity("");
+                              setJobs((prev) =>
+                                prev.map((j) =>
+                                  j.job_no === job.job_no
+                                    ? { ...j, tempEstimatedCompletionTime: val }
+                                    : j,
+                                ),
+                              );
+                            }}
+                            onBlur={(e) => {
+                              if (isLocked) return;
+                              const val = e.target.value;
+                              if (!val || val.length !== 16) return;
+                              const error = validate(val);
+                              if (error) {
+                                setEstimationErrors((prev) => ({ ...prev, [job.job_no]: error }));
+                                return;
+                              }
+                              clearTimeout(blurTimeoutRef.current);
+                              blurTimeoutRef.current = setTimeout(() => {
+                                estimatedCompletionTimes(job.job_no, val);
+                              }, 300);
+                            }}
+                            onFocus={() => {
+                              clearTimeout(blurTimeoutRef.current);
+                              setEstimationErrors((prev) => ({ ...prev, [job.job_no]: null }));
+                            }}
+                            readOnly={isLocked}
+                            className={`border rounded-md p-2 text-xs w-full text-black ${
+                              isLocked
+                                ? "cursor-not-allowed bg-slate-100"
+                                : errMsg
+                                ? "border-red-400 bg-red-50"
+                                : ""
+                            }`}
+                          />
 
-                        setJobs((prev) =>
-                          prev.map((j) =>
-                            j.job_no === job.job_no
-                              ? {
-                                  ...j,
-                                  tempEstimatedCompletionTime: val, // 👈 TEMP ONLY
-                                }
-                              : j,
-                          ),
-                        );
-                      }}
-                      onBlur={(e) => {
-                        if (job.assignment.estimated_completion_time) return;
+                          {/* Inline error — shown in red below input */}
+                          {errMsg && !isLocked && (
+                            <div className="text-[10px] mt-1 text-red-600 font-medium group-hover:text-red-300 leading-tight">
+                              ⚠ {errMsg}
+                            </div>
+                          )}
 
-                        const val = e.target.value;
+                          {/* Rule label — shown when not locked and no error */}
+                          {!isLocked && !errMsg && (
+                            <div className={`text-[10px] mt-1 font-medium ${label.color} group-hover:text-white`}>
+                              Max: {label.rule}
+                            </div>
+                          )}
 
-                        // must be full datetime: YYYY-MM-DDTHH:mm
-                        if (!val || val.length !== 16) return;
-
-                        clearTimeout(blurTimeoutRef.current);
-
-                        blurTimeoutRef.current = setTimeout(() => {
-                          console.log(
-                            "backend api called for blue even estimatedCompletionTimes",
-                          );
-                          estimatedCompletionTimes(job.job_no, val);
-                        }, 500);
-                      }}
-                      onFocus={() => {
-                        clearTimeout(blurTimeoutRef.current);
-                      }}
-                      readOnly={!!job.assignment.estimated_completion_time}
-                      className={`border rounded-md p-2 text-xs w-full text-black ${
-                        job.assignment.estimated_completion_time
-                          ? "cursor-not-allowed"
-                          : ""
-                      }`}
-                    />
-
-                    {/* {job.assignment.estimated_completion_time && (
-                      <div className="text-[10px] text-gray-500 mt-1">
-                        Estimation locked
-                      </div>
-                    )} */}
+                          {/* When locked — show what the deadline was */}
+                          {isLocked && (
+                            <div className="text-[10px] mt-1 text-slate-400 group-hover:text-white">
+                              Deadline: {maxStr.replace("T", " ")}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </td>
+
+
 
                   {/* Timer Column */}
                   <td className="border p-1 sm:p-2 text-center font-mono text-blue-600 text-lg sticky right-[100px] bg-white z-40 min-w-[160px] group-hover:bg-blue-500 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
