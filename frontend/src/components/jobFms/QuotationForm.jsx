@@ -1267,7 +1267,6 @@ export default function QuotationForm() {
         billing:  { ...billing, gstPct },
         firmName: selectedFirm,
       };
-      console.log("Generating PDF with payload:", payload);
       const response = await api.post("/api/fms/quotation/generate-pdf", payload, {
         responseType: "blob",          // ← critical: receive binary
       });
