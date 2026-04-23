@@ -31,7 +31,7 @@ function calcMaxDesignDeadline(deliveryDateISO, createdAtISO, priority) {
   }
   else{
     // 30% of total duration from job creation
-    deadline = new Date(jobCreatedAt.getTime() + totalMs * 0.30);
+    deadline = new Date(jobCreatedAt.getTime() + totalMs * 0.50);
   }
   // ── HARD CAP: estimated completion can never exceed delivery date ──
   return deadline > deliveryDate ? deliveryDate : deadline;
@@ -63,8 +63,8 @@ function deadlineLabel(deliveryDateISO, createdAtISO, priority) {
   if (totalDays <= 2) {
     return { rule: "Next day — by 7:30 PM today", color: "text-orange-600" };
   }
-  const pct = Math.round(totalDays * 0.30);
-  return { rule: `~${pct} day${pct !== 1 ? "s" : ""} (30% of delivery window)`, color: "text-blue-600" };
+  const pct = Math.round(totalDays * 0.50);
+  return { rule: `~${pct} day${pct !== 1 ? "s" : ""} (50% of delivery window)`, color: "text-blue-600" };
 }
 
 

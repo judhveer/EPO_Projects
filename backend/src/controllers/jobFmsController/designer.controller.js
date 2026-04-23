@@ -119,8 +119,8 @@ export function calculateMaxDesignDeadline(deliveryDate, jobCreatedAt, priority)
     deadline = d;
   }
   else{
-    // ── Rule 3: Any longer delivery → 30% of total duration ────────────────
-    deadline = new Date(jobCreatedAt.getTime() + totalMs * 0.30);
+    // ── Rule 3: Any longer delivery → 50% of total duration ────────────────
+    deadline = new Date(jobCreatedAt.getTime() + totalMs * 0.50);
   }
 
   // ── HARD CAP ──────────────────────────────────────────────────────
