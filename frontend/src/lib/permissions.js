@@ -64,7 +64,7 @@ export function can(user, perm) {
             return true; // everyone
 
         case 'jobfms.writer.view':
-            return dept === 'Job Writer' || dept === 'Admin';
+            return dept === 'Job Writer' || dept === 'Admin' || dept === "CRM";
 
         case 'jobfms.coordinator.view':
             return dept === 'Process Coordinator';
