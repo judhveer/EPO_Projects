@@ -7,12 +7,11 @@
 
   body {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 10px;
+    font-size: 12px;
     color: #111;
     background: #fff;
   }
 
-  /* ── One page = one job item ─────────────────────────────── */
   .job-card-page {
     width: 210mm;
     min-height: 297mm;
@@ -23,11 +22,11 @@
   }
   .job-card-page:last-child { page-break-after: avoid; }
 
-  /* ── TOP HEADER STRIP ────────────────────────────────────── */
+  /* ── TOP HEADER ── */
   .top-header {
     background: #1a3a6e;
     color: #fff;
-    padding: 6px 12px;
+    padding: 7px 14px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -35,69 +34,67 @@
     margin-bottom: 1px;
   }
   .top-header .firm-name {
-    font-size: 14px;
+    font-size: 20px;
     font-weight: 900;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
+    line-height: 1.1;
   }
   .top-header .firm-tagline {
-    font-size: 7px;
+    font-size: 9px;
     color: #93c5fd;
-    margin-top: 1px;
+    margin-top: 2px;
     letter-spacing: 1.5px;
   }
-  .top-header .job-badge {
-    text-align: right;
-  }
+  .top-header .job-badge { text-align: right; }
   .top-header .job-no {
-    font-size: 20px;
+    font-size: 28px;
     font-weight: 900;
     color: #fbbf24;
     letter-spacing: 1px;
+    line-height: 1;
   }
   .top-header .job-date {
-    font-size: 8px;
+    font-size: 10px;
     color: #bfdbfe;
-    margin-top: 1px;
+    margin-top: 2px;
   }
 
-  /* ── JOB META BAR ─────────────────────────────────────────── */
+  /* ── JOB META BAR ── */
   .meta-bar {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr 1fr;
     gap: 1px;
     background: #e2e8f0;
-    border: 1px solid #cbd5e1;
-    margin-bottom: 4px;
+    border: 1.5px solid #cbd5e1;
+    margin-bottom: 5px;
   }
-  .meta-cell {
-    background: #f8fafc;
-    padding: 4px 6px;
-  }
+  .meta-cell { background: #f8fafc; padding: 5px 7px; }
   .meta-cell.wide { grid-column: span 2; }
   .meta-cell.full { grid-column: span 4; }
   .meta-label {
-    font-size: 7px;
+    font-size: 8.5px;
     color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 2px;
+    font-weight: 600;
   }
   .meta-value {
-    font-size: 9.5px;
+    font-size: 11.5px;
     font-weight: 700;
     color: #0f172a;
   }
   .meta-value.highlight { color: #1d4ed8; }
-  .meta-value.red { color: #dc2626; }
+  .meta-value.red       { color: #dc2626; }
 
-  /* ── ITEM BADGE ───────────────────────────────────────────── */
+  /* ── ITEM BADGE ── */
   .item-badge {
     background: #1a3a6e;
     color: #fff;
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 700;
-    padding: 3px 10px;
+    padding: 4px 11px;
     letter-spacing: 0.5px;
     margin-bottom: 3px;
     display: flex;
@@ -105,12 +102,12 @@
     align-items: center;
   }
   .item-badge .item-name {
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 900;
     color: #fbbf24;
   }
 
-  /* ── TWO-COLUMN BODY ─────────────────────────────────────── */
+  /* ── CARD BODY ── */
   .card-body {
     display: grid;
     grid-template-columns: 1fr 1px 1fr;
@@ -118,102 +115,99 @@
     border: 1.5px solid #1a3a6e;
     flex: 1;
   }
-  .divider-line {
-    background: #1a3a6e;
-  }
+  .divider-line { background: #1a3a6e; }
+  .section { padding: 6px 10px; }
 
-  /* ── SECTION HEADERS ─────────────────────────────────────── */
-  .section {
-    padding: 5px 8px;
-  }
+  /* ── SECTION TITLE ── */
   .section-title {
-    font-size: 10px;
+    font-size: 13px;
     font-weight: 900;
     text-align: center;
     color: #1a3a6e;
     border-bottom: 1.5px solid #1a3a6e;
     padding-bottom: 3px;
-    margin-bottom: 6px;
+    margin-bottom: 7px;
     text-transform: uppercase;
     letter-spacing: 1px;
   }
 
-  /* ── FIELD ROWS ──────────────────────────────────────────── */
+  /* ── FIELD ROWS ── */
   .field-row {
     display: flex;
     align-items: baseline;
-    margin-bottom: 5px;
+    margin-bottom: 6px;
     border-bottom: 1px dotted #94a3b8;
-    padding-bottom: 2px;
-    min-height: 16px;
+    padding-bottom: 3px;
+    min-height: 18px;
   }
   .field-row:last-child { border-bottom: none; }
   .field-label {
-    font-size: 8.5px;
+    font-size: 11px;
     color: #374151;
-    font-weight: 600;
+    font-weight: 700;
     white-space: nowrap;
-    min-width: 0;
     flex-shrink: 0;
   }
   .field-colon {
-    margin: 0 3px;
+    margin: 0 4px;
     color: #374151;
-    font-size: 8.5px;
+    font-size: 11px;
     flex-shrink: 0;
   }
   .field-value {
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 700;
     color: #111827;
     flex: 1;
     word-break: break-word;
+    line-height: 1.3;
   }
-  .field-value.empty {
-    border-bottom: 1px solid #d1d5db;
-    min-width: 60px;
-    color: transparent;
-  }
-  .field-value.blue { color: #1d4ed8; }
-  .field-value.red  { color: #dc2626; }
+  .field-value.blue  { color: #1d4ed8; }
+  .field-value.red   { color: #dc2626; }
   .field-value.green { color: #15803d; }
 
-  /* ── INLINE GRID (for paper details) ─────────────────────── */
+  /* ── INLINE GRID (paper details) ── */
   .field-grid {
     display: grid;
     grid-template-columns: auto 1fr auto 1fr;
-    gap: 2px 4px;
+    gap: 3px 5px;
     align-items: center;
-    margin-bottom: 5px;
+    margin-bottom: 6px;
   }
-  .fg-label { font-size: 8px; color: #4b5563; font-weight: 600; }
+  .fg-label {
+    font-size: 10px;
+    color: #4b5563;
+    font-weight: 700;
+  }
   .fg-value {
-    font-size: 9px; font-weight: 700; color: #111;
+    font-size: 11px;
+    font-weight: 700;
+    color: #111;
     border-bottom: 1px solid #d1d5db;
     padding-bottom: 1px;
   }
 
-  /* ── PRESS TYPE CHECKBOXES ───────────────────────────────── */
+  /* ── PRESS CHECKBOXES ── */
   .press-row {
     display: flex;
     flex-wrap: wrap;
     gap: 4px 10px;
-    margin-bottom: 5px;
+    margin-bottom: 6px;
   }
   .press-item {
     display: flex;
     align-items: center;
     gap: 3px;
-    font-size: 8.5px;
+    font-size: 10px;
     font-weight: 600;
   }
   .checkbox {
-    width: 10px; height: 10px;
+    width: 11px; height: 11px;
     border: 1.5px solid #374151;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 900;
     flex-shrink: 0;
   }
@@ -223,30 +217,37 @@
     color: #fff;
   }
 
-  /* ── INSIDE PAPERS TABLE ─────────────────────────────────── */
+  /* ── INSIDE PAPERS TABLE ── */
   .papers-table {
     width: 100%;
     border-collapse: collapse;
-    margin-bottom: 5px;
-    font-size: 8px;
+    margin-bottom: 6px;
+    font-size: 10px;
   }
   .papers-table th {
     background: #e2e8f0;
     color: #1a3a6e;
-    padding: 2px 4px;
-    font-weight: 700;
+    padding: 3px 4px;
+    font-weight: 800;
     border: 1px solid #cbd5e1;
     text-align: center;
+    font-size: 10px;
   }
   .papers-table td {
-    padding: 2px 4px;
+    padding: 3px 4px;
     border: 1px solid #e2e8f0;
     text-align: center;
     font-weight: 600;
+    font-size: 10px;
   }
   .papers-table tr:nth-child(even) td { background: #f8fafc; }
+  .binding-sub {
+    font-size: 8.5px;
+    color: #6b7280;
+    margin-top: 1px;
+  }
 
-  /* ── BINDING TAGS ────────────────────────────────────────── */
+  /* ── BINDING TAGS ── */
   .binding-tags {
     display: flex;
     flex-wrap: wrap;
@@ -257,18 +258,18 @@
     background: #dbeafe;
     border: 1px solid #93c5fd;
     color: #1e40af;
-    font-size: 7.5px;
+    font-size: 10px;
     font-weight: 700;
-    padding: 1px 5px;
+    padding: 2px 6px;
     border-radius: 3px;
   }
 
-  /* ── PRIORITY BADGE ──────────────────────────────────────── */
+  /* ── PRIORITY BADGE ── */
   .priority-badge {
     display: inline-block;
-    padding: 2px 8px;
+    padding: 2px 9px;
     border-radius: 3px;
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -278,97 +279,74 @@
   .priority-Medium { background: #fef9c3; color: #ca8a04; border: 1px solid #fde047; }
   .priority-Low    { background: #dcfce7; color: #16a34a; border: 1px solid #86efac; }
 
-  /* ── OPERATOR FIELDS (right column blank lines) ───────────── */
-  .operator-field {
-    margin-bottom: 7px;
-  }
+  /* ── OPERATOR FIELDS ── */
+  .operator-field { margin-bottom: 8px; }
   .operator-label {
-    font-size: 8px;
+    font-size: 10px;
     color: #374151;
-    font-weight: 600;
-    margin-bottom: 2px;
+    font-weight: 700;
+    margin-bottom: 3px;
   }
   .operator-line {
     border-bottom: 1px solid #374151;
-    height: 14px;
+    height: 15px;
     width: 100%;
   }
 
-  /* ── APPROVAL CHECKBOXES ─────────────────────────────────── */
+  /* ── APPROVAL ROW ── */
   .approval-row {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-bottom: 5px;
-    font-size: 8.5px;
-    font-weight: 600;
+    margin-bottom: 6px;
+    font-size: 10px;
+    font-weight: 700;
   }
 
-  /* ── SIGNATURE AREA ──────────────────────────────────────── */
-  .signature-area {
-    margin-top: 10px;
-    text-align: right;
-  }
+  /* ── SIGNATURE ── */
+  .signature-area { margin-top: 12px; text-align: right; }
   .signature-line {
-    border-top: 1px solid #374151;
-    width: 110px;
+    border-top: 1.5px solid #374151;
+    width: 120px;
     margin-left: auto;
-    margin-top: 24px;
+    margin-top: 28px;
   }
   .signature-label {
-    font-size: 7.5px;
+    font-size: 10px;
     color: #6b7280;
-    margin-top: 2px;
+    margin-top: 3px;
     text-align: center;
-    width: 110px;
+    width: 120px;
     margin-left: auto;
   }
 
-  /* ── FOOTER ──────────────────────────────────────────────── */
+  /* ── FOOTER ── */
   .card-footer {
     background: #f1f5f9;
     border: 1px solid #e2e8f0;
     border-top: none;
-    padding: 4px 10px;
+    padding: 5px 10px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 7.5px;
+    font-size: 10px;
     color: #64748b;
   }
-  .card-footer strong { color: #1a3a6e; }
+  .card-footer strong { color: #1a3a6e; font-size: 10.5px; }
 
-  /* ── SPECIAL INSTRUCTION BOX ──────────────────────────────── */
+  /* ── SPECIAL INSTRUCTION BOX ── */
   .special-box {
     background: #fffbeb;
     border: 1px solid #fde68a;
     border-radius: 3px;
-    padding: 4px 6px;
+    padding: 5px 7px;
     margin-top: 3px;
-    font-size: 8.5px;
+    font-size: 10px;
     font-weight: 700;
     color: #92400e;
-    min-height: 20px;
+    min-height: 22px;
+    line-height: 1.4;
   }
-
-  /* ── COST SUMMARY BOX ────────────────────────────────────── */
-  .cost-box {
-    background: #f0fdf4;
-    border: 1px solid #86efac;
-    border-radius: 3px;
-    padding: 4px 6px;
-    margin-top: 4px;
-  }
-  .cost-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 8px;
-    padding: 1px 0;
-    border-bottom: 1px dashed #bbf7d0;
-  }
-  .cost-row:last-child { border: none; font-weight: 800; font-size: 9px; color: #15803d; }
-  .cost-label { color: #374151; }
-  .cost-value { font-weight: 700; }
 </style>
 </head>
 <body>
