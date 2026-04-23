@@ -145,19 +145,6 @@ function buildItemPage(job, item, idx, total) {
     ? `<div class="special-box">⚡ ${esc(item.item_instructions)}</div>`
     : `<div class="special-box" style="color:#9ca3af;font-size:8px">—</div>`;
 
-  // ── Costing snapshot ──────────────────────────────────────
-  const cs = item.costing || {};
-  const unitRate = item.unit_rate || cs.unit_rate;
-  const itemTotal = item.item_total || cs.item_total;
-  const showCost = unitRate && itemTotal;
-
-  const costHtml = showCost ? `
-    <div class="cost-box">
-      <div class="cost-row"><span class="cost-label">Unit Rate</span><span class="cost-value">${inr(unitRate)}</span></div>
-      <div class="cost-row"><span class="cost-label">Qty × Rate</span><span class="cost-value">${esc(item.quantity || "?")} × ${inr(unitRate)}</span></div>
-      <div class="cost-row"><span class="cost-label">Item Total</span><span class="cost-value">${inr(itemTotal)}</span></div>
-    </div>` : "";
-
   // ── Priority badge ────────────────────────────────────────
   const prio = job.task_priority || "Medium";
   const prioBadge = `<span class="priority-badge priority-${prio}">${esc(prio)}</span>`;
@@ -309,8 +296,6 @@ function buildItemPage(job, item, idx, total) {
         ${instrHtml}
       </div>
 
-      <!-- Cost -->
-      ${costHtml}
     </div>
 
     <!-- DIVIDER -->
@@ -445,6 +430,18 @@ export const downloadJobCard = async (req, res) => {
       return res.status(400).json({ message: "Job has no items to print" });
     }
 
+
+    // ── Add this helper (same as getJobItemsByJobNo) ──────────────────────────────
+    const normalizeFields = (value) => {
+      if (value === null || value === undefined) return [];
+      if (Array.isArray(value)) return value;
+      if (typeof value === "object") return value;   // already parsed
+      if (typeof value === "string") {
+        try { return JSON.parse(value); } catch { return []; }
+      }
+      return [];
+    };
+
     // ── Rebuild item fields from associations ────────────────────────────────
     // Mirror what the frontend mapJobToForm does.
     const normalizedItems = items.map((item) => ({
@@ -453,15 +450,19 @@ export const downloadJobCard = async (req, res) => {
       paper_gsm:        item.selectedPaper?.gsm               || item.paper_gsm || "",
       cover_paper_type: item.selectedCoverPaper?.paper_name   || item.cover_paper_type || "",
       cover_paper_gsm:  item.selectedCoverPaper?.gsm          || item.cover_paper_gsm || "",
-      binding_types:    Array.isArray(item.binding_types) ? item.binding_types : [],
-      inside_papers:    Array.isArray(item.inside_papers) ? item.inside_papers : [],
-      cover_to_print:   item.cover_to_print !== false,
       wide_material_name: item.selectedWideMaterial?.material_name || "",
       wide_material_gsm: item.selectedWideMaterial?.gsm || "",
       wide_material_thickness: item.selectedWideMaterial?.thickness || "",
-      binding_targets: item.binding_targets && typeof item.binding_targets === "object"
-        ? item.binding_targets
-        : { numbering_paper_ids: [], perforation_paper_ids: [] },
+      cover_to_print:   item.cover_to_print !== false,
+      binding_types:    normalizeFields(item.binding_types),
+      inside_papers:    normalizeFields(item.inside_papers),
+      binding_targets: (() => {
+        const parsed = normalizeFields(item.binding_targets);
+        // If it came back as [] (empty/failed parse), return the default object
+        return Array.isArray(parsed) && parsed.length === 0
+          ? { numbering_paper_ids: [], perforation_paper_ids: [] }
+          : parsed;
+      })(),
     }));
 
     // ── Load template ────────────────────────────────────────────────────────
