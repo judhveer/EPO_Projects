@@ -1284,7 +1284,7 @@ const JobItem = React.memo(function JobItem({
                 Sheet: <b>{item.best_cover_sheet_name}</b> ({item.best_cover_dimensions})
                 {" "}· UPS: <b>{cs.ms_cover_ups}</b>
                 {" "}· Sheets: <b>{cs.ms_cover_sheets}</b> → with wastage: <b>{cs.ms_cover_sheets_with_wastage}</b>
-                {" "}· Rate: <b>{rs(cs.ms_cover_sheet_rate)}</b>
+                {" "}· Rate: <b>{rs(cs.ms_cover_sheet_rate)}/sheet </b>
                 {" "}· Sheet cost: <b>{rs(cs.ms_cover_sheet_cost)}</b>
               </p>
 
