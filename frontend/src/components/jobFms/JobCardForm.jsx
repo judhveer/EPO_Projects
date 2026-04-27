@@ -1168,9 +1168,12 @@ export default function JobCardForm({
             best_inside_ups: data.inside.ups,
             best_inside_sheet_name: data.inside.sheet_name,
             // Store cover best-sheet details (may be null for Single Sheet)
+            best_cover_sheet_name: data.cover.sheet_name,
             best_cover_sheet: data.cover.sheet_selected,
             best_cover_dimensions: data.cover.sheet_dimensions,
             best_cover_ups: data.cover.ups,
+            cover_spine_width_mm:         data.cover.spine_width_mm        ?? null,
+            cover_flat_width_inches:      data.cover.cover_flat_width_inches ?? null,
             // wide format fields
             selected_material: data.wide?.selected_material,
             calculation_type: data.wide?.calculation_type,
