@@ -1276,17 +1276,50 @@ const JobItem = React.memo(function JobItem({
 
           {/* MULTIPLE SHEET — cover */}
           {category === "Multiple Sheet" && cs?.ms_cover_sheets_with_wastage != null && (
-            <div className="text-xs bg-blue-50 border border-blue-200 rounded px-3 py-1.5">
-              <span className="font-semibold text-blue-800">📘 Cover: </span>
-              <span className="text-blue-700">
-                <b>{item.best_cover_sheet}</b> ({item.best_cover_dimensions})
+            <div className="text-xs bg-blue-50 border border-blue-200 rounded px-3 py-2 space-y-1">
+              <p className="font-semibold text-blue-800">📘 Cover Breakdown</p>
+
+              {/* Sheet info */}
+              <p className="text-blue-700">
+                Sheet: <b>{item.best_cover_sheet_name}</b> ({item.best_cover_dimensions})
                 {" "}· UPS: <b>{cs.ms_cover_ups}</b>
-                {" "}· Sheets: <b>{cs.ms_cover_sheets}</b> → <b>{cs.ms_cover_sheets_with_wastage}</b>
+                {" "}· Sheets: <b>{cs.ms_cover_sheets}</b> → with wastage: <b>{cs.ms_cover_sheets_with_wastage}</b>
+                {" "}· Rate: <b>{rs(cs.ms_cover_sheet_rate)}</b>
                 {" "}· Sheet cost: <b>{rs(cs.ms_cover_sheet_cost)}</b>
-                {" "}· Print: <b>{rs(cs.ms_cover_printing_cost)}</b>
-              </span>
+              </p>
+
+              {/* Spine + flat size — only for 4-page wrap covers */}
+              {item.cover_spine_width_mm != null && item.cover_spine_width_mm > 0 && (
+                <p className="text-blue-600">
+                  Spine: <b>{Number(item.cover_spine_width_mm).toFixed(1)} mm</b>
+                  {item.cover_flat_width_inches != null && (
+                    <>
+                      {" "}· Flat cover width: <b>{Number(item.cover_flat_width_inches).toFixed(3)}"</b>
+                      <span className="text-blue-400 ml-1">
+                        (back + spine + front)
+                      </span>
+                    </>
+                  )}
+                </p>
+              )}
+
+              {/* Printing cost — only when cover is sent to press */}
+              {cs.ms_cover_to_print !== false && cs.ms_cover_printing_cost > 0 && (
+                <p className="text-blue-700">
+                  Print cost: <b>{rs(cs.ms_cover_printing_cost)}</b>
+                  {item.cover_press_type && <> · Press: <b>{item.cover_press_type}</b></>}
+                  {item.cover_color_scheme && <> · Color: <b>{item.cover_color_scheme}</b></>}
+                </p>
+              )}
+
+              {cs.ms_cover_to_print === false && (
+                <p className="text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                  🚫 Cover not sent to press — paper cost only
+                </p>
+              )}
+
               {cs.binding_cost > 0 && (
-                <p className="text-blue-700 mt-0.5">Binding: <b>{rs(cs.binding_cost)}</b></p>
+                <p className="text-blue-700">Binding: <b>{rs(cs.binding_cost)}</b></p>
               )}
             </div>
           )}
