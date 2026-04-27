@@ -1720,6 +1720,7 @@ export default function JobCardForm({
       } catch (error) {
         console.error(error);
         setErr(error.response?.data?.message || "Failed to save Job Card");
+        alert(error.response?.data?.message || "Failed to save Job Card");
       } finally {
         setLoading(false);
       }
@@ -2388,11 +2389,12 @@ export default function JobCardForm({
             </Field>
 
             {/* Mode of Payment */}
-            <Field label="Mode of Payment">
+            <Field label="Mode of Payment" required>
               <Select
                 name="mode_of_payment"
                 value={form.mode_of_payment}
                 onChange={onChange}
+                required
               >
                 <option value="">Select</option>
                 <option value="upi">UPI</option>
@@ -2507,11 +2509,12 @@ export default function JobCardForm({
               />
             </Field>
 
-            <Field label="Payment Status">
+            <Field label="Payment Status" required>
               <Select
                 name="payment_status"
                 value={form.payment_status}
                 onChange={onChange}
+                required
               >
                 <option value="">Select</option>
                 <option>Paid</option>
