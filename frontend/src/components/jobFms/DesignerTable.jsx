@@ -10,7 +10,7 @@ import Input from "../salesPipeline/Input.jsx";
 // PURE HELPER — mirrors server logic exactly (no API call needed)
 // Returns a JS Date representing the latest allowed estimated completion time.
 // ─────────────────────────────────────────────────────────────────────────────
-function calcMaxDesignDeadline(deliveryDateISO, createdAtISO, priority) {
+function calcMaxDesignDeadline(deliveryDateISO, createdAtISO, priority, instance = 1, assignedAtISO = null) {
   const deliveryDate = new Date(deliveryDateISO);
   const jobCreatedAt = new Date(createdAtISO);
   const now          = new Date();
@@ -19,10 +19,20 @@ function calcMaxDesignDeadline(deliveryDateISO, createdAtISO, priority) {
 
   let deadline;
 
-  if (priority === "Urgent" || totalDays < 1) {
+
+  // ── Redesign (instance > 1): always get 4 hours from assignment time ──────
+  // The original window is likely already gone. Give fresh 4 hours from
+  // when this redesign assignment was created (or from now if assignedAt missing).
+  if (instance > 1) {
+    const base = assignedAtISO ? new Date(assignedAtISO) : now;
+    deadline   = new Date(base.getTime() + 4 * 60 * 60 * 1000);
+  }
+  // ── Rule 1: Urgent or same-day ─
+  else if (priority === "Urgent" || totalDays < 1) {
     // 4 hours from now
     deadline = new Date(now.getTime() + 4 * 60 * 60 * 1000);
   }
+  // ── Rule 2: Next-day ─────
   else if (totalDays <= 2) {
     // Day before delivery at 19:30 IST (= 14:00 UTC)
     deadline = new Date(deliveryDate);
@@ -30,7 +40,7 @@ function calcMaxDesignDeadline(deliveryDateISO, createdAtISO, priority) {
     deadline.setUTCHours(14, 0, 0, 0); // 19:30 IST
   }
   else{
-    // 30% of total duration from job creation
+    // ── Rule 3: 50% of window ───
     deadline = new Date(jobCreatedAt.getTime() + totalMs * 0.50);
   }
   // ── HARD CAP: estimated completion can never exceed delivery date ──
@@ -52,7 +62,12 @@ function toDateTimeLocalStr(date) {
 
 
 // Human-readable deadline label shown under the input
-function deadlineLabel(deliveryDateISO, createdAtISO, priority) {
+function deadlineLabel(deliveryDateISO, createdAtISO, priority, instance = 1, assignedAtISO = null) {
+
+  if (instance > 1) {
+    return { rule: "Redesign — 4 hrs from assignment", color: "text-purple-600" };
+  }
+
   const deliveryDate = new Date(deliveryDateISO);
   const jobCreatedAt = new Date(createdAtISO);
   const totalDays    = (deliveryDate - jobCreatedAt) / 86400000;
@@ -636,11 +651,21 @@ export default function DesignerTable({ refresh }) {
                   {/* Estimated Time Input */}
                   <td className="border p-1 sm:p-2 text-center sticky right-[260px] bg-white z-40 min-w-[250px] group-hover:bg-blue-500 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                     {(() => {
-                      const maxDate   = calcMaxDesignDeadline(job.delivery_date, job.createdAt, job.task_priority);
+                      // ── Pull instance + assigned_at from the assignment ──────────
+                      const instance   = job.assignment.instance    ?? 1;
+                      const assignedAt = job.assignment.assigned_at ?? job.assignment.assignedAt ?? null;
+
+                      const maxDate = calcMaxDesignDeadline(
+                        job.delivery_date, job.createdAt, job.task_priority,
+                        instance, assignedAt
+                      );
                       const maxStr    = toDateTimeLocalStr(maxDate);
                       const minStr    = toDateTimeLocalStr(new Date());  // never allow past
                       const isLocked  = !!job.assignment.estimated_completion_time;
-                      const label     = deadlineLabel(job.delivery_date, job.createdAt, job.task_priority);
+                      const label    = deadlineLabel(
+                        job.delivery_date, job.createdAt, job.task_priority,
+                        instance, assignedAt
+                      );
                       const errMsg   = estimationErrors[job.job_no];
                       const validate = (val) => {
                         if (!val) return null;
