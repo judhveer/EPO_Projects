@@ -129,7 +129,6 @@ export const createJobCard = async (req, res) => {
       !execution_location ||
       !delivery_location ||
       !delivery_date ||
-      !proof_date ||
       !task_priority ||
       !total_amount ||
       !mode_of_payment ||
@@ -139,6 +138,12 @@ export const createJobCard = async (req, res) => {
     ) {
       return res.status(400).json({
         message: "All fields are required",
+      });
+    }
+
+    if(!is_direct_to_production && (proof_date === null || proof_date === undefined || proof_date === "")) {
+      return res.status(400).json({
+        message: "Proof date is required for this job.",
       });
     }
 
@@ -202,7 +207,7 @@ export const createJobCard = async (req, res) => {
         delivery_date,
         delivery_location,
         delivery_address,
-        proof_date,
+        proof_date: proof_date ?? null,
         task_priority,
         instructions,
         total_amount: Number(total_amount),
@@ -1214,6 +1219,33 @@ export const updateJobCard = async (req, res) => {
     wasDirectToProduction && updates.is_direct_to_production === false;
   const nowMovingToProduction = !wasDirectToProduction && nowDirectToProduction;
 
+  // Rule 1: Direct-to-production can only be SET when the job is waiting for coordinator review. Once a designer has been assigned or the job has moved further through the pipeline, the artwork is no longer "pre-review" — the coordinator/designer must finish their stage.
+  // Rule 2: Unchecking direct-to-production is only meaningful while the job is still in the "production" stage that was set by this flag. If the job reached production via the normal workflow it was never flagged as direct-to-production, so this path cannot be reached.
+  if (nowMovingToProduction) {
+    if (jobCard.status !== "coordinator_review") {
+      // Job has already moved past the coordinator review stage.
+      // Direct-to-production is no longer a valid action.
+      const stageLabel = (jobCard.status || "unknown").replace(/_/g, " ");
+      return res.status(400).json({
+        message:
+          `Cannot mark as Direct to Production: job is currently in "${stageLabel}" stage. ` +
+          `Direct to Production can only be set while the job is in Coordinator Review.`,
+      });
+    }
+  }
+
+  if (nowRevertedFromProd) {
+    // Only allow revert if the job is actually in the production stage
+    // that was set by the direct-to-production flag.
+    if (jobCard.status !== "production") {
+      return res.status(400).json({
+        message:
+          `Cannot uncheck Direct to Production: job is in "${(jobCard.status || "").replace(/_/g, " ")}" stage, not in Production. ` +
+          `Only jobs currently in Production can be reverted to Coordinator Review.`,
+      });
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // TRANSACTION — writes only
   // ─────────────────────────────────────────────────────────────────────────
@@ -1226,6 +1258,7 @@ export const updateJobCard = async (req, res) => {
   try {
     // ── Stage transitions ──────────────────────────────────────────────────
     if (nowMovingToProduction) {
+      // Validated above: job.status === "coordinator_review"
       updates.status = "production";
       updates.current_stage = "production";
       await advanceStage({
@@ -1238,7 +1271,8 @@ export const updateJobCard = async (req, res) => {
     }
 
     if (nowRevertedFromProd) {
-      // Revert: production → coordinator_review
+      // Validated above: job.status === "production"
+      // Revert the flag and send back to coordinator review.
       updates.status = "coordinator_review";
       updates.current_stage = "coordinator_review";
       await advanceStage({
