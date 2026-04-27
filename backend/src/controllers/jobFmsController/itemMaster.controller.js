@@ -245,6 +245,43 @@ const parseSize = (sizeStr, category) => {
   return { width, height, unit: "inches" }; // fallback
 };
 
+
+// ── WASTAGE MULTIPLIER ────────────────────────────────────────────────────────
+// Returns the sheets-with-wastage multiplier based on press type.
+//   HMT / AUTOPRINT → 10% wastage  (1.10)
+//   DIGITAL         →  5% wastage  (1.05)
+//   FLEX / PLOTTER  →  0% wastage  (1.00) — material is cut to size, no spoilage
+//   unknown/null    →  5% wastage  (1.05) — safe default
+const getWastageMultiplier = (pressType) => {
+  const p = (pressType || "").toUpperCase();
+  if (p.startsWith("HMT") || p === "AUTOPRINT")     return 1.10;
+  if (p.startsWith("DIGITAL"))                       return 1.05;
+  if (p === "FLEX MACHINE" || p.startsWith("PLOTTER")) return 1.00;
+  return 1.05; // safe default
+};
+
+
+// ── DIGITAL BLEED ─────────────────────────────────────────────────────────────
+// Digital presses auto-add a margin around the artwork.
+// We add 5 mm on each of the four sides to the job size so UPS calculation
+// accounts for the extra space the press will consume.
+// Returns a new jobSize object — the original is never mutated.
+// Only applied when the press is digital; all other presses return jobSize unchanged.
+const DIGITAL_BLEED_MM  = 5;                            // mm per side
+const DIGITAL_BLEED_IN  = DIGITAL_BLEED_MM / 25.4;     // ≈ 0.1969 inches per side
+
+const addDigitalBleed = (jobSize, pressType) => {
+  const p = (pressType || "").toUpperCase();
+  if (!p.startsWith("DIGITAL")) return jobSize;         // no bleed for non-digital
+  return {
+    ...jobSize,
+    width:  jobSize.width  + 2 * DIGITAL_BLEED_IN,     // both left + right sides
+    height: jobSize.height + 2 * DIGITAL_BLEED_IN,     // both top + bottom sides
+  };
+};
+
+
+
 // ---------------------- UPS CALCULATION ----------------------
 // How many job-size pieces fit on one sheet (try normal + rotated orientation)
 const calculateUps = (sheet, job, requireEven = false) => {
@@ -392,6 +429,55 @@ const isWithinDigitalMaxSheet = (sheet) => {
     longEdge  <= DIGITAL_MAX_LONG_EDGE  + DIGITAL_TOLERANCE
   );
 };
+
+
+// ── GSM TO CALIPER ─────────────────────────────────────────────────────────────
+// Industry-standard paper caliper (thickness per leaf).
+// One leaf = one printed sheet = two pages in a book block.
+// Values are offset-printing averages; vary ±5% by manufacturer.
+//
+// Used exclusively for book spine width calculation.
+// ─────────────────────────────────────────────────────────────────────────────
+const getCaliperPerLeafMm = (gsm) => {
+  const g = Number(gsm) || 80;
+  if (g <=  58) return 0.080;
+  if (g <=  64) return 0.085;
+  if (g <=  70) return 0.090;
+  if (g <=  80) return 0.100;
+  if (g <=  90) return 0.110;
+  if (g <= 100) return 0.120;
+  if (g <= 120) return 0.135;
+  if (g <= 130) return 0.145;
+  if (g <= 150) return 0.160;
+  if (g <= 170) return 0.175;
+  if (g <= 200) return 0.190;
+  if (g <= 250) return 0.215;
+  if (g <= 300) return 0.250;
+  return 0.270; // 300+ GSM
+};
+
+/**
+ * Calculates spine width in inches for a book block.
+ *
+ * Formula:
+ *   leaves    = insidePages / 2        (one sheet = two pages)
+ *   spine_mm  = leaves × caliper_mm
+ *   spine_in  = spine_mm / 25.4
+ *
+ * @param {number} insidePages    — total page count in the book body
+ * @param {number} insidePaperGsm — GSM of the primary inside paper
+ * @returns {number} spine width in inches (0 if insidePages ≤ 0)
+ */
+
+const calculateSpineWidthInches = (insidePages, insidePaperGsm) => {
+  const pages = Number(insidePages) || 0;
+  if (pages <= 0) return 0;
+  const leaves    = pages / 2;
+  const caliperMm = getCaliperPerLeafMm(insidePaperGsm);
+  const spineMm   = leaves * caliperMm;
+  return spineMm / 25.4;
+};
+
 
 
 // MAIN CONTROLLER
@@ -723,8 +809,10 @@ export const calculateItemController = async (req, res) => {
           });
         }
       }
-      
-      const { bestSheet: bestInsideSheet, bestUps: bestUpsInside } = pickBestSheet(insidePaperRows, jobSize);
+
+      // Expand job size by digital bleed before UPS calculation (bleed = 0 for non-digital)
+      const effectiveJobSizeForUps = addDigitalBleed(jobSize, pressType);
+      const { bestSheet: bestInsideSheet, bestUps: bestUpsInside } = pickBestSheet(insidePaperRows, effectiveJobSizeForUps);
 
       if (!bestInsideSheet || bestUpsInside === 0 || !Number.isFinite(bestUpsInside)) {
         return res.status(500).json({
@@ -741,7 +829,10 @@ export const calculateItemController = async (req, res) => {
         paper_type === "Maplitho Plotter Paper" ||
         paper_type === "Photo Plotter Paper";
 
-      const insideSheetsWithWastage = isPlotterPaper ? insideSheets : Math.ceil(insideSheets * 1.05);
+      // Plotter paper: no wastage (pre-cut rolls). Others: press-type driven wastage.
+      const wastageMultiplier = isPlotterPaper ? 1.00 : getWastageMultiplier(pressType);
+      const insideSheetsWithWastage = Math.ceil(insideSheets * wastageMultiplier);
+
       const insideSheetRate = Number(bestInsideSheet.rate_per_sheet || 0);
       const insideTotalSheetCost = insideSheetsWithWastage * insideSheetRate;
 
@@ -920,7 +1011,10 @@ export const calculateItemController = async (req, res) => {
         // Both Side Multiple Sheet → must have even UPS (sheets fold to form pages)
         const requireEvenUps = sides === "Both Side" || sides === "Both Sides";
         // 3. Pick best sheet
-        let { bestSheet, bestUps } = pickBestSheet(paperRows, jobSize, requireEvenUps);
+        // Expand job size by digital bleed for this paper's press type (0 bleed for non-digital)
+        const effectiveJobSizeForUps = addDigitalBleed(jobSize, paper.press_type);
+
+        let { bestSheet, bestUps } = pickBestSheet(paperRows, effectiveJobSizeForUps, requireEvenUps);
         if (!bestSheet || bestUps === 0 || !Number.isFinite(bestUps)) {
           return res.status(500).json({
             message: `No sheet large enough to fit job size ${size} was found for inside paper ${i + 1} ` +
@@ -941,7 +1035,11 @@ export const calculateItemController = async (req, res) => {
         //    inside_pages is shared — all papers use the same page count.
         const insideTotalPages = Number(inside_pages) * qty;
         const paperSheets = Math.ceil(insideTotalPages / effectiveUps);
-        const paperSheetsWithWastage = Math.ceil(paperSheets * 1.05);
+        
+        // Wastage is 0 when paper is not sent to press (no printing = no makeready spoilage).
+        // When printed: press-type driven (HMT/AUTOPRINT=10%, Digital=5%, Flex=0%).
+        const paperWastageMultiplier = paper.to_print ? getWastageMultiplier(paper.press_type) : 1.00;
+        const paperSheetsWithWastage = Math.ceil(paperSheets * paperWastageMultiplier);
 
         // 6. Sheet cost for this paper
         const sheetRate = Number(bestSheet.rate_per_sheet || 0);
@@ -1033,21 +1131,80 @@ export const calculateItemController = async (req, res) => {
           });
         }
       }
+
+      // ── Spine width ───────────────────────────────────────────────────────────────
+      // Spine is only present when the cover wraps around the book (cover_pages === 4).
+      // For a 2-page cover (front + back flat sheet, no fold), there is no spine.
+      //
+      // Spine width depends on the primary INSIDE paper's thickness, not the cover paper.
+      // We use insidePapers[0].paper_gsm as the dominant paper for the book block.
+      const primaryInsidePaperGsm = insidePapers[0]?.paper_gsm || 80;
+      const spineBindings = ["pad binding", "perfect bound"];
+      const hasSpine = binding_types.some(
+        (b) => spineBindings.some((sb) => b.toLowerCase().includes(sb))
+      );
+
+      const spineWidthInches = hasSpine
+        ? calculateSpineWidthInches(inside_pages, primaryInsidePaperGsm)
+        : 0;
+      const spineWidthMm = spineWidthInches * 25.4;
+
+      // ── Cover flat size for UPS calculation ──────────────────────────────────────
+      // An unfolded 4-page wrap cover lays flat as:
+      //   width  = back_cover_width + spine + front_cover_width  = 2×page_width + spine
+      //   height = page_height
+      //
+      // A 2-page cover is just the page size (no spine, no fold).
+
+      // If spine exists → cover unfolds to: back + spine + front = 2×pageWidth + spine
+      // If no spine    → cover is just the page width (single or folded flat sheet)
+      const coverFlatJobSize = {
+        ...jobSize,
+        width: hasSpine
+          ? jobSize.width * 2 + spineWidthInches
+          : jobSize.width,
+      };
+
+      // Apply digital bleed on top of the cover flat size (not the raw page size)
+      // Expand job size by digital bleed for the cover press type
+      const effectiveCoverJobSizeForUps = addDigitalBleed(coverFlatJobSize, item.cover_press_type);
+
       // Cover requireEven: only when cover is 4 pages (both sides printed, folded)
       const coverRequiresEvenUps = Number(cover_pages) === 4;
-      const { bestSheet: bestCoverSheet, bestUps: bestUpsCover } = pickBestSheet(coverPaperRows, jobSize, coverRequiresEvenUps);
+
+      const { bestSheet: bestCoverSheet, bestUps: bestUpsCover } = pickBestSheet(coverPaperRows, effectiveCoverJobSizeForUps, coverRequiresEvenUps);
+
       if (!bestCoverSheet || bestUpsCover === 0 || !Number.isFinite(bestUpsCover)) {
         return res.status(400).json({
-          message: `Job size ${size} does not fit on any available cover paper (${cover_paper_type} ${cover_paper_gsm} GSM).`,
+          message: `Cover flat size (${Number(coverFlatJobSize.width.toFixed(3))}" × ` +
+             `${Number(coverFlatJobSize.height.toFixed(3))}" including ` +
+             `${spineWidthMm.toFixed(1)}mm spine) does not fit on any ` +
+             `available cover paper (${cover_paper_type} ${cover_paper_gsm} GSM).`,
         });
       }
       // ── Extract cover_to_print (default true for backward compat) ──────────
       const cover_to_print = item.cover_to_print !== false;
 
-      const coverTotalPages = 2 * qty;    // cover is 2 pages per copy (front + back), regardless of inside page count
-      const coverSheets = Math.ceil(coverTotalPages / bestUpsCover);
+      // ── Cover sheet count ─────────────────────────────────────────────────────────
+      // Each book copy needs exactly ONE cover sheet (one physical piece that wraps
+      // around or covers the book). UPS tells us how many covers fit per press sheet.
+      //
+      // Old formula: ceil(2*qty / UPS) — computed as 2 "half-covers" × qty, which
+      //   under-counted sheets for wrap covers and was inconsistent with UPS based
+      //   on page size.
+      // New formula: ceil(qty / UPS) — direct and correct.
+
+      // const coverTotalPages = 2 * qty;    // cover is 2 pages per copy (front + back), regardless of inside page count
+      
+      // No spine → 2 separate page-sized pieces per book (front + back), UPS on page size
+      // Has spine → 1 flat cover per book (back+spine+front), UPS on flat cover size
+      const coverSheets = hasSpine
+        ? Math.ceil(qty / bestUpsCover)
+        : Math.ceil((2 * qty) / bestUpsCover);
       // Apply 5% wastage per sheet type (round up)
-      const coverSheetsWithWastage = Math.ceil(coverSheets * 1.05);
+
+      const coverWastageMultiplier = cover_to_print ? getWastageMultiplier(item.cover_press_type) : 1.00;
+      const coverSheetsWithWastage = Math.ceil(coverSheets * coverWastageMultiplier);
       const coverSheetRate = Number(bestCoverSheet.rate_per_sheet || 0);
       const coverTotalSheetCost = coverSheetsWithWastage * coverSheetRate;
 
@@ -1069,7 +1226,9 @@ export const calculateItemController = async (req, res) => {
           cover_color_scheme,
           Number(cover_pages) === 4 ? "Both Side" : "Single Side",
           coverSheetsWithWastage,
-          jobSize,
+          // Printing cost is based on the FLAT cover size (what the press actually prints).
+          // We pass coverFlatJobSize here (no bleed — bleed is only for UPS slot fitting).
+          coverFlatJobSize,
           qty,
           bestUpsCover,
           category,
@@ -1161,6 +1320,7 @@ export const calculateItemController = async (req, res) => {
           // selected_paper_id added — used by frontend to build costing_snapshot.ms_cover_paper_id
           selected_paper_id:   bestCoverSheet ? bestCoverSheet.id : null,
           to_print:            cover_to_print,   // ← ADD: frontend uses to show state
+          sheet_name: bestCoverSheet ? bestCoverSheet.paper_name + " " + (bestCoverSheet.size_category || "") : null,
           sheet_selected:      bestCoverSheet ? bestCoverSheet.size_name : null,
           sheet_dimensions:    bestCoverSheet ? `${bestCoverSheet.width}x${bestCoverSheet.height}` : null,
           ups:                 bestUpsCover,
@@ -1169,6 +1329,10 @@ export const calculateItemController = async (req, res) => {
           sheet_rate:          coverSheetRate,
           total_sheet_cost:    coverTotalSheetCost,
           printing_cost_total: coverPrintingCostTotal,
+          // ── Spine data — used by frontend sidebar and production card ─────────────
+          spine_width_mm:      parseFloat(spineWidthMm.toFixed(2)),
+          spine_width_inches:  parseFloat(spineWidthInches.toFixed(4)),
+          cover_flat_width_inches: parseFloat(coverFlatJobSize.width.toFixed(4)),
         },
 
         wide: null,
@@ -1573,7 +1737,7 @@ const calculatePrintingCost = async (pressType, colorScheme, sides, sheetCount, 
         pagesPerPlate = ups ? ups / 2 : 0;
     }
     if(coverFlag && category === "Multiple Sheet" && sides === "Both Side"){
-        pagesPerPlate = ups ? Math.floor(ups / 2) : 0;
+        pagesPerPlate = ups || 0;
     }
     
 
