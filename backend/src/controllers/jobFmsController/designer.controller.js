@@ -97,7 +97,7 @@ export const getAllJobsForDesginer = async (req, res) => {
 // ── Pure helper — same logic runs on frontend too ──────────────────────────
 // deliveryDate, jobCreatedAt: JS Date objects
 // priority: "Urgent" | "High" | "Medium" | "Low"
-export function calculateMaxDesignDeadline(deliveryDate, jobCreatedAt, priority) {
+export function calculateMaxDesignDeadline(deliveryDate, jobCreatedAt, priority, instance = 1, assignedAt = null) {
   
   const now         = new Date();
   const totalMs     = deliveryDate.getTime() - jobCreatedAt.getTime();
@@ -105,11 +105,15 @@ export function calculateMaxDesignDeadline(deliveryDate, jobCreatedAt, priority)
 
   let deadline;
 
+  // Redesign instance → always 4 hours from assignment creation time
+  if (instance > 1) {
+    const base = assignedAt ? new Date(assignedAt) : now;
+    deadline   = new Date(base.getTime() + 4 * 60 * 60 * 1000);
+  }
   // ── Rule 1: Urgent OR same-day delivery → 4 hours from now ─────────────
-  if (priority === "Urgent" || totalDays < 1) {
+  else if (priority === "Urgent" || totalDays < 1) {
     deadline = new Date(now.getTime() + 4 * 60 * 60 * 1000);
   }
-
   // ── Rule 2: Next-day delivery → day before delivery at 19:30 IST ───────
   else if (totalDays <= 2) {
     // Work with IST (UTC+5:30)
@@ -170,7 +174,16 @@ export const setEstimatedTime = async (req, res) => {
     const deliveryDate  = new Date(assignment.jobCard.delivery_date);
     const jobCreatedAt  = new Date(assignment.jobCard.created_at);
     const priority      = assignment.jobCard.task_priority;
-    const maxAllowed    = calculateMaxDesignDeadline(deliveryDate, jobCreatedAt, priority);
+
+    // ── Pass instance + assigned_at so redesign gets 4-hour window ──────────
+    const maxAllowed = calculateMaxDesignDeadline(
+      deliveryDate,
+      jobCreatedAt,
+      priority,
+      assignment.instance   ?? 1,   // ← new
+      assignment.assigned_at,       // ← new
+    );
+
 
     if (estimatedTime > maxAllowed) {
       // Format in IST for the error message
@@ -200,9 +213,11 @@ export const setEstimatedTime = async (req, res) => {
       meta: {
         estimated_completion_time,
         max_allowed: maxAllowed.toISOString(),
-        rule_applied: priority === "Urgent" ? "urgent_4h"
-          : (deliveryDate - jobCreatedAt) / 86400000 <= 2 ? "next_day_1930"
-          : "thirty_percent",
+        rule_applied: assignment.instance > 1 ? "redesign_4h"
+          : priority === "Urgent"             ? "urgent_4h"
+          : totalDays <= 2                    ? "next_day_1930"
+          : "fifty_percent",
+        instance: assignment.instance,
       },
     });
 
