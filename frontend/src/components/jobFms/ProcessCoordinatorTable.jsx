@@ -219,11 +219,6 @@ function DesignerStatusModal({ designers, onClose }) {
 }
 
 
-
-
-
-
-
 export default function ProcessCoordinatorTable() {
   const [jobs, setJobs] = useState([]);
   const [designers, setDesigners] = useState([]);
@@ -320,15 +315,18 @@ export default function ProcessCoordinatorTable() {
       setSuccessMsg("✅ Job Assigned to Designer successfully!");
       setShowSuccessPopup(true);
 
+      // setOpenDropdownJob(null);
+      await Promise.all([
+        fetchJobs(controller.signal),
+        fetchDesigners(controller.signal),
+      ]);
+
       // ⏳ Wait 2 seconds before closing modal (after popup)
       setTimeout(() => {
         setShowSuccessPopup(false);
         setShowAssignModal(false); // close modal AFTER popup
-      }, 2000);
+      }, 1500);
 
-      // setOpenDropdownJob(null);
-      fetchJobs(controller.signal);
-      fetchDesigners(controller.signal);
     } catch (error) {
       if (error.name === "CanceledError") return;
       console.error(error);
@@ -509,7 +507,8 @@ export default function ProcessCoordinatorTable() {
                 </h3>
                 <button
                   onClick={() => setShowAssignModal(false)}
-                  className="text-red-600 hover:text-red-800 text-3xl leading-none"
+                  disabled={assigning}
+                  className="text-red-600 hover:text-red-800 text-3xl leading-none disabled:opacity-50"
                 >&times;</button>
               </div>
 
