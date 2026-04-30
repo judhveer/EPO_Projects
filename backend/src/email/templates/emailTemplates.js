@@ -927,3 +927,51 @@ export const designerRedesignTemplate = ({
   </p>
 </div>
 `;
+
+
+
+
+
+// 16. For Production when client approved the design
+export const productionReadyTemplate = ({
+  recipientName,
+  jobNo,
+  clientName,
+  crmName,
+  designerName,
+  approvedAt,
+  dashboardUrl,
+}) => {
+  return `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+      <p>Dear ${recipientName},</p>
+
+      <p>
+        We are pleased to inform you that the client has approved the job 
+        <strong>${jobNo}</strong>.
+      </p>
+
+      <p>
+        The job is now ready to proceed to the <strong>Production stage</strong>.
+      </p>
+
+      <p><strong>Job Details:</strong></p>
+      <ul>
+        <li><strong>Job No:</strong> ${jobNo}</li>
+        <li><strong>Client Name:</strong> ${clientName}</li>
+        <li><strong>CRM:</strong> ${crmName}</li>
+        <li><strong>Designer:</strong> ${designerName || "N/A"}</li>
+        <li><strong>Approved At:</strong> ${approvedAt}</li>
+      </ul>
+
+      <p>
+        You may review the job details here:<br/>
+        <a href="${dashboardUrl}">${dashboardUrl}</a>
+      </p>
+
+      <p>Please take the necessary actions to initiate production.</p>
+
+      <p>Best regards,<br/>EPO FMS Team</p>
+    </div>
+  `;
+};
