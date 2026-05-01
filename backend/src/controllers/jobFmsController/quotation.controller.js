@@ -621,10 +621,10 @@ export const getQuotationForJob = async (req, res) => {
     if (!quotation)
       return res.status(404).json({ message: `No quotation found with reference: ${refNo}` });
 
-    // if (quotation.is_approved)
-    //   return res.status(400).json({
-    //     message: `Quotation #${refNo} has already been used to create a job card.`,
-    //   });
+    if (quotation.is_approved)
+      return res.status(400).json({
+        message: `Quotation #${refNo} has already been used to create a job card.`,
+      });
 
     
     console.log("quotation: ", Number(quotation.gst_percentage));
