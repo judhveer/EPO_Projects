@@ -7,7 +7,7 @@ import React, {
   memo,
 } from "react";
 import api from "../../lib/api.js";
-import { createEmptyInsidePaper } from "./JobCardForm.jsx";
+import { createEmptyInsidePaper } from "./utils/jobHelpers.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
