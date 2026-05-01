@@ -24,6 +24,7 @@ const {
   PaperMaster,
   WideFormatMaterial,
   JobItemCosting,
+  Quotation,
 } = db;
 
 const calculateJobCompletionDeadline = (deliveryDateInput) => {
@@ -117,6 +118,7 @@ export const createJobCard = async (req, res) => {
       is_direct_to_production = false,
       discount = 0,
       gst_percentage = null,
+      quotation_ref_no = null,
       job_items = [], // ✅ default empty array
     } = req.body;
 
@@ -223,6 +225,7 @@ export const createJobCard = async (req, res) => {
         gst_percentage: gst_percentage ? Number(gst_percentage) : null,
         gst_amount,
         final_amount,
+        quotation_ref_no: quotation_ref_no ? Number(quotation_ref_no) : null,
       },
       { transaction: t },
     );
@@ -527,6 +530,20 @@ export const createJobCard = async (req, res) => {
 
     //  Commit transaction before sending email
     await t.commit();
+
+    // Mark quotation as approved now that the job card is created
+    if (quotation_ref_no) {
+      Quotation.update(
+        { is_approved: true },
+        { where: { quotation_ref_no: Number(quotation_ref_no) } },
+      ).catch((err) => {
+        // Non-fatal — job card already saved, just log it
+        console.error(
+          `⚠️ Job #${job_no} created but failed to mark quotation #${quotation_ref_no} as approved:`,
+          err.message,
+        );
+      });
+    }
 
     res.status(201).json({
       message: "JobCard created successfully",
