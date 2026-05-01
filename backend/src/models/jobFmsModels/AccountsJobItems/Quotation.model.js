@@ -41,6 +41,15 @@ export default (sequelize) => {
         items: {
             type: DataTypes.JSON,
             allowNull: false,
+            get() {
+                const raw = this.getDataValue("items");
+                console.log("raw: ", raw);
+                if (!raw) return [];
+                if (typeof raw === "string") {
+                    try { return JSON.parse(raw); } catch { return []; }
+                }
+                return raw; // already parsed (MySQL 8 / local)
+            },
         },
         // ── Billing ───────
         subtotal: {
