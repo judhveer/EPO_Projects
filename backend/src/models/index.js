@@ -39,6 +39,7 @@ import JobDesignTimeModel from "./jobFmsModels/JobDesignTimeLog.js";
 import WideFormatMaterialModel from "./jobFmsModels/AccountsJobItems/WideFormatMaterial.model.js";
 import PrintingRateMasterModel from "./jobFmsModels/AccountsJobItems/PrintingRateMaster.model.js";
 import JobItemCostingModel from "./jobFmsModels/AccountsJobItems/JobItemCosting.model.js";
+import QuotationModel from "./jobFmsModels/AccountsJobItems/Quotation.model.js";
 
 // SalesPipeline Models
 const Lead = LeadModel(sequelize);
@@ -78,6 +79,7 @@ const JobDesignTime = JobDesignTimeModel(sequelize);
 const WideFormatMaterial = WideFormatMaterialModel(sequelize);
 const PrintingRateMaster = PrintingRateMasterModel(sequelize);
 const JobItemCosting = JobItemCostingModel(sequelize);
+const Quotation = QuotationModel(sequelize);
 
 associateJobFmsModels({
   User,
@@ -98,6 +100,7 @@ associateJobFmsModels({
   WideFormatMaterial,
   PrintingRateMaster,
   JobItemCosting,
+  Quotation,
 });
 
 // Associations (ticketId attribute)
@@ -170,5 +173,6 @@ export default {
   JobDesignTime,
   WideFormatMaterial,
   PrintingRateMaster,
-  JobItemCosting
+  JobItemCosting,
+  Quotation
 };
