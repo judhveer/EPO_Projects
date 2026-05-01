@@ -211,6 +211,16 @@ export default (sequelize) => {
       completed_at: {
         type: DataTypes.DATE,
         allowNull: true,
+      },
+      quotation_ref_no: {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: true,
+        references: {
+          model: "jobfms_quotations",
+          key: "quotation_ref_no",
+        },
+        onUpdate: "CASCADE",
+        onDelete: "SET NULL",
       }
 
     },
@@ -303,9 +313,9 @@ export default (sequelize) => {
       onDelete: "CASCADE",
     });
 
-    JobCard.hasOne(models.Quotation, {
+    JobCard.belongsTo(models.Quotation, {
+      foreignKey: "quotation_ref_no",
       as: "quotation",
-      foreignKey: "job_no",
     });
 
     JobCard.hasOne(models.JobCosting, {
