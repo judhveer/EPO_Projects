@@ -44,6 +44,7 @@ const EMPTY_FORM = {
   receiving_date_for_mm: "",
   discount: "",
   gst_percentage: "",
+  quotation_ref_no: "",
   job_items: [],
 };
 
@@ -661,6 +662,11 @@ export default function JobCardForm({
   const [searchSuccess, setSearchSuccess] = useState("");
   // ── END NEW ───────────────────────────────────────────────────────────────
 
+  const [quotationRef,         setQuotationRef]         = useState("");
+  const [quotationRefLoading,  setQuotationRefLoading]  = useState(false);
+  const [quotationRefError,    setQuotationRefError]     = useState("");
+  const [loadedQuotationRef,   setLoadedQuotationRef]   = useState(null);
+
   const timeoutsRef = useRef([]);
 
   // ── Per-item AbortControllers — cancel in-flight calc on new trigger ──────────
@@ -1044,12 +1050,6 @@ export default function JobCardForm({
   // ── END NEW ───────────────────────────────────────────────────────────────
 
 
-
-
-
-
-
-
   const calculateItemBackend = useCallback(
     async (index, uniqueKey) => {
       const item = formRef.current.job_items[index];
@@ -1276,6 +1276,89 @@ export default function JobCardForm({
     },
     [findItemIndexById, calculateItemBackend],
   );
+
+  const handleLoadQuotation = useCallback(async () => {
+    const trimmed = quotationRef.trim();
+    if (!trimmed) {
+      setQuotationRefError("Please enter a quotation reference number.");
+      return;
+    }
+
+    setQuotationRefLoading(true);
+    setQuotationRefError("");
+
+    try {
+      const { data } = await api.get(
+        `/api/fms/quotations/${encodeURIComponent(trimmed)}/for-job`,
+      );
+
+      // Map quotation items → job form items format
+      const mappedItems = (data.items || []).map((item) => ({
+        ...item,
+        // Strip quotation-only fields, add job form required fields
+        id:                      undefined,
+        _temp_id:                crypto.randomUUID?.() ?? `${Date.now()}${Math.random()}`,
+        costing_snapshot:        null,     // will be filled by recalculation below
+        is_calculating:          false,
+        calc_error:              null,
+        // Empty dropdown caches — loaded by loadDropdownsForMappedItems
+        available_items:         [],
+        available_papers:        [],
+        available_gsm:           [],
+        available_gsm_cover:     [],
+        available_bindings:      [],
+        available_sizes:         [],
+        available_wide_materials:[],
+        available_wide_gsm:      [],
+        // Ensure inside_papers have required fields
+        inside_papers: (item.inside_papers || []).map((p) => ({
+          ...p,
+          available_gsm: [],
+          _id: p._id || (crypto.randomUUID?.() ?? `${Date.now()}${Math.random()}`),
+        })),
+      }));
+
+      // Auto-fill form with quotation data
+      setFormAndRef((prev) => ({
+        ...prev,
+        client_name:      data.client_name     || prev.client_name,
+        department:       data.department      || "",
+        address:          data.client_address  || "",
+        discount:         data.billing.discount      || "",
+        gst_percentage:   data.billing.gst_percentage != null && !isNaN(Number(data.billing.gst_percentage))
+                            ? Number(data.billing.gst_percentage).toFixed(2)
+                            : "",
+        total_amount:     data.billing.subtotal       || 0,
+        quotation_ref_no: data.quotation_ref_no,
+        job_items:        mappedItems,
+      }));
+
+      // Load all dropdowns for the auto-filled items
+      loadDropdownsForMappedItems(mappedItems);
+
+      // Recalculate all items to get fresh prices + costing_snapshot
+      // (same pattern as handleSearchJob)
+      setTimeout(() => {
+        const latestItems = formRef.current.job_items;
+        latestItems.forEach((item, index) => {
+          const key = item.id ?? item._temp_id;
+          if (isItemReady(item)) {
+            calculateItemBackend(index, key);
+          }
+        });
+      }, 0);
+
+      setLoadedQuotationRef(trimmed);
+      setQuotationRef("");
+
+    } catch (err) {
+      setQuotationRefError(
+        err.response?.data?.message || "Failed to load quotation. Check the reference number.",
+      );
+    } finally {
+      setQuotationRefLoading(false);
+    }
+  }, [quotationRef, setFormAndRef, loadDropdownsForMappedItems, calculateItemBackend]);
 
   // ── NEW ──────────────────────────────────────────────────────────────────────
   // Search handler. Called on button click OR Enter key in the search input.
@@ -1873,112 +1956,178 @@ export default function JobCardForm({
           This is purely a data-loading utility, not a form field.
       ─────────────────────────────────────────────────────────────────────── */}
       {!isEditMode && (
-        <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
-          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">
-            🔍 Load from Existing Job
-          </p>
-          <p className="text-xs text-slate-500 mb-3">
-            Enter a Job No to pre-fill this form with that job's data.
-              <span className="ml-1 text-blue-600 font-medium">
-                Submitting will create a brand-new job.
-              </span>
-          </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
 
-          <div className="flex items-start gap-2">
-            <div className="flex flex-col flex-1 max-w-xs">
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="\d*"
-                value={searchJobNo}
-                onChange={(e) => {
-                  // Only allow digits
-                  const val = e.target.value.replace(/\D/g, "");
-                  setSearchJobNo(val);
-                  // Clear errors as user types
-                  if (searchError) setSearchError("");
-                  if (searchSuccess) setSearchSuccess("");
-                }}
-                onKeyDown={handleSearchKeyDown}
-                placeholder="e.g. 10872"
-                disabled={searchLoading}
-                className={`border rounded px-3 py-2 text-sm w-full transition-colors ${
-                  searchError
-                    ? "border-red-400 bg-red-50 focus:ring-red-300"
-                    : "border-slate-300 bg-white focus:border-blue-400"
-                } focus:outline-none focus:ring-2`}
-                aria-label="Search by Job No"
-                aria-describedby={searchError ? "search-job-error" : undefined}
-              />
-              {/* Inline error — shown below the input, not in a global banner */}
-              {searchError && (
-                <p
-                  id="search-job-error"
-                  className="mt-1 text-xs text-red-600 font-medium"
-                  role="alert"
-                >
-                  {searchError}
-                </p>
-              )}
+          <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">
+              🔍 Load from Existing Job
+            </p>
+            <p className="text-xs text-slate-500 mb-3">
+              Enter a Job No to pre-fill this form with that job's data.
+                {/* <span className="ml-1 text-blue-600 font-medium">
+                  Submitting will create a brand-new job.
+                </span> */}
+            </p>
+
+            <div className="flex items-start gap-2">
+              <div className="flex flex-col flex-1 max-w-xs">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="\d*"
+                  value={searchJobNo}
+                  onChange={(e) => {
+                    // Only allow digits
+                    const val = e.target.value.replace(/\D/g, "");
+                    setSearchJobNo(val);
+                    // Clear errors as user types
+                    if (searchError) setSearchError("");
+                    if (searchSuccess) setSearchSuccess("");
+                  }}
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder="e.g. 10872"
+                  disabled={searchLoading}
+                  className={`border rounded px-3 py-2 text-sm w-full transition-colors ${
+                    searchError
+                      ? "border-red-400 bg-red-50 focus:ring-red-300"
+                      : "border-slate-300 bg-white focus:border-blue-400"
+                  } focus:outline-none focus:ring-2`}
+                  aria-label="Search by Job No"
+                  aria-describedby={searchError ? "search-job-error" : undefined}
+                />
+                {/* Inline error — shown below the input, not in a global banner */}
+                {searchError && (
+                  <p
+                    id="search-job-error"
+                    className="mt-1 text-xs text-red-600 font-medium"
+                    role="alert"
+                  >
+                    {searchError}
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSearchJob}
+                disabled={searchLoading || !searchJobNo.trim()}
+                className={`px-4 py-2 rounded text-sm font-medium text-white transition-all
+                  ${
+                    searchLoading || !searchJobNo.trim()
+                      ? "bg-blue-300 opacity-0 cursor-not-allowed"
+                      : "bg-blue-600 hover:bg-blue-700 active:scale-95"
+                  }`}
+              >
+                {searchLoading ? (
+                  <span className="flex items-center gap-1.5">
+                    <svg
+                      className="animate-spin h-3.5 w-3.5 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8v8z"
+                      />
+                    </svg>
+                    Searching…
+                  </span>
+                ) : (
+                  "Load Job"
+                )}
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={handleSearchJob}
-              disabled={searchLoading || !searchJobNo.trim()}
-              className={`px-4 py-2 rounded text-sm font-medium text-white transition-all
-                ${
-                  searchLoading || !searchJobNo.trim()
-                    ? "bg-blue-300 cursor-not-allowed"
-                    : "bg-blue-600 hover:bg-blue-700 active:scale-95"
-                }`}
-            >
-              {searchLoading ? (
-                <span className="flex items-center gap-1.5">
-                  <svg
-                    className="animate-spin h-3.5 w-3.5 text-white"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8v8z"
-                    />
-                  </svg>
-                  Searching…
-                </span>
-              ) : (
-                "Load Job"
-              )}
-            </button>
+            {/* Success banner — auto-dismisses after 4 seconds */}
+            {searchSuccess && (
+              <div
+                className="mt-2 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700 font-medium"
+                role="status"
+              >
+                {searchSuccess}
+              </div>
+            )}
           </div>
 
-          {/* Success banner — auto-dismisses after 4 seconds */}
-          {searchSuccess && (
-            <div
-              className="mt-2 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700 font-medium"
-              role="status"
-            >
-              {searchSuccess}
+          {/* ── Quotation Reference Panel ─────────────────────────────────────────── */}
+          <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1">
+              📋 Load from Approved Quotation
+            </p>
+            <p className="text-xs text-slate-500 mb-3">
+              Enter the quotation reference number to auto-fill the form with client and item details.
+            </p>
+
+            <div className="flex items-start gap-2">
+              <div className="flex flex-col flex-1 max-w-xs">
+                <input
+                  type="text"
+                  value={quotationRef}
+                  onChange={(e) => {
+                    setQuotationRef(e.target.value.toUpperCase());
+                    if (quotationRefError) setQuotationRefError("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleLoadQuotation();
+                    }
+                  }}
+                  placeholder="e.g. 10001"
+                  disabled={quotationRefLoading}
+                  className={`border rounded px-3 py-2 text-sm w-full transition-colors ${
+                    quotationRefError
+                      ? "border-red-400 bg-red-50 focus:ring-red-300"
+                      : "border-slate-300 bg-white focus:border-emerald-400"
+                  } focus:outline-none focus:ring-2`}
+                />
+                {quotationRefError && (
+                  <p className="mt-1 text-xs text-red-600 font-medium" role="alert">
+                    {quotationRefError}
+                  </p>
+                )}
+                {loadedQuotationRef && (
+                  <p className="mt-1 text-xs text-emerald-700 font-medium">
+                    ✅ Loaded from quotation {loadedQuotationRef}
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleLoadQuotation}
+                disabled={quotationRefLoading || !quotationRef.trim()}
+                className={`px-4 py-2 rounded text-sm font-medium text-white transition-all ${
+                  quotationRefLoading || !quotationRef.trim()
+                    ? "bg-emerald-600 opacity-0 cursor-not-allowed"
+                    : "bg-emerald-600 hover:bg-emerald-700 active:scale-95"
+                }`}
+              >
+                {quotationRefLoading ? (
+                  <span className="flex items-center gap-1.5">
+                    <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    Loading…
+                  </span>
+                ) : "Load"}
+              </button>
             </div>
-          )}
+          </div>
         </div>
       )}
       {/* ── END NEW */}
-
-
-
-
 
       <form className="grid md:grid-cols-3 gap-4" onSubmit={onSubmit}>
         {/* ---------------- JOB CARD FIELDS ---------------- */}
