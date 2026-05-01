@@ -14,6 +14,8 @@ import Select from "../../components/salesPipeline/Select.jsx";
 import Button from "../../components/salesPipeline/Button.jsx";
 import JobItem from "./JobItem.jsx";
 
+import { createEmptyInsidePaper } from "./utils/jobHelpers.js";
+
 // At module level, outside the component empty the form
 const EMPTY_FORM = {
   client_type: "",
@@ -51,21 +53,6 @@ const EMPTY_FORM = {
 const sanitize = (obj) =>
   Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, v ?? ""]));
 
-// Creates one empty inside-paper row for Multiple Sheet category.
-// Each inside paper tracks its own paper type, GSM, whether to print,
-// and if printing — its color scheme and press machine.
-export const createEmptyInsidePaper = () => ({
-  _id:
-    typeof crypto !== "undefined" && crypto.randomUUID
-      ? crypto.randomUUID()
-      : Date.now().toString() + Math.random(),
-  paper_type: "",
-  paper_gsm: "",
-  to_print: false, // checkbox: does this paper get sent to press?
-  color_scheme: "", // only matters when to_print = true
-  press_type: "", // only matters when to_print = true
-  available_gsm: [], // UI-only: GSM options for this paper's paper_type
-});
 
 // Fields that, when changed via handleItemChange, trigger a backend calculation.
 // NOTE: paper_type / paper_gsm / inside_press_type for Multiple Sheet are now inside inside_papers[] and handled by handleInsidePaperChange, so they no longer appear here for that category. paper_type stays because Single Sheet still uses it at item level.
