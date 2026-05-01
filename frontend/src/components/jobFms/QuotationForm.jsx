@@ -1017,6 +1017,9 @@ export default function QuotationForm() {
   const [generating,    setGenerating]    = useState(false);
   const [downloadErr,   setDownloadErr]   = useState(""); // page-level: only for PDF download errors
 
+  const [saving,     setSaving]     = useState(false);
+  const [savedRefNo, setSavedRefNo] = useState(null);
+
   const itemsRef  = useRef(items);
   const calcTimers   = useRef({});
   const abortControllers = useRef(new Map()); // ← per-item AbortControllers
@@ -1437,6 +1440,81 @@ export default function QuotationForm() {
     }
   }, [clientName, department, clientAddress, items, billing, gstPct, selectedFirm]);
 
+
+  const handleSave = useCallback(async () => {
+    if (!clientName.trim()) {
+      setDownloadErr("Client name is required.");
+      return;
+    }
+    const readyItems = items.filter(
+      (it) => it.item_total != null && it.unit_rate != null && !it.is_calculating,
+    );
+    if (readyItems.length === 0) {
+      setDownloadErr("At least one fully calculated item is required.");
+      return;
+    }
+    if (items.some((it) => it.is_calculating)) {
+      setDownloadErr("Please wait for all items to finish calculating.");
+      return;
+    }
+
+    setSaving(true);
+    setDownloadErr("");
+
+    let refNo;
+    try {
+      // Step 1: Save to DB
+      const { data } = await api.post("/api/fms/quotations", {
+        clientName,
+        department,
+        clientAddress,
+        items:    readyItems.map(stripUiFields),
+        billing:  { discount, gstPct, ...billing },
+        firmName: selectedFirm,
+      });
+      refNo = data.quotation_ref_no;
+      setSavedRefNo(refNo);
+    } catch (e) {
+      setDownloadErr(e?.response?.data?.message || "Failed to save quotation.");
+      setSaving(false);
+      return;
+    }
+
+    // Step 2: Download PDF with the saved ref no
+    setGenerating(true);
+    try {
+      const payload = {
+        clientName,
+        department,
+        clientAddress,
+        items:          readyItems.map(stripUiFields),
+        billing:        { ...billing, gstPct, discount },
+        firmName:       selectedFirm,
+        quotationRefNo: refNo, // ← pass the DB ref no to PDF
+      };
+      const response = await api.post("/api/fms/quotations/generate-pdf", payload, {
+        responseType: "blob",
+      });
+      const disposition = response.headers["content-disposition"] || "";
+      const match       = disposition.match(/filename="(.+?)"/);
+      const filename    = match?.[1] ?? `Quotation_${refNo}_${clientName.replace(/\s/g, "_")}.pdf`;
+      const url  = URL.createObjectURL(new Blob([response.data], { type: "application/pdf" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = filename;
+      document.body.appendChild(link); link.click();
+      document.body.removeChild(link); URL.revokeObjectURL(url);
+    } catch (e) {
+      const msg = e?.response?.data instanceof Blob
+        ? await e.response.data.text()
+        : e?.response?.data?.message;
+      setDownloadErr(msg || "Quotation saved but PDF download failed. Ref: " + refNo);
+    } finally {
+      setSaving(false);
+      setGenerating(false);
+    }
+  }, [clientName, department, clientAddress, items, billing, gstPct, discount, selectedFirm]);
+
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-5xl mx-auto p-4 space-y-6">
@@ -1565,8 +1643,8 @@ export default function QuotationForm() {
               className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
             >
               <option value="">No GST</option>
-              <option value="5">5% GST</option>
-              <option value="18">18% GST</option>
+              <option value="5.00">5% GST</option>
+              <option value="18.00">18% GST</option>
             </select>
           </div>
         </div>
@@ -1648,34 +1726,30 @@ export default function QuotationForm() {
       </div>
 
       {/* ── Download ─────────────────────────────────────────────────────── */}
-      <div className="flex justify-end pb-6">
+      <div className="flex flex-col items-end gap-3 pb-6">
+        {savedRefNo && (
+          <div className="w-full max-w-sm rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 flex items-center justify-between">
+            <span>✅ Saved as <strong>#{savedRefNo}</strong> — share this number with the client</span>
+            <button onClick={() => setSavedRefNo(null)} className="ml-3 text-emerald-500 hover:text-emerald-700 text-lg">&times;</button>
+          </div>
+        )}
+
         <button
           type="button"
-          onClick={handleDownload}
-          disabled={generating}
+          onClick={handleSave}
+          disabled={saving || generating}
           className={`flex items-center gap-2 px-8 py-3 rounded-xl text-white font-semibold text-base shadow-lg transition-all ${
-            generating
+            saving || generating
               ? "bg-slate-400 cursor-not-allowed"
-              : "bg-gradient-to-r from-blue-700 to-blue-600 hover:from-blue-800 hover:to-blue-700 hover:shadow-xl active:scale-95"
+              : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-95"
           }`}
         >
-          {generating ? (
-            <>
-              <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-              </svg>
-              Generating PDF…
-            </>
+          {saving ? (
+            <><svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Saving…</>
+          ) : generating ? (
+            <><svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Generating PDF…</>
           ) : (
-            <>
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round"
-                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              Download Quotation PDF
-            </>
+            <><svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>Save & Download PDF</>
           )}
         </button>
       </div>
