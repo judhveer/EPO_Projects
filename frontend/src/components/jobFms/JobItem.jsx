@@ -258,6 +258,11 @@ const JobItem = React.memo(function JobItem({
 
   useEffect(() => {
     const resets = {};
+    // Ensure Wide Format always has FLEX MACHINE
+    if (category === "Wide Format" && item.press_type !== "FLEX MACHINE") {
+      resetItemFields(uniqueKey, { press_type: "FLEX MACHINE" });
+      return;
+    }
 
     // If current press_type is not in allowed list, clear it
     if (
@@ -357,9 +362,13 @@ const JobItem = React.memo(function JobItem({
         <Field label="Category" required>
           <Select
             value={item.category}
-            onChange={(e) =>
+            onChange={(e) => {
               handleItemChange(uniqueKey, "category", e.target.value)
-            }
+              // FORCE FLEX MACHINE when Wide Format
+              if (e.target.value === "Wide Format") {
+                handleItemChange(uniqueKey, "press_type", "FLEX MACHINE");
+              }
+            }}
           >
             <option value="">Select</option>
             <option>Single Sheet</option>
@@ -926,6 +935,7 @@ const JobItem = React.memo(function JobItem({
           <Field label="Press Machine" required>
             <Select
               value={item.press_type || ""}
+              disabled={category === "Wide Format"}
               onChange={(e) =>
                 handleItemChange(uniqueKey, "press_type", e.target.value)
               }
