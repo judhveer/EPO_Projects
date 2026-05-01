@@ -1,4 +1,6 @@
 // controllers/quotation.controller.js
+import db from "../../models/index.js"; // adjust path to match your project
+const { Quotation } = db;
 import puppeteer from "puppeteer";
 import path      from "path";
 import fs        from "fs";
@@ -137,6 +139,26 @@ const fmt = (n) =>
   Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const inr = (n) => `&#x20B9;&nbsp;${fmt(n)}`;
+
+
+const computeBilling = (subtotal, discount, gstPct) => {
+  const sub   = parseFloat(Number(subtotal  || 0).toFixed(2));
+  const disc  = parseFloat(Math.min(Number(discount || 0), sub).toFixed(2));
+  const after = parseFloat((sub - disc).toFixed(2));
+  const rate  = gstPct ? Number(gstPct) : 0;
+  const gst   = parseFloat(((after * rate) / 100).toFixed(2));
+  const final = parseFloat((after + gst).toFixed(2));
+  return { subtotal: sub, discount: disc, gstAmount: gst, finalAmount: final };
+};
+
+const VALID_FIRMS = new Set([
+  "Eastern Panorama Offset",
+  "Darilin Tang",
+  "MM Enterprise",
+  "Hill Publication",
+]);
+
+
 
 // Prepare SVG: make it full-width, strip xml declaration
 function prepareSvg(svgStr) {
@@ -470,7 +492,8 @@ export const generateQuotationPDF = async (req, res) => {
   // — Date / ref -------------------------------------------------------------
   const now     = new Date();
   const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-  const refNo   = now.getTime().toString().slice(-6);
+  // Use the DB-assigned ref no if passed, fall back to timestamp (for preview use)
+  const refNo = req.body.quotationRefNo ? String(req.body.quotationRefNo) : now.getTime().toString().slice(-6);
   const year    = now.getFullYear();
 
   // — Template vars ----------------------------------------------------------
@@ -526,5 +549,142 @@ export const generateQuotationPDF = async (req, res) => {
     if (page && !page.isClosed()) await page.close().catch(() => {});
     console.error("PDF generation error:", err);
     return res.status(500).json({ message: "PDF generation failed", error: err.message });
+  }
+};
+
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/fms/quotations
+// ─────────────────────────────────────────────────────────────────────────────
+export const createQuotation = async (req, res) => {
+  try {
+    const { clientName, department, clientAddress, items, billing, firmName } = req.body;
+
+    console.log("items: ", items);
+
+    if (!clientName?.trim())
+      return res.status(400).json({ message: "Client name is required." });
+    if (!firmName || !VALID_FIRMS.has(firmName))
+      return res.status(400).json({ message: `Invalid firm: "${firmName}"` });
+    if (!Array.isArray(items) || items.length === 0)
+      return res.status(400).json({ message: "At least one item is required." });
+    if (!items.every((i) => i.unit_rate != null && i.item_total != null))
+      return res.status(400).json({ message: "All items must be fully calculated before saving." });
+
+    const serverSubtotal = items.reduce((sum, i) => sum + Number(i.item_total || 0), 0);
+    const { subtotal, discount, gstAmount, finalAmount } = computeBilling(
+      serverSubtotal,
+      billing?.discount || 0,
+      billing?.gstPct   || null,
+    );
+
+    const quotation = await Quotation.create({
+      firm_key:       firmName,
+      year:           new Date().getFullYear(),
+      client_name:    clientName.trim(),
+      department:     department?.trim()    || null,
+      client_address: clientAddress?.trim() || null,
+      items,
+      subtotal,
+      discount:       Number(billing?.discount || 0),
+      gst_percentage: billing?.gstPct ? Number(billing.gstPct) : null,
+      gst_amount:     gstAmount,
+      final_amount:   finalAmount,
+      is_approved:    false,
+      created_by_id:  req.user?.id || null,
+    });
+
+    return res.status(201).json({
+      message:          "Quotation saved successfully.",
+      quotation_ref_no: quotation.quotation_ref_no,
+    });
+
+  } catch (err) {
+    console.error("createQuotation error:", err);
+    return res.status(500).json({ message: err.message || "Failed to save quotation." });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/fms/quotations/:refNo/for-job
+// ─────────────────────────────────────────────────────────────────────────────
+export const getQuotationForJob = async (req, res) => {
+  try {
+    const refNo = Number(req.params.refNo);
+
+    if (!refNo || !Number.isInteger(refNo) || refNo <= 0)
+      return res.status(400).json({ message: "Invalid quotation reference number." });
+
+    const quotation = await Quotation.findByPk(refNo);
+
+    if (!quotation)
+      return res.status(404).json({ message: `No quotation found with reference: ${refNo}` });
+
+    // if (quotation.is_approved)
+    //   return res.status(400).json({
+    //     message: `Quotation #${refNo} has already been used to create a job card.`,
+    //   });
+
+    
+    console.log("quotation: ", Number(quotation.gst_percentage));
+
+    return res.json({
+      quotation_ref_no: quotation.quotation_ref_no,
+      firm_key:         quotation.firm_key,
+      client_name:      quotation.client_name,
+      department:       quotation.department,
+      client_address:   quotation.client_address,
+      items:            (() => {
+                            const raw = quotation.items;
+                            if (!raw) return [];
+                            if (typeof raw === "string") {
+                                try { return JSON.parse(raw); } catch { return []; }
+                            }
+                            return raw;
+                        })(),
+      billing: {
+        subtotal:       Number(quotation.subtotal),
+        discount:       Number(quotation.discount),
+        gst_percentage: quotation.gst_percentage ?? "",
+        gst_amount:     Number(quotation.gst_amount),
+        final_amount:   Number(quotation.final_amount),
+      },
+    });
+
+  } catch (err) {
+    console.error("getQuotationForJob error:", err);
+    return res.status(500).json({ message: "Failed to fetch quotation." });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/fms/quotations
+// ─────────────────────────────────────────────────────────────────────────────
+export const listQuotations = async (req, res) => {
+  try {
+    const { page = 1, limit = 50, firm, is_approved, year } = req.query;
+    const where = {};
+    if (firm)                    where.firm_key    = firm;
+    if (year)                    where.year        = Number(year);
+    if (is_approved !== undefined) where.is_approved = is_approved === "true";
+
+    const { count, rows } = await Quotation.findAndCountAll({
+      where,
+      order:      [["quotation_ref_no", "DESC"]],
+      limit:      Number(limit),
+      offset:     (Number(page) - 1) * Number(limit),
+      attributes: [
+        "quotation_ref_no", "firm_key", "year",
+        "client_name", "department",
+        "subtotal", "discount", "gst_percentage", "final_amount",
+        "is_approved", "created_by_id", "created_at",
+      ],
+    });
+
+    return res.json({ total: count, data: rows });
+  } catch (err) {
+    console.error("listQuotations error:", err);
+    return res.status(500).json({ message: "Failed to fetch quotations." });
   }
 };
