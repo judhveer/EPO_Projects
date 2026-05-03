@@ -626,9 +626,6 @@ export const getQuotationForJob = async (req, res) => {
         message: `Quotation #${refNo} has already been used to create a job card.`,
       });
 
-    
-    console.log("quotation: ", Number(quotation.gst_percentage));
-
     return res.json({
       quotation_ref_no: quotation.quotation_ref_no,
       firm_key:         quotation.firm_key,
