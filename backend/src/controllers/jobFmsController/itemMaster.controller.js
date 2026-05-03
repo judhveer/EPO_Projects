@@ -837,7 +837,7 @@ export const calculateItemController = async (req, res) => {
       const insideTotalSheetCost = insideSheetsWithWastage * insideSheetRate;
 
       // --- 6. Printing cost (using press rates) ---
-      const insidePrintingCostTotal = await calculatePrintingCost(
+      let insidePrintingCostTotal = await calculatePrintingCost(
         pressType,
         color_scheme,        // color scheme for inside
         sides,
@@ -847,6 +847,22 @@ export const calculateItemController = async (req, res) => {
         bestUpsInside,
         category
       );
+
+      // Add:
+      let ssPlateDetails = null;
+      if (pressType === "HMT BLACK WHITE" || pressType === "HMT MULTICOLOR") {
+        // For Single Sheet: forma = 1 (one unique layout per job)
+        // ups here is bestUpsInside (copies per sheet, not pages per sheet)
+        // For single sheet the "inside_pages" concept doesn't apply — it's just 1 forma
+        const isBothSide   = sides === "Both Side" || sides === "Both Sides";
+        const isMulticolor = pressType === "HMT MULTICOLOR";
+        const platesPerForma = isMulticolor ? (isBothSide ? 8 : 4) : (isBothSide ? 2 : 1);
+        const totalPlates    = platesPerForma; // 1 forma for single sheet jobs
+        const plateCost      = totalPlates * 2000;
+        ssPlateDetails = { total_plates: totalPlates, plate_cost: plateCost, forma: 1 };
+        insidePrintingCostTotal += plateCost;  // add to total
+      }
+
 
       let bindingCostTotal = 0;
       if (binding_types && binding_types.length > 0) {
@@ -895,6 +911,7 @@ export const calculateItemController = async (req, res) => {
           sheet_rate:        insideSheetRate,
           total_sheet_cost:  insideTotalSheetCost,
           printing_cost_total: insidePrintingCostTotal,
+          plate_details: ssPlateDetails,
         },
         cover: nullSheet(),
         wide:  null,
@@ -1047,7 +1064,10 @@ export const calculateItemController = async (req, res) => {
 
         // 7. Printing cost — only if to_print is true
         let printingCost = 0;
+        let plateDetails = null;
+
         if (paper.to_print) {
+          // Running press cost (slab-based)
           printingCost = await calculatePrintingCost(
             paperPressType,
             paper.color_scheme,
@@ -1059,6 +1079,13 @@ export const calculateItemController = async (req, res) => {
             category
           );
           console.log(`Paper ${i + 1}: printingCost ${printingCost}`);
+        }
+
+        // Plate cost for HMT presses — calculated from forma, NOT from UPS directly
+        if (paperPressType === "HMT BLACK WHITE" || paperPressType === "HMT MULTICOLOR") {
+          plateDetails  = calculateHMTPlateDetails(inside_pages, effectiveUps, sides, paperPressType);
+          printingCost += plateDetails.plate_cost;
+          console.log(`Paper ${i + 1}: running=${printingCost - plateDetails.plate_cost}, plates=${plateDetails.total_plates}, plateCost=${plateDetails.plate_cost}, forma=${plateDetails.forma}`);
         }
 
         // 8. Accumulate
@@ -1094,6 +1121,7 @@ export const calculateItemController = async (req, res) => {
           best_sheet_name:     bestSheet.paper_name + " " + (bestSheet.size_category || ""),
           best_sheet_dims:     `${bestSheet.width}x${bestSheet.height}`,
           best_sheet_size_name: bestSheet.size_name,
+          plate_details: plateDetails, 
         });
       }
 
@@ -1236,6 +1264,19 @@ export const calculateItemController = async (req, res) => {
         );
       }
 
+      // ── Cover plate cost — HMT presses only ──────────────────────────────────────
+      // Cover is 1 forma. 2-page = Single Side, 4-page = Both Side.
+      // Plate cost is added on top of the running press slab cost calculated above.
+      let coverPlateDetails = null;
+      if (
+        cover_to_print &&
+        (coverPressType === "HMT BLACK WHITE" || coverPressType === "HMT MULTICOLOR")
+      ) {
+        coverPlateDetails     = calculateCoverPlateDetails(cover_pages, coverPressType);
+        coverPrintingCostTotal += coverPlateDetails.plate_cost;
+      }
+
+
       // ── Total sheet cost ──
       const totalSheetCost = totalInsideSheetCost + coverTotalSheetCost;
       const totalPrintingCost = totalInsidePrintingCost + coverPrintingCostTotal;
@@ -1310,6 +1351,7 @@ export const calculateItemController = async (req, res) => {
           sheet_rate: firstPaperResult.sheet_rate || null,
           total_sheet_cost: firstPaperResult.sheet_cost || null,
           printing_cost_total: firstPaperResult.printing_cost || null,
+          plate_details: insidePapersResults[0]?.plate_details || null,
         },
 
         // Full inside papers array — for sidebar display + DB storage
@@ -1333,6 +1375,7 @@ export const calculateItemController = async (req, res) => {
           spine_width_mm:      parseFloat(spineWidthMm.toFixed(2)),
           spine_width_inches:  parseFloat(spineWidthInches.toFixed(4)),
           cover_flat_width_inches: parseFloat(coverFlatJobSize.width.toFixed(4)),
+          plate_details:           coverPlateDetails,
         },
 
         wide: null,
@@ -1704,10 +1747,77 @@ const calculateBindingCost = (bindingRows, item, qty, context) => {
   return total;
 };
 
+
+
+
+// ── HMT PLATE DETAILS ─────────────────────────────────────────────────────────
+// Rules:
+//   Multicolor (CMYK): Single Side = 4 plates/forma, Both Side = 8 plates/forma
+//   B&W:               Single Side = 1 plate/forma,  Both Side = 2 plates/forma
+//   If forma has remainder → add 4 extra plates (Multicolor) or 1 (B&W)
+//   Rate = ₹2000 per plate
+
+const calculateHMTPlateDetails = (insidePages, ups, sides, pressType) => {
+  const PLATE_RATE  = 2000;
+  const isMulticolor = pressType === "HMT MULTICOLOR";
+  const isBothSide = sides === "Both Side" || sides === "Both Sides";
+  const platesPerForma = isMulticolor
+    ? (isBothSide ? 8 : 4)
+    : (isBothSide ? 2 : 1);
+
+  const rawForma = Number(insidePages) / Number(ups);
+  const wholeForma = Math.floor(rawForma);
+  const hasDecimal = (Number(insidePages) % Number(ups)) > 0;
+
+  // Partial forma needs extra plates for the leftover pages
+  const extraPlates = hasDecimal ? (isMulticolor ? 4 : 1) : 0;
+  const totalPlates = (wholeForma * platesPerForma) + extraPlates;
+  const plateCost = totalPlates * PLATE_RATE;
+
+  return {
+    total_plates: totalPlates,
+    plate_cost: plateCost,
+    forma: parseFloat(rawForma.toFixed(4)),
+    whole_forma: wholeForma,
+    plates_per_forma: platesPerForma,
+    has_decimal_forma: hasDecimal,
+    extra_plates: extraPlates,
+    plate_rate: PLATE_RATE,
+  };
+};
+
+// ── COVER PLATE DETAILS ───────────────────────────────────────────────────────
+// Cover is always exactly 1 forma — no partial formas possible.
+// What changes is only how many sides are printed:
+//   2-page cover → Single Side → 1 forma × (4 or 1) plates
+//   4-page cover → Both Side  → 1 forma × (8 or 2) plates
+// Rate = ₹2000 per plate (same as inside)
+// 
+
+const calculateCoverPlateDetails = (coverPages, pressType) => {
+  const PLATE_RATE   = 2000;
+  const isMulticolor = pressType === "HMT MULTICOLOR";
+  const isBothSide   = Number(coverPages) === 4; // 4-page = both sides printed
+
+  // 2-page: Single Side → 4 plates (MC) or 1 plate (BW)
+  // 4-page: Both Side   → 8 plates (MC) or 2 plates (BW)
+  const totalPlates = isMulticolor
+    ? (isBothSide ? 8 : 4)
+    : (isBothSide ? 2 : 1);
+
+  return {
+    total_plates:  totalPlates,
+    plate_cost:    totalPlates * PLATE_RATE,
+    forma:         1,                                          // cover is always 1 forma
+    cover_sides:   isBothSide ? "Both Side" : "Single Side",
+    plate_rate:    PLATE_RATE,
+  };
+};
+
 // ---------------------- PRINT COST (Color Based) ----------------------
 // Helper to calculate printing cost based on press type, color, sides, and sheet count
 const calculatePrintingCost = async (pressType, colorScheme, sides, sheetCount, jobSize, qty, ups = null, category = null, coverFlag = false) => {
-  console.log("pressType: ", pressType, ", colorScheme: ", colorScheme, ", sides: " , sides, " , sheetCount: ", sheetCount, ", jobSize: ", jobSize, ", qty: ", qty, ", ups: ", ups, "coverFlag: ", coverFlag);
+  console.log("calculatePrintingCost coverFlag: ", coverFlag);
 
   if (!pressType) return 0;
 
@@ -1731,45 +1841,42 @@ const calculatePrintingCost = async (pressType, colorScheme, sides, sheetCount, 
   }
   
   if (rateType === "slab") {
-    let plateCost = 0;
-    let pagesPerPlate = ups;
-    if(coverFlag === false && category === "Multiple Sheet" && sides === "Both Side"){
-        pagesPerPlate = ups ? ups / 2 : 0;
-    }
-    if(coverFlag && category === "Multiple Sheet" && sides === "Both Side"){
-        pagesPerPlate = ups || 0;
-    }
+    // let plateCost = 0;
+    // let pagesPerPlate = ups;
+    // if(coverFlag === false && category === "Multiple Sheet" && sides === "Both Side"){
+    //     pagesPerPlate = ups ? ups / 2 : 0;
+    // }
+    // if(coverFlag && category === "Multiple Sheet" && sides === "Both Side"){
+    //     pagesPerPlate = ups || 0;
+    // }
     
 
-    if(pressType === "HMT BLACK WHITE"){  
-      plateCost = 150 * pagesPerPlate;
-    }
-    else if(pressType === "HMT MULTICOLOR"){
-      plateCost = 750 * pagesPerPlate;
-    }
+    // if(pressType === "HMT BLACK WHITE"){  
+    //   plateCost = 150 * pagesPerPlate;
+    // }
+    // else if(pressType === "HMT MULTICOLOR"){
+    //   plateCost = 750 * pagesPerPlate;
+    // }
+
+
+    // 1 plate 2000 multicolor
+    // 1 plate hi use hota hai 2000 black and white 
+
 
     const slab = rates.find(r => r.min_qty === 1);
     if (!slab) return 0;
 
-    console.log("slab.rate: ", slab.rate);
     const rate = Number(slab.rate);
-
     let sheets = sheetCount;
-
     let slabs = Math.floor(sheets / 1000);
     let remainder = sheets % 1000;
-
     // rounding rule
     if (remainder >= 100) slabs += 1;
-
     // minimum charge
     if (slabs === 0) slabs = 1;
 
-    const cost = slabs * rate + plateCost;
-
-    console.log("plateCost: ", plateCost);
-
-    return cost * sideMultiplier;
+    // Running press cost only — plate cost is added by the caller
+    return slabs * rate * sideMultiplier;
   }
 
   if(rateType === "per_size"){
