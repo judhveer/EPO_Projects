@@ -235,6 +235,8 @@ const cleanJobItems = (items) => {
       selectedWideMaterial: _swm,
       itemMaster: _im,
       jobCard: _jc,
+      cover_plate_details,  
+      ss_plate_details,      
       ...cleaned
     } = item;
 
@@ -1135,6 +1137,7 @@ export default function JobCardForm({
                   best_sheet_size_name: result.best_sheet_size_name,
                   best_sheet_name: result.best_sheet_name,
                   best_sheet_dims: result.best_sheet_dims,
+                  plate_details: result.plate_details ?? null,
                 };
               })
             : currentInsidePapers;
@@ -1147,8 +1150,11 @@ export default function JobCardForm({
             is_calculating:    false,
             calc_error:        null,      // ← clear any previous error
             costing_snapshot: costingSnapshot, // ← sent to backend for JobItemCosting
+            ss_plate_details:       data.inside?.plate_details ?? null, 
             // ← NEW: inside papers now carry per-paper calc results
             inside_papers: mergedInsidePapers,
+            // Cover Plate details.
+            cover_plate_details: data.cover?.plate_details ?? null,
             // Store inside best-sheet details
             best_inside_sheet: data.inside.sheet_selected,
             best_inside_dimensions: data.inside.sheet_dimensions,
