@@ -1257,6 +1257,16 @@ const JobItem = React.memo(function JobItem({
                 {" "}· Rate: <b>{rs(cs.ss_sheet_rate)}</b>
                 {" "}· Sheet cost: <b>{rs(cs.ss_sheet_cost)}</b>
                 {" "}· Print cost: <b>{rs(cs.ss_printing_cost)}</b>
+                {/* ── Plate details — only for HMT presses ── */}
+                {item.ss_plate_details && (
+                  <>
+                    {" "}· Plates: <b>{item.ss_plate_details.total_plates}</b>
+                    {" "}({item.ss_plate_details.cover_sides ?? (
+                      item.ss_plate_details.forma === 1 ? "1 forma" : `${item.ss_plate_details.forma} forma`
+                    )})
+                    {" "}· Plate cost: <b>{rs(item.ss_plate_details.plate_cost)}</b>
+                  </>
+                )}
                 {cs.binding_cost > 0 && <> · Binding: <b>{rs(cs.binding_cost)}</b></>}
               </p>
             </div>
@@ -1274,7 +1284,19 @@ const JobItem = React.memo(function JobItem({
                   {" "}· {rs(paper.sheet_rate)}/sheet
                   {" "}· Sheet cost: <b>{rs(paper.sheet_cost)}</b>
 
-                  {paper.to_print && paper.printing_cost != null && <> · Print: <b>{rs(paper.printing_cost)}</b></>}
+                  {paper.to_print && paper.printing_cost != null && (
+                    <>
+                      {" "}· Print: <b>{rs(paper.printing_cost)}</b>
+                      {paper.plate_details && (
+                        <>
+                          {" "}· Plates: <b>{paper.plate_details.total_plates}</b>
+                          {" "}({paper.plate_details.plates_per_forma} plates/forma × {paper.plate_details.whole_forma} forma
+                          {paper.plate_details.has_decimal_forma && ` + ${paper.plate_details.extra_plates} extra`})
+                          {" "}· Plate cost: <b>{rs(paper.plate_details.plate_cost)}</b>
+                        </>
+                      )}
+                    </>
+                  )}
                   {paper.to_print && paper.press_type && (
                     <> · Press: <b>{paper.press_type}</b></>
                   )}
@@ -1319,6 +1341,14 @@ const JobItem = React.memo(function JobItem({
                   Print cost: <b>{rs(cs.ms_cover_printing_cost)}</b>
                   {item.cover_press_type && <> · Press: <b>{item.cover_press_type}</b></>}
                   {item.cover_color_scheme && <> · Color: <b>{item.cover_color_scheme}</b></>}
+                  {/* ── Cover plate details — shown only for HMT presses ── */}
+                  {item.cover_plate_details && (
+                    <>
+                      {" "}· Plates: <b>{item.cover_plate_details.total_plates}</b>
+                      {" "}({item.cover_plate_details.cover_sides})
+                      {" "}· Plate cost: <b>{rs(item.cover_plate_details.plate_cost)}</b>
+                    </>
+                  )}
                 </p>
               )}
 
@@ -1328,9 +1358,6 @@ const JobItem = React.memo(function JobItem({
                 </p>
               )}
 
-              {cs.binding_cost > 0 && (
-                <p className="text-blue-700">Binding: <b>{rs(cs.binding_cost)}</b></p>
-              )}
             </div>
           )}
 
