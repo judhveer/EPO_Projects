@@ -238,7 +238,7 @@ app.use("/api/fms/outbound",
   outboundRoutes);
 
 
-app.use("/api/fms/quotation", authenticate, quotationRoutes);
+app.use("/api/fms/quotations", authenticate, quotationRoutes);
 
 //  FOR PENDING BILLS FROM GOOGLE SHEET
 app.use("/api/billing", billingRoutes);
