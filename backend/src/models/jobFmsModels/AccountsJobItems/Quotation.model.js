@@ -43,7 +43,6 @@ export default (sequelize) => {
             allowNull: false,
             get() {
                 const raw = this.getDataValue("items");
-                console.log("raw: ", raw);
                 if (!raw) return [];
                 if (typeof raw === "string") {
                     try { return JSON.parse(raw); } catch { return []; }
