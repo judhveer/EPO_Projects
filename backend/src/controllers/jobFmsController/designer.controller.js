@@ -105,13 +105,8 @@ export function calculateMaxDesignDeadline(deliveryDate, jobCreatedAt, priority,
 
   let deadline;
 
-  // Redesign instance → always 4 hours from assignment creation time
-  if (instance > 1) {
-    const base = assignedAt ? new Date(assignedAt) : now;
-    deadline   = new Date(base.getTime() + 4 * 60 * 60 * 1000);
-  }
   // ── Rule 1: Urgent OR same-day delivery → 4 hours from now ─────────────
-  else if (priority === "Urgent" || totalDays < 1) {
+  if (priority === "Urgent" || totalDays < 1) {
     deadline = new Date(now.getTime() + 4 * 60 * 60 * 1000);
   }
   // ── Rule 2: Next-day delivery → day before delivery at 19:30 IST ───────
@@ -127,7 +122,22 @@ export function calculateMaxDesignDeadline(deliveryDate, jobCreatedAt, priority,
     deadline = new Date(jobCreatedAt.getTime() + totalMs * 0.50);
   }
 
-  // ── HARD CAP ──────────────────────────────────────────────────────
+  // ── Redesign override (instance > 1) ────────
+  // Give 4-hour extension ONLY when the normal deadline leaves less than 4 hours from now. If the window still has ≥ 4 hours, keep it as-is.
+  // Redesign instance → always 4 hours from assignment creation time
+  if (instance > 1) {
+    const remainingMs = deadline.getTime() - now.getTime();
+    const fourHoursMs = 4 * 60 * 60 * 1000;
+
+    if(remainingMs < fourHoursMs){
+      // Window is exhausted or nearly gone → grant fresh 4 hours from assignment time
+      const base = assignedAt ? new Date(assignedAt) : now;
+      deadline   = new Date(base.getTime() + fourHoursMs);
+    }
+    // else: window still has ≥ 4 hours left → keep the calculated deadline unchanged
+  }
+
+  // ── HARD CAP: never exceed delivery date ──
   return deadline > deliveryDate ? deliveryDate : deadline;
 }
 
@@ -204,6 +214,8 @@ export const setEstimatedTime = async (req, res) => {
 
     assignment.estimated_completion_time = estimated_completion_time;
     await assignment.save();
+
+    const totalDays = (deliveryDate.getTime() - jobCreatedAt.getTime()) / (1000 * 60 * 60 * 24);
 
     // Log Action
     await ActivityLog.create({
