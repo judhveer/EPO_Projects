@@ -16,19 +16,13 @@ function calcMaxDesignDeadline(deliveryDateISO, createdAtISO, priority, instance
   const now          = new Date();
   const totalMs      = deliveryDate.getTime() - jobCreatedAt.getTime();
   const totalDays    = totalMs / (1000 * 60 * 60 * 24);
+  // console.log("deliveryDate: ", deliveryDate);
+  // console.log("jobCreatedAt: ", jobCreatedAt);
 
   let deadline;
 
-
-  // ── Redesign (instance > 1): always get 4 hours from assignment time ──────
-  // The original window is likely already gone. Give fresh 4 hours from
-  // when this redesign assignment was created (or from now if assignedAt missing).
-  if (instance > 1) {
-    const base = assignedAtISO ? new Date(assignedAtISO) : now;
-    deadline   = new Date(base.getTime() + 4 * 60 * 60 * 1000);
-  }
   // ── Rule 1: Urgent or same-day ─
-  else if (priority === "Urgent" || totalDays < 1) {
+  if (priority === "Urgent" || totalDays < 1) {
     // 4 hours from now
     deadline = new Date(now.getTime() + 4 * 60 * 60 * 1000);
   }
@@ -42,6 +36,16 @@ function calcMaxDesignDeadline(deliveryDateISO, createdAtISO, priority, instance
   else{
     // ── Rule 3: 50% of window ───
     deadline = new Date(jobCreatedAt.getTime() + totalMs * 0.50);
+  }
+
+  // ── Redesign override ───
+  if (instance > 1) {
+    const remainingMs = deadline.getTime() - now.getTime();
+    const fourHoursMs = 4 * 60 * 60 * 1000;
+    if(remainingMs < fourHoursMs){
+      const base = assignedAtISO ? new Date(assignedAtISO) : now;
+      deadline   = new Date(base.getTime() + fourHoursMs);
+    }
   }
   // ── HARD CAP: estimated completion can never exceed delivery date ──
   return deadline > deliveryDate ? deliveryDate : deadline;
@@ -63,14 +67,35 @@ function toDateTimeLocalStr(date) {
 
 // Human-readable deadline label shown under the input
 function deadlineLabel(deliveryDateISO, createdAtISO, priority, instance = 1, assignedAtISO = null) {
-
-  if (instance > 1) {
-    return { rule: "Redesign — 4 hrs from assignment", color: "text-purple-600" };
-  }
-
   const deliveryDate = new Date(deliveryDateISO);
   const jobCreatedAt = new Date(createdAtISO);
-  const totalDays    = (deliveryDate - jobCreatedAt) / 86400000;
+  const now          = new Date();
+  const totalMs      = deliveryDate.getTime() - jobCreatedAt.getTime();
+  const totalDays    = totalMs / (1000 * 60 * 60 * 24);
+
+  // Compute what the base (non-redesign) deadline would be
+  let baseDeadline;
+  if (priority === "Urgent" || totalDays < 1) {
+    baseDeadline = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+  } else if (totalDays <= 2) {
+    baseDeadline = new Date(deliveryDate);
+    baseDeadline.setDate(baseDeadline.getDate() - 1);
+    baseDeadline.setUTCHours(14, 0, 0, 0);
+  } else {
+    baseDeadline = new Date(jobCreatedAt.getTime() + totalMs * 0.50);
+  }
+
+  if (instance > 1) {
+    const remainingMs = baseDeadline.getTime() - now.getTime();
+    const fourHoursMs = 4 * 60 * 60 * 1000;
+
+    if (remainingMs < fourHoursMs) {
+      return { rule: "Redesign — 4 hrs from assignment (window expired)", color: "text-purple-600" };
+    } else {
+      const pct = Math.round(totalDays * 0.50);
+      return { rule: `Redesign — within original 50% window (~${pct} day${pct !== 1 ? "s" : ""})`, color: "text-purple-600" };
+    }
+  }
 
   if (priority === "Urgent" || totalDays < 1) {
     return { rule: "Urgent — 4 hrs from now", color: "text-red-600" };
