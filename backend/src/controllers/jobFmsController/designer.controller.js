@@ -181,9 +181,9 @@ export const setEstimatedTime = async (req, res) => {
     }
 
     // ── Guard 2: enforce deadline rule ──────────────────────────────────
-    const deliveryDate  = new Date(assignment.jobCard.delivery_date);
-    const jobCreatedAt  = new Date(assignment.jobCard.created_at);
-    const priority      = assignment.jobCard.task_priority;
+    const deliveryDate  = new Date(assignment.jobCard.dataValues.delivery_date);
+    const jobCreatedAt  = new Date(assignment.jobCard.dataValues.created_at);
+    const priority      = assignment.jobCard.dataValues.task_priority;
 
     // ── Pass instance + assigned_at so redesign gets 4-hour window ──────────
     const maxAllowed = calculateMaxDesignDeadline(
@@ -280,7 +280,7 @@ const autoPauseActiveJob = async (designerUsername, currentJobNo, t) => {
 
   if (!activeAssignment) return null;
 
-  const pausedJobNo = activeAssignment.jobCard.job_no;
+  const pausedJobNo = activeAssignment.jobCard.dataValues.job_no;
 
   // Run the same pause logic as designerPauseTask
   const jobDesignTimeLog = await JobDesignTime.findOne({
@@ -817,7 +817,7 @@ export const pauseOnLogout = async (req, res) => {
 
     if (!activeAssignment) return; // nothing running — no-op
 
-    const job_no = activeAssignment.jobCard.job_no;
+    const job_no = activeAssignment.jobCard.dataValues.job_no;
     const now = new Date();
 
     // Close the open time log
