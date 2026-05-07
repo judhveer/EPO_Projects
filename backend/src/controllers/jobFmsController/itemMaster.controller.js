@@ -246,18 +246,38 @@ const parseSize = (sizeStr, category) => {
 };
 
 
-// ── WASTAGE MULTIPLIER ────────────────────────────────────────────────────────
-// Returns the sheets-with-wastage multiplier based on press type.
-//   HMT / AUTOPRINT → 10% wastage  (1.10)
-//   DIGITAL         →  5% wastage  (1.05)
-//   FLEX / PLOTTER  →  0% wastage  (1.00) — material is cut to size, no spoilage
-//   unknown/null    →  5% wastage  (1.05) — safe default
-const getWastageMultiplier = (pressType) => {
+
+// ── WASTAGE SHEETS ────────────────────────────────────────────────────────────
+// Returns the ABSOLUTE wastage sheet count (not a multiplier).
+//
+// HMT:       50 sheets × ceil(insidePages / effectiveUps)
+//            — 50 per forma; partial forma gets another 50
+// AUTOPRINT: qty-based percentage wastage (not flat sheets)
+//            qty < 500  → 5%  of printSheets
+//            qty ≥ 500  → 10% of printSheets
+// DIGITAL:   5% of printSheets, rounded up
+// Others:    0 (Flex, Plotter — cut to size, no spoilage)
+//
+// For Single Sheet / Cover (always 1 forma): pass insidePages=1, effectiveUps=1
+// ─────────────────────────────────────────────────────────────────────────────
+const getWastageSheets = (pressType, printSheets, qty, insidePages = 1, effectiveUps = 1) => {
   const p = (pressType || "").toUpperCase();
-  if (p.startsWith("HMT") || p === "AUTOPRINT")     return 1.10;
-  if (p.startsWith("DIGITAL"))                       return 1.05;
-  if (p === "FLEX MACHINE" || p.startsWith("PLOTTER")) return 1.00;
-  return 1.05; // safe default
+
+  if (p.startsWith("HMT")) {
+    const formaCount = Math.ceil(Number(insidePages) / Number(effectiveUps));
+    return formaCount * 50;
+  }
+
+  if (p === "AUTOPRINT") {
+    const pct = Number(qty) < 500 ? 0.05 : 0.10;
+    return Math.ceil(printSheets * pct);
+  }
+
+  if (p.startsWith("DIGITAL")) {
+    return Math.ceil(printSheets * 0.05);
+  }
+
+  return 0; // FLEX MACHINE, PLOTTER, unknown → no sheet wastage
 };
 
 
@@ -830,8 +850,7 @@ export const calculateItemController = async (req, res) => {
         paper_type === "Photo Plotter Paper";
 
       // Plotter paper: no wastage (pre-cut rolls). Others: press-type driven wastage.
-      const wastageMultiplier = isPlotterPaper ? 1.00 : getWastageMultiplier(pressType);
-      const insideSheetsWithWastage = Math.ceil(insideSheets * wastageMultiplier);
+      const insideSheetsWithWastage = isPlotterPaper ? insideSheets : insideSheets + getWastageSheets(pressType, insideSheets, qty, 1, 1);
 
       const insideSheetRate = Number(bestInsideSheet.rate_per_sheet || 0);
       const insideTotalSheetCost = insideSheetsWithWastage * insideSheetRate;
@@ -1054,9 +1073,8 @@ export const calculateItemController = async (req, res) => {
         const paperSheets = Math.ceil(insideTotalPages / effectiveUps);
         
         // Wastage is 0 when paper is not sent to press (no printing = no makeready spoilage).
-        // When printed: press-type driven (HMT/AUTOPRINT=10%, Digital=5%, Flex=0%).
-        const paperWastageMultiplier = paper.to_print ? getWastageMultiplier(paper.press_type) : 1.00;
-        const paperSheetsWithWastage = Math.ceil(paperSheets * paperWastageMultiplier);
+        // When printed: press-type driven
+        const paperSheetsWithWastage = paper.to_print ? paperSheets + getWastageSheets(paperPressType, paperSheets, qty, inside_pages, effectiveUps) :  paperSheets;
 
         // 6. Sheet cost for this paper
         const sheetRate = Number(bestSheet.rate_per_sheet || 0);
@@ -1229,10 +1247,10 @@ export const calculateItemController = async (req, res) => {
       const coverSheets = hasSpine
         ? Math.ceil(qty / bestUpsCover)
         : Math.ceil((2 * qty) / bestUpsCover);
-      // Apply 5% wastage per sheet type (round up)
 
-      const coverWastageMultiplier = cover_to_print ? getWastageMultiplier(item.cover_press_type) : 1.00;
-      const coverSheetsWithWastage = Math.ceil(coverSheets * coverWastageMultiplier);
+      // Cover is always 1 forma (2-page or 4-page, still 1 unique layout)
+      const coverSheetsWithWastage = cover_to_print ? coverSheets + getWastageSheets(coverPressType, coverSheets, qty, 1, 1) : coverSheets;
+      
       const coverSheetRate = Number(bestCoverSheet.rate_per_sheet || 0);
       const coverTotalSheetCost = coverSheetsWithWastage * coverSheetRate;
 
