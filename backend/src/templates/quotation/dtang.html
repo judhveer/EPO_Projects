@@ -19,16 +19,15 @@ body {
   border-bottom: 2px solid #0f766e;
   margin-bottom: 10px;
 }
-.meta-item { font-size: 8.5px; color: #0f766e; font-weight: 600; }
+.meta-item { font-size: 10px; color: #0f766e; font-weight: 600; }
 .meta-label { color: #6b7280; font-weight: 400; }
 
 /* ── CLIENT ── */
-.to-line { font-size: 8px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; }
-.client-name { font-size: 13px; font-weight: 800; color: #0f766e; margin-top: 2px; }
+.to-line { font-size: 9px; color: #9199a6; text-transform: uppercase; letter-spacing: 1px; }
+.client-name { font-size: 15px; font-weight: 800; color: #0f766e; margin-top: 2px; }
 .client-sub { font-size: 8.5px; color: #4b5563; margin-top: 1px; line-height: 1.5; }
 .client-block {
   padding: 6px 0 6px 10px;
-  border-left: 3px solid #0f766e;
   margin-bottom: 8px;
 }
 
@@ -36,19 +35,22 @@ body {
 .subject-pill {
   display: inline-block;
   background: #0f766e; color: #fff;
-  font-size: 9px; font-weight: 700;
+  font-size: 12px; font-weight: 700;
   padding: 4px 16px; border-radius: 20px;
   letter-spacing: 0.4px;
 }
-.subject-wrap { text-align: center; margin: 6px 0 4px; }
-.salutation { font-size: 8.5px; color: #6b7280; margin-top: 5px; }
+.subject-wrap { 
+  text-align: center; 
+  margin: 6px 0 15px; 
+}
+.salutation { font-size: 12px; color: #6b7280; margin-top: 5px; }
 .salutation em { margin-left: 6px; }
 
 /* ── TABLE ── */
 table { width: 100%; border-collapse: collapse; margin-top: 7px; }
-table thead tr { background: #0f766e; }
+/* table thead tr { color: black; } */
 table thead th {
-  color: #fff; font-size: 8px; font-weight: 700;
+  color: #000000; font-size: 8px; font-weight: 700;
   padding: 6px 5px; border: 1px solid #0d6b63;
   text-transform: uppercase; letter-spacing: 0.5px;
 }
@@ -59,7 +61,7 @@ table tbody tr:nth-child(even) { background: #f0fdf4; }
 table tbody tr:nth-child(odd)  { background: #fff; }
 table tbody td {
   padding: 5px 5px; font-size: 8.5px;
-  border: 1px solid #d1fae5; vertical-align: top;
+  border: 1px solid #0f766e; vertical-align: top;
 }
 table tbody td.l  { text-align: left; }
 table tbody td.r  { text-align: right; }
@@ -67,30 +69,50 @@ table tbody td.c  { text-align: center; }
 table tbody td small { color: #6b7280; font-size: 7.5px; display: block; margin-top: 1px; }
 table tbody strong { font-size: 9px; color: #064e3b; }
 
-.subtotal-row td { background: #d1fae5 !important; font-size: 8.5px; border-color: #a7f3d0; padding: 4px 5px; }
+.subtotal-row td {font-size: 8.5px; border-color: #0f766e; padding: 4px 5px; }
 .final-row td {
-  background: #0f766e !important; color: #fff !important;
+  color: #000 !important;
   font-weight: 700; font-size: 9.5px; padding: 5px 5px;
   border-color: #0f766e;
 }
 .words-row td {
   background: #ecfdf5 !important; color: #065f46;
-  font-size: 8px; border-color: #a7f3d0; padding: 5px;
+  font-size: 9px; border-color: #0f766e; padding: 5px;
   border-top: 1.5px dashed #6ee7b7;
+  text-align: center !important;
+  font-weight: bolder;
 }
 
 /* ── SIGNATURE ── */
 .sign-area {
-  display: flex; justify-content: space-between; align-items: flex-end;
-  margin-top: 14px; margin-bottom: 8px;
+  display: flex; 
+  justify-content: space-between; 
+  align-items: flex-end;
+  margin-top: 14px; 
+  margin-bottom: 8px;
 }
-.thank-you { font-size: 9.5px; color: #6b7280; }
-.sign-block { text-align: right; }
-.sign-for { font-size: 9px; font-weight: 700; color: #0f766e; margin-bottom: 22px; }
+.thank-you { font-size: 10px; color: #6b7280; }
+.sign-block { 
+  margin-top: 15px;
+  text-align: right; 
+}
+.sign-for { font-size: 12px; font-weight: 700; color: #0f766e; margin-bottom: 30px; }
 .sign-line { width: 130px; border-top: 1.5px solid #0f766e; margin-left: auto; }
-.sign-label { font-size: 7.5px; color: #9ca3af; margin-top: 2px; }
+.sign-label { font-size: 9px; color: #9ca3af; margin-top: 3px; }
 
-.page-footer { margin-top: auto; }
+.page-footer { 
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  justify-content: center;
+}
+
+.page-footer .address{
+  margin-bottom: 10px;
+  text-align: center;
+}
+
 </style>
 </head>
 <body>
@@ -125,9 +147,10 @@ table tbody strong { font-size: 9px; color: #064e3b; }
   </table>
 
   <div class="sign-area">
-    <div class="thank-you">Thank you for choosing {{SIGN_NAME}}.</div>
+    <div class="thank-you">The above mentioned rate are inclusive of all charges.</div>
     <div class="sign-block">
-      <div class="sign-for">For {{SIGN_NAME}}</div>
+      <div>Thank You</div>
+      <div class="sign-for">{{SIGN_NAME}}</div>
       <div class="sign-line"></div>
       <div class="sign-label">Authorised Signatory</div>
     </div>
@@ -135,6 +158,13 @@ table tbody strong { font-size: 9px; color: #064e3b; }
 
 </div>
 
-<div class="page-footer">{{FOOTER_SVG}}</div>
+<div class="page-footer">
+  <div>
+    {{FOOTER_SVG}}
+  </div>
+  <div class="address">
+    Address: 2nd Floor, RPG Complex, Keating Road, Shillong - 793001
+  </div>
+</div>
 </body>
 </html>
