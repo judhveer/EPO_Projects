@@ -1,14 +1,13 @@
 import React, {
-  useEffect,
-  useState,
-  useRef,
-  useCallback,
+  useEffect, useState, useRef, useCallback, useMemo
 } from "react";
 import api from "../../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { DateTime } from "luxon";
 
-// ── Delivery urgency helper ───────────────────────────────────────────────────
+// helper Functions
+
+// ── Delivery urgency ───────────────────────────────────────────────────
 // Returns a colour + label based on how close the delivery date is to now.
 const deliveryUrgency = (deliveryDate) => {
   if (!deliveryDate) return { color: "text-slate-400", label: "No date" };
@@ -23,45 +22,150 @@ const deliveryUrgency = (deliveryDate) => {
   return              { color: "text-green-700  bg-green-50   border-green-200",  label: "Later",        dot: "🟢" };
 };
 
+// Converts JS Date → "YYYY-MM-DDTHH:mm" for datetime-local input
+const toDateTimeLocalStr = (date) => {
+  if (!date || isNaN(date.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+const isoToLocal = (iso) => {
+  if (!iso) return "";
+  return toDateTimeLocalStr(new Date(iso));
+};
+
 
 // ── Job row shown inside designer card ───────────────────────────────────────
-function JobRow({ job, label }) {
+function JobRow({ job, label, onSetEstTime }) {
   const urgency = deliveryUrgency(job.delivery_date);
+
+  // Local state: editing, error, saved tick
+  const [editing, setEditing]   = useState(false);
+  const [estError, setEstError] = useState(null);
+  const [estSaved, setEstSaved] = useState(false);
+  // Mirror estimated_done locally so display updates without a full refetch
+  const [localEst, setLocalEst] = useState(job.estimated_done ?? null);
+
+  // Sync if parent data changes (e.g. after modal re-open)
+  useEffect(() => { setLocalEst(job.estimated_done ?? null); }, [job.estimated_done]);
+
+  const handleSave = async (val) => {
+    setEditing(false);
+    if (!val) return;
+
+    // Client-side: past check
+    const minStr = toDateTimeLocalStr(new Date());
+    if (val <= minStr) {
+      setEstError("Cannot be in the past.");
+      return;
+    }
+    // Client-side: delivery cap
+    const maxStr = isoToLocal(job.delivery_date);
+    if (maxStr && val > maxStr) {
+      setEstError("Must be before delivery date.");
+      return;
+    }
+
+    setEstError(null);
+    setEstSaved(false);
+
+    try {
+      await onSetEstTime(job.job_no, val);
+      setLocalEst(val);
+      setEstSaved(true);
+      setTimeout(() => setEstSaved(false), 2500);
+    } catch (e) {
+      setEstError(e?.response?.data?.error || "Save failed.");
+    }
+  };
+
   return (
     <div className={`rounded border px-2.5 py-1.5 text-xs ${urgency.color}`}>
+      {/* Line 1: job number + priority */}
       <div className="flex justify-between items-center gap-2 flex-wrap">
         <span className="font-semibold">
           {urgency.dot} #{job.job_no} — {job.client_name || "—"}
         </span>
         <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${
-          job.priority === "Urgent"   ? "bg-red-200 text-red-800" :
-          job.priority === "High"     ? "bg-orange-200 text-orange-800" :
-          job.priority === "Medium"   ? "bg-yellow-200 text-yellow-800" :
-                                        "bg-green-200 text-green-800"
+          job.priority === "Urgent" ? "bg-red-200 text-red-800" :
+          job.priority === "High"   ? "bg-orange-200 text-orange-800" :
+          job.priority === "Medium" ? "bg-yellow-200 text-yellow-800" :
+                                      "bg-green-200 text-green-800"
         }`}>
           {job.priority}
         </span>
       </div>
+
+      {/* Line 2: label + delivery */}
       <div className="flex flex-wrap gap-x-3 mt-1 text-[11px] opacity-80">
-        <span>📦 {label}</span>
+        <span className={`font-medium px-1.5 py-0.5 rounded text-[10px] ${
+          label === "paused"        ? "bg-yellow-200 text-yellow-800" :
+          label === "in_progress"   ? "bg-blue-200   text-blue-800"   :
+                                      "bg-slate-200   text-slate-700"
+        }`}>
+          {label === "paused"       ? "⏸ Paused"         :
+          label === "in_progress"  ? "▶ In Progress"    :
+                                      "🕐 Awaiting Start"}
+        </span>
         <span>
           🗓 Delivery:{" "}
           {job.delivery_date
             ? DateTime.fromJSDate(new Date(job.delivery_date))
-                .setZone("Asia/Kolkata")
-                .toFormat("dd LLL yyyy, hh:mm a")
+                .setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")
             : "—"}
         </span>
         {urgency.label !== "Later" && (
           <span className="font-semibold">{urgency.label}</span>
         )}
       </div>
+
+      {/* Line 3: estimated completion — click to edit */}
+      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+        <span className="text-[11px] opacity-70 shrink-0">⏱ Est. Completion:</span>
+
+        {editing ? (
+          <input
+            type="datetime-local"
+            autoFocus
+            defaultValue={isoToLocal(localEst)}
+            min={toDateTimeLocalStr(new Date())}
+            max={isoToLocal(job.delivery_date)}
+            onBlur={(e) => handleSave(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter")  handleSave(e.target.value);
+              if (e.key === "Escape") setEditing(false);
+            }}
+            className="text-[11px] border rounded px-1.5 py-0.5 text-black bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 w-[155px]"
+          />
+        ) : (
+          <button
+            onClick={() => { setEditing(true); setEstError(null); }}
+            className="text-[11px] underline decoration-dashed underline-offset-2 opacity-90 hover:opacity-100 text-left"
+          >
+            {localEst
+              ? DateTime.fromJSDate(new Date(localEst))
+                  .setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")
+              : <span className="italic opacity-60">Click to set…</span>
+            }
+            <span className="ml-1 opacity-50">✏️</span>
+          </button>
+        )}
+
+        {/* Feedback indicators */}
+        {estSaved && (
+          <span className="text-[10px] text-green-700 font-semibold">✓ Saved</span>
+        )}
+        {estError && !editing && (
+          <span className="text-[10px] text-red-600">⚠ {estError}</span>
+        )}
+      </div>
     </div>
   );
 }
 
+
 // ── Designer card in the status modal ────────────────────────────────────────
-function DesignerCard({ designer }) {
+function DesignerCard({ designer, onSetEstTime }) {
   const [expanded, setExpanded] = useState(false);
 
   // Derive the most urgent delivery from active + pending jobs
@@ -157,10 +261,15 @@ function DesignerCard({ designer }) {
                 <p className="text-xs text-slate-400 italic">No active or pending jobs.</p>
               )}
               {designer.active_jobs.map((j) => (
-                <JobRow key={j.job_no} job={j} label="In progress" />
+                <JobRow 
+                  key={j.job_no} 
+                  job={j} 
+                  label={ j.is_paused ? "paused" : "in_progress" }
+                  onSetEstTime={onSetEstTime} 
+                />
               ))}
               {designer.pending_jobs.map((j) => (
-                <JobRow key={j.job_no} job={j} label="Pending" />
+                <JobRow key={j.job_no} job={j} label="awaiting_start" onSetEstTime={onSetEstTime} />
               ))}
             </div>
           </motion.div>
@@ -171,7 +280,7 @@ function DesignerCard({ designer }) {
 }
 
 // ── Designer Status Modal ─────────────────────────────────────────────────────
-function DesignerStatusModal({ designers, onClose }) {
+function DesignerStatusModal({ designers, onClose, onSetEstTime }) {
   return (
     <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -210,7 +319,7 @@ function DesignerStatusModal({ designers, onClose }) {
             </p>
           )}
           {designers.map((d) => (
-            <DesignerCard key={d.designer_id} designer={d} />
+            <DesignerCard key={d.designer_id} designer={d} onSetEstTime={onSetEstTime} />
           ))}
         </div>
       </motion.div>
@@ -273,6 +382,27 @@ export default function ProcessCoordinatorTable() {
       console.error("Failed to fetch designers", error);
       setErr("Unable to load designers");
     }
+  }, []);
+
+  // Coordinator sets estimated time from the Designer Status modal.
+  // Throws on error so JobRow can catch and display it locally.
+  const handleEstSaveFromModal = useCallback(async (jobNo, val) => {
+    await api.patch(`/api/fms/process-coordinator/${jobNo}/set-estimated-time`, {
+      estimated_completion_time: val,
+    });
+    // Update designers state in-place so the modal reflects the new value
+    // without a full refetch.
+    setDesigners((prev) =>
+      prev.map((d) => ({
+        ...d,
+        active_jobs: d.active_jobs.map((j) =>
+          j.job_no === jobNo ? { ...j, estimated_done: val } : j,
+        ),
+        pending_jobs: d.pending_jobs.map((j) =>
+          j.job_no === jobNo ? { ...j, estimated_done: val } : j,
+        ),
+      })),
+    );
   }, []);
 
   useEffect(() => {
@@ -575,9 +705,12 @@ export default function ProcessCoordinatorTable() {
           <DesignerStatusModal
             designers={designers}
             onClose={() => setShowDesignerStatus(false)}
+            onSetEstTime={handleEstSaveFromModal}
           />
         )}
       </AnimatePresence>
     </div>
   );
 }
+
+
