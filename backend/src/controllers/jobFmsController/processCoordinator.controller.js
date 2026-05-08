@@ -254,6 +254,7 @@ export const getDesignerStatus = async (req, res) => {
           delivery_date:   j.jobCard?.delivery_date,   // ← ADD
           start_time:      j.designer_start_time,
           estimated_done:  j.estimated_completion_time, // ← rename for clarity
+          is_paused:       j.is_paused,
         })),
         pending_jobs: pendingJobs.map((j) => ({
           job_no:        j.job_no,
@@ -261,6 +262,7 @@ export const getDesignerStatus = async (req, res) => {
           priority:      j.jobCard?.task_priority,
           delivery_date: j.jobCard?.delivery_date,      
           assigned_at:   j.assigned_at,
+          estimated_done: j.estimated_completion_time,
         })),
         today_completed: todayCompletedJobs.length,
         today_jobs:
@@ -281,3 +283,89 @@ export const getDesignerStatus = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch designer status" });
   }
 };
+
+
+
+export const coordinatorSetEstimatedTime = async (req, res) => {
+  try{
+    const { job_no } = req.params;
+    const { estimated_completion_time } = req.body;
+
+    if(!estimated_completion_time){
+      return res.status(400).json({
+        error: "estimated_completion_time is required" 
+      });
+    }
+
+    if(!job_no){
+      return res.status(400).json({
+        error: "Job No is required" 
+      });
+    }
+
+    const estimatedTime = new Date(estimated_completion_time);
+    const now = new Date();
+
+    if(isNaN(estimatedTime.getTime())){
+      return res.status(400).json({
+        error: "Invalid date format"
+      });
+    }
+
+    if(estimatedTime <= now){
+      return res.status(400).json({
+        error: "Estimated completion time cannot be in the past."
+      });
+    }
+
+    // Only constraint for coordinator: must not exceed delivery date
+    const jobCard = await JobCard.findByPk(job_no);
+    if(!jobCard){
+      return res.status(400).json({
+        error: "Job not found"
+      });
+    }
+
+    const deliveryDate = new Date(jobCard.delivery_date);
+    if(estimatedTime >= deliveryDate){
+      const maxStr = deliveryDate.toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata", day: "2-digit", month: "short",
+        year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true,
+      });
+      return res.status(400).json({
+        error: `Estimated time cannot exceed delivery date (${maxStr}).`,
+      });
+    }
+
+    // Find the active assignment — coordinator can update regardless of current value
+    const assignment = await JobAssignment.findOne({
+      where: {
+        job_no,
+        status: { [Op.in]: ["assigned", "in_progress"] },
+      },
+      order: [["created_at", "DESC"]],
+    });
+
+    if(!assignment){
+      return res.status(400).json({
+        error: "No active assignment found for this job."
+      });
+    }
+
+    assignment.estimated_completion_time = estimated_completion_time;
+    await assignment.save();
+
+    await ActivityLog.create({
+      job_no,
+      performed_by_id: req.user?.id,
+      action:          "Set Estimated Time (Coordinator Override)",
+      meta:            { estimated_completion_time },
+    });
+
+    return res.json({ message: "Estimated time updated", assignment });
+  }
+  catch(err){
+    console.error("[coordinatorSetEstimatedTime]", err);
+    res.status(500).json({ error: "Failed to set estimated time" });
+  }
+}
