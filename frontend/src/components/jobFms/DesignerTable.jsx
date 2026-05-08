@@ -152,7 +152,6 @@ const clearTimerFromLS = (jobNo) => {
 // JobTimer — self-contained, ONLY this component re-renders every second.
 // The parent table never ticks.
 const JobTimer = memo(function JobTimer({ jobNo, backendSeconds, isInProgress, isPaused }) {
-  console.log("Timer running");
   // Initialise from localStorage so elapsed time survives a re-mount
   const [seconds, setSeconds] = useState(() => {
     const stored = getTimerFromLS(jobNo);
