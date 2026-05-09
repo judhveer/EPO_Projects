@@ -96,7 +96,7 @@ const FIRMS = {
     address:    "Shillong, Meghalaya - 793001",
     phone:      "",
     email:      "",
-    signName:   "Hill Publication",
+    signName:   "Hill Publication Pvt. Ltd.",
     subject:    "Quotation for Book Printing / Publication Work",
   },
 };
