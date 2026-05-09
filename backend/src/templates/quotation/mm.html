@@ -30,8 +30,8 @@ body {
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: 8px;
 }
-.meta-ref { font-size: 8.5px; color: #5b21b6; font-weight: 700; }
-.meta-date { font-size: 8.5px; color: #6b7280; }
+.meta-ref { font-size: 10px; color: #5b21b6; font-weight: 700; }
+.meta-date { font-size: 10px; color: #6b7280; }
 
 /* ── CLIENT ── */
 .client-block {
@@ -41,26 +41,26 @@ body {
   padding: 7px 12px;
   margin-bottom: 7px;
 }
-.client-label { font-size: 7px; color: #a78bfa; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 3px; }
-.client-name  { font-size: 12px; font-weight: 800; color: #4c1d95; }
-.client-sub   { font-size: 8.5px; color: #374151; margin-top: 1px; line-height: 1.5; }
+.client-label { font-size: 8px; color: #a78bfa; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 3px; }
+.client-name  { font-size: 14px; font-weight: 800; color: #4c1d95; }
+.client-sub   { font-size: 9px; color: #374151; margin-top: 1px; line-height: 1.5; }
 
 /* ── SUBJECT ── */
 .subject-wrap { margin: 4px 0 3px; }
 .subject-text {
   display: inline-block;
-  font-size: 9.5px; font-weight: 800; color: #4c1d95;
+  font-size: 10px; font-weight: 800; color: #4c1d95;
   text-transform: uppercase; letter-spacing: 0.8px;
 }
-.salutation { font-size: 8.5px; color: #6b7280; margin-top: 3px; }
+.salutation { font-size: 9px; color: #6b7280; margin-top: 3px; }
 .salutation em { margin-left: 6px; }
 
 /* ── TABLE ── */
 table { width: 100%; border-collapse: collapse; margin-top: 7px; }
-table thead tr { background: linear-gradient(90deg, #4c1d95, #7c3aed); }
+/* table thead tr { background: linear-gradient(90deg, #4c1d95, #7c3aed); } */
 table thead th {
-  color: #fff; font-size: 8px; font-weight: 700;
-  padding: 6px 5px; border: 1px solid #6d28d9;
+  color: #000; font-size: 8px; font-weight: 700;
+  padding: 6px 4px; border: 1px solid #6d28d9;
   text-transform: uppercase; letter-spacing: 0.5px;
 }
 table thead th.l { text-align: left; }
@@ -70,7 +70,7 @@ table tbody tr:nth-child(even) { background: #f5f3ff; }
 table tbody tr:nth-child(odd)  { background: #fff; }
 table tbody td {
   padding: 5px 5px; font-size: 8.5px;
-  border: 1px solid #ede9fe; vertical-align: top;
+  border: 1px solid #ddd6fe; vertical-align: top;
 }
 table tbody td.l  { text-align: left; }
 table tbody td.r  { text-align: right; }
@@ -78,27 +78,30 @@ table tbody td.c  { text-align: center; }
 table tbody td small { color: #6b7280; font-size: 7.5px; display: block; margin-top: 1px; }
 table tbody strong { font-size: 9px; color: #3730a3; }
 
-.subtotal-row td { background: #ede9fe !important; font-size: 8.5px; border-color: #ddd6fe; padding: 4px 5px; }
+.subtotal-row td { background: #ede9fe !important; font-size: 8.5px; border: 1px solid #ddd6fe; padding: 4px 5px; }
 .final-row td {
-  background: linear-gradient(90deg, #4c1d95, #7c3aed) !important;
-  color: #fff !important;
+  /* background: linear-gradient(90deg, #4c1d95, #7c3aed) !important; */
+  color: #4c1d95 !important;
   font-weight: 700; font-size: 9.5px; padding: 5px 5px;
-  border-color: #4c1d95;
+  border-top: 2px solid #4c1d95 !important;
+  border-color: #4c1d95 !important;
 }
 .words-row td {
   background: #faf5ff !important; color: #5b21b6;
-  font-size: 8px; border-color: #ede9fe; padding: 5px;
+  font-size: 10px; border-color: #ede9fe; padding: 5px;
   border-top: 1.5px dashed #c4b5fd;
 }
 
 /* ── SIGNATURE ── */
 .sign-area {
   display: flex; justify-content: space-between; align-items: flex-end;
-  margin-top: 14px; margin-bottom: 8px;
+  margin-top: 35px; margin-bottom: 8px;
 }
 .thank-you { font-size: 9.5px; color: #6b7280; }
 .sign-block { text-align: right; }
-.sign-for { font-size: 9px; font-weight: 800; color: #5b21b6; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 22px; }
+.sign-for { font-size: 10px; font-weight: 800; color: #5b21b6; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 35px; text-align: center; }
+
+
 .sign-line { width: 130px; border-top: 2px solid #7c3aed; margin-left: auto; }
 .sign-label { font-size: 7.5px; color: #a78bfa; margin-top: 2px; }
 
@@ -114,7 +117,7 @@ table tbody strong { font-size: 9px; color: #3730a3; }
   <div class="quotation-heading">Quotation</div>
 
   <div class="meta-bar">
-    <div class="meta-ref">Ref: MME / {{YEAR}} / {{REF}}</div>
+    <div class="meta-ref"> <i>Ref: MME / {{YEAR}} / {{REF}} </i></div>
     <div class="meta-date">Date: {{DATE}}</div>
   </div>
 
@@ -139,9 +142,15 @@ table tbody strong { font-size: 9px; color: #3730a3; }
   </table>
 
   <div class="sign-area">
-    <div class="thank-you">We look forward to serving you.</div>
+    <div class="thank-you"> 
+<pre>
+Thank You for your Inquiry.
+This Quotation is valid only for 1 Month
+with proper Seal & Signature.
+</pre> 
+    </div>
     <div class="sign-block">
-      <div class="sign-for">For {{SIGN_NAME}}</div>
+      <div class="sign-for">Seal & Signature <br> <span > {{SIGN_NAME}} </span> </div>
       <div class="sign-line"></div>
       <div class="sign-label">Authorised Signatory</div>
     </div>
