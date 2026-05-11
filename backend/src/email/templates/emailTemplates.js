@@ -316,18 +316,28 @@ export const coordinatorJobReviewTemplate = ({
   taskPriority,
   paymentStatus,
   dashboardUrl,
+  isDirectToProduction = false,   
 }) => `
 <div style="font-family: Arial, Helvetica, sans-serif; color:#333; line-height:1.6">
 
   <img src="cid:epo-logo" height="50" style="margin-bottom:20px" />
 
-  <h2 style="color:#0a4da2;">🆕 New JobCard Created - Review Required</h2>
+  <h2 style="color:${isDirectToProduction ? "#7c3aed" : "#0a4da2"};">
+    ${isDirectToProduction
+      ? "🖨️ New Job — Sent Directly to Production"
+      : "🆕 New JobCard Created — Review Required"}
+  </h2>
+
 
   <p>Hello <strong>Process Coordinator Team</strong>,</p>
 
-  <p>
-    A new job card has been created and requires your immediate review in the FMS dashboard.
-    Please evaluate the production requirements and timeline, and <strong>assign the job to the appropriate designer</strong> to initiate the process.
+ <p>
+    ${isDirectToProduction
+      ? `A new job card has been created and sent <strong>directly to the Production team</strong>. 
+         <strong>No designer assignment is required</strong> for this job — it will be handled by Production directly.
+         This notification is for your awareness and records.`
+      : `A new job card has been created and requires your immediate review in the FMS dashboard.
+         Please evaluate the production requirements and timeline, and <strong>assign the job to the appropriate designer</strong> to initiate the process.`}
   </p>
 
   <h3 style="margin-top:20px;">📋 Job Details</h3>
@@ -352,9 +362,13 @@ export const coordinatorJobReviewTemplate = ({
     <tr><th align="left">Payment Status</th><td>${paymentStatus || "Pending"}</td></tr>
   </table>
 
-  <p style="margin-top:20px;">
-    Please log in to the FMS dashboard to complete the review and designer assignment.
-  </p>
+  ${isDirectToProduction
+    ? `<div style="margin-top:20px; padding:12px 16px; background:#f5f3ff; border-left:4px solid #7c3aed; border-radius:4px; font-size:14px;">
+        ℹ️ <strong>Direct to Production:</strong> This job bypasses the coordinator review and designer assignment stages.
+       </div>`
+    : `<p style="margin-top:20px;">
+        Please log in to the FMS dashboard to complete the review and designer assignment.
+       </p>`}
 
   <a href="${dashboardUrl}"
      style="display:inline-block;margin-top:10px;
@@ -975,3 +989,89 @@ export const productionReadyTemplate = ({
     </div>
   `;
 };
+
+
+
+
+export const productionDirectJobTemplate = ({
+  jobNo,
+  clientName,
+  orderType,
+  crmName,
+  executionLocation,
+  deliveryLocation,
+  deliveryDate,
+  taskPriority,
+  instructions,
+  dashboardUrl,
+}) => {
+  const priorityColor =
+    taskPriority === "Urgent" ? "#dc2626" :
+    taskPriority === "High"   ? "#ea580c" :
+    taskPriority === "Medium" ? "#d97706" : "#16a34a";
+
+  return `
+    <div style="font-family:Arial,sans-serif;color:#333;line-height:1.6;max-width:680px;margin:auto">
+      <img src="cid:epo-logo" height="50" style="margin-bottom:20px" />
+
+      <h2 style="color:#1d4ed8;margin-bottom:4px">🖨️ New Job — Direct to Production</h2>
+      <p style="color:#555;margin-top:0;font-size:14px">
+        This job has been marked <strong>Direct to Production</strong> and requires
+        immediate attention from the Production team.
+      </p>
+
+      <table border="1" cellpadding="8" cellspacing="0"
+        style="border-collapse:collapse;width:100%;font-size:14px;margin-top:16px">
+        <tr style="background:#f0f4ff">
+          <th align="left" style="width:35%">Job No</th>
+          <td><strong>#${jobNo}</strong></td>
+        </tr>
+        <tr>
+          <th align="left">Client Name</th>
+          <td>${clientName}</td>
+        </tr>
+        <tr style="background:#f9fafb">
+          <th align="left">Order Type</th>
+          <td>${orderType}</td>
+        </tr>
+        <tr>
+          <th align="left">Handled By (CRM)</th>
+          <td>${crmName}</td>
+        </tr>
+        <tr style="background:#f9fafb">
+          <th align="left">Execution Location</th>
+          <td>${executionLocation}</td>
+        </tr>
+        <tr>
+          <th align="left">Delivery Location</th>
+          <td>${(deliveryLocation || "").replace(/_/g, " ")}</td>
+        </tr>
+        <tr style="background:#f9fafb">
+          <th align="left">Delivery Date</th>
+          <td><strong>${deliveryDate ? new Date(deliveryDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true }) : "—"}</strong></td>
+        </tr>
+        <tr>
+          <th align="left">Priority</th>
+          <td>
+            <span style="color:${priorityColor};font-weight:bold">${taskPriority}</span>
+          </td>
+        </tr>
+        ${instructions ? `
+        <tr style="background:#f9fafb">
+          <th align="left">Instructions</th>
+          <td style="white-space:pre-wrap">${instructions}</td>
+        </tr>` : ""}
+      </table>
+
+      <div style="margin-top:24px">
+        <a href="${dashboardUrl}"
+          style="background:#1d4ed8;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:bold">
+          View Job on Dashboard →
+        </a>
+      </div>
+
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0" />
+      <p style="font-size:12px;color:#9ca3af">— Automated Notification | Eastern Panorama Offset</p>
+    </div>
+  `;
+}
