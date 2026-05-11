@@ -1329,6 +1329,9 @@ export default function JobCardForm({
       // Load all dropdowns for the auto-filled items
       loadDropdownsForMappedItems(mappedItems);
 
+      setLoadedQuotationRef(trimmed);
+      setQuotationRef("");
+
       // Recalculate all items to get fresh prices + costing_snapshot
       // (same pattern as handleSearchJob)
       setTimeout(() => {
@@ -1336,13 +1339,15 @@ export default function JobCardForm({
         latestItems.forEach((item, index) => {
           const key = item.id ?? item._temp_id;
           if (isItemReady(item)) {
+            console.log(`Auto-calculating item ${index} on load:`, item);
             calculateItemBackend(index, key);
+          }
+          else{
+            console.log(`Skipping calculation for item ${index} because it's not ready:`, item);
           }
         });
       }, 0);
 
-      setLoadedQuotationRef(trimmed);
-      setQuotationRef("");
 
     } catch (err) {
       setQuotationRefError(
@@ -1351,7 +1356,7 @@ export default function JobCardForm({
     } finally {
       setQuotationRefLoading(false);
     }
-  }, [quotationRef, setFormAndRef, loadDropdownsForMappedItems, calculateItemBackend]);
+  }, [quotationRef, calculateItemBackend, setFormAndRef, loadDropdownsForMappedItems, ]);
 
   // ── NEW ──────────────────────────────────────────────────────────────────────
   // Search handler. Called on button click OR Enter key in the search input.
