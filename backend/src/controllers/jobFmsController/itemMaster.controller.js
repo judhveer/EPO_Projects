@@ -287,7 +287,7 @@ const getWastageSheets = (pressType, printSheets, qty, insidePages = 1, effectiv
 // accounts for the extra space the press will consume.
 // Returns a new jobSize object — the original is never mutated.
 // Only applied when the press is digital; all other presses return jobSize unchanged.
-const DIGITAL_BLEED_MM  = 5;                            // mm per side
+const DIGITAL_BLEED_MM  = 7;                            // mm per side
 const DIGITAL_BLEED_IN  = DIGITAL_BLEED_MM / 25.4;     // ≈ 0.1969 inches per side
 
 const addDigitalBleed = (jobSize, pressType) => {
