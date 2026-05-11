@@ -7,6 +7,7 @@ import {
   orderConfirmationTemplate,
   crmJobAssignmentTemplate,
   coordinatorJobReviewTemplate,
+  productionDirectJobTemplate
 } from "../../email/templates/emailTemplates.js";
 import path, { resolve } from "path";
 // ✅ Fix 2 — import Sequelize directly (most reliable)
@@ -630,15 +631,54 @@ export const createJobCard = async (req, res) => {
         taskPriority: task_priority,
         paymentStatus: payment_status,
         dashboardUrl: `${process.env.LEADS_URL}/jobs/${job_no}`,
+        isDirectToProduction: is_direct_to_production,
       });
 
       await sendMailForFMS({
         to: coordinatorEmails.join(","),
-        subject: `New JobCard - Coordinator Review | Job No: ${job_no}`,
+        // ← subject changes based on route
+        subject: is_direct_to_production
+          ? `🖨️ New JobCard - Direct to Production (FYI) | Job No: ${job_no}`
+          : `New JobCard - Coordinator Review | Job No: ${job_no}`,
         html: coordinatorEmailHTML,
         attachments,
       });
     }
+
+    // 4️⃣ Notify Production team — ONLY when job is direct to production
+    if (is_direct_to_production) {
+      const productionUsers = await User.findAll({
+        where: { department: "Production Coordinator" },
+      });
+      const productionEmails = productionUsers.map((u) => u.email).filter(Boolean);
+
+
+      if (productionEmails.length > 0) {
+        const productionEmailHTML = productionDirectJobTemplate({
+          jobNo:             job_no,
+          clientName:        client_name,
+          orderType:         order_type,
+          crmName:           order_handled_by,
+          executionLocation: execution_location,
+          deliveryLocation:  delivery_location,
+          deliveryDate:      delivery_date,
+          taskPriority:      task_priority,
+          instructions:      instructions,
+          dashboardUrl:      `${process.env.LEADS_URL}/jobs/${job_no}`,
+        });
+
+        await sendMailForFMS({
+          to:          productionEmails.join(","),
+          subject:     `🖨️ New Job — Direct to Production | Job No: ${job_no}`,
+          html:        productionEmailHTML,
+          attachments, // reuses the attachments array already defined above
+        });
+        console.log("Email sent to production team successfully.");
+      }
+    }
+
+
+
   } catch (error) {
     console.error("❌ Error creating JobCard:", error);
     await t.rollback();
@@ -2172,7 +2212,7 @@ async function sendJobNotificationEmail({
 
     // ── Fetch Production team ──────────────────────────────────────────────
     const productionUsers = targetRoles.includes("Production")
-      ? await User.findAll({ where: { department: "Production" } })
+      ? await User.findAll({ where: { department: "Production Coordinator" } })
       : [];
 
     // ── Fetch Designer (only if assigned and stage warrants it) ───────────
