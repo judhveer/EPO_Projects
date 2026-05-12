@@ -102,8 +102,6 @@ export async function createUser(req, res) {
 
     const { email, username, role, department, password } = req.body;
 
-    console.log("req.body: ", req.body);
-
     if (!email || !username || !role || !department || !password) {
       return res.status(400).json({
         message: "Email, username, role, department and password are required",
@@ -205,7 +203,6 @@ export async function me(req, res) {
 }
 
 export async function getTelecallers(req, res) {
-  console.log("get Telecallers called:");
   try {
     const users = await User.findAll({
       where: {
@@ -224,7 +221,6 @@ export async function getTelecallers(req, res) {
 }
 
 export async function getExecutives(req, res) {
-  console.log("getExecutives called:");
   try {
     const users = await User.findAll({
       where: {
