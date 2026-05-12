@@ -13,7 +13,6 @@ import {
 } from "../../email/templates/emailTemplates.js";
 
 export const getAllJobsForCRM = async (req, res) => {
-  console.log("Get All Jobs for CRM called by user:", req.user?.username);
   try {
     const total = await JobCard.count({
       where: {
