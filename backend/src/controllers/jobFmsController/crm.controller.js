@@ -203,8 +203,11 @@ export const approveJobByClient = async (req, res) => {
       return res.status(404).json({ message: "Job not found" });
     }
 
-    job.status = "approved";
-    job.current_stage = "approved";
+    // job.status = "approved";
+    // job.current_stage = "approved";
+
+    job.status = "ready_for_production";
+    job.current_stage = "ready_for_production";
     await job.save({ transaction: t });
 
     const [updatedCount] = await ClientApproval.update(
@@ -232,9 +235,9 @@ export const approveJobByClient = async (req, res) => {
 
     await advanceStage({
       job_no,
-      new_stage: "approved",
+      new_stage: "ready_for_production",
       performed_by_id: req.user?.id || null,
-      remarks: "( CRM ) Client approved the job",
+      remarks: "( CRM ) Client approved → Ready for Production",
       transaction: t,
     });
 
