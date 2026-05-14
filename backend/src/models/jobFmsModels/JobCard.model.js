@@ -130,19 +130,22 @@ export default (sequelize) => {
       },
       status: {
         type: DataTypes.ENUM(
-          "created",
           "coordinator_review",
           "assigned_to_designer",
           "design_in_progress",
           "sent_for_approval",
           "awaiting_client_response",
           "client_changes",
-          "approved",
-          "production",
+          "ready_for_production",
+          // "approved",
+          // "production",
+          "in_production",
+          "delivered",
           "completed",
           "cancelled"
         ),
-        defaultValue: "created",
+        defaultValue: "coordinator_review",
+        allowNull: false,
       },
       current_stage: {
         type: DataTypes.STRING(),
@@ -151,7 +154,6 @@ export default (sequelize) => {
         //  enum: ["pending", "in-progress", "completed", "cancelled"],
   // default: "pending",
       },
-
       is_direct_to_production: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
@@ -221,8 +223,44 @@ export default (sequelize) => {
         },
         onUpdate: "CASCADE",
         onDelete: "SET NULL",
-      }
-
+      },
+      production_stage:{
+        type: DataTypes.ENUM(
+          "printing",
+          "binding",
+          "quality_check",
+          "packaging",
+          "ready_to_dispatch",
+          "out_for_delivery"
+        ),
+        allowNull: true,
+        defaultValue: null,
+        comment: "Sub-stage within in_production. NULL when status is not in_production.",
+      },
+      production_stage_started_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Timestamp when the current production_stage began. Used for stage-duration reports.",
+      },
+      delivered_at:{
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      delivery_persons_name:{
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        comment: "Captured when entering out_for_delivery (shipment only).",
+      },
+      challan_no: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Required for completion of *_SHIPMENT deliveries.",
+      },
+      challan_file_url: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        comment: "Path/URL to uploaded challan document. Required for shipment completion.",
+      },
     },
     {
       tableName: "jobfms_job_cards",
@@ -242,6 +280,9 @@ export default (sequelize) => {
         { fields: ["status"] },
         { fields: ["is_direct_to_production"] },
 
+        { fields: ["production_stage"] },
+
+
         // 📄 SORTING / PAGINATION
         { fields: ["created_at"] },
       ],
@@ -256,6 +297,13 @@ export default (sequelize) => {
       });
       const nextNo = latest ? Number(latest.job_no) + 1 : 10870;
       job.job_no = nextNo;
+    }
+  });
+
+  JobCard.addHook("beforeSave", (job) => {
+    if (job.status !== "in_production" && job.production_stage !== null) {
+      job.production_stage = null;
+      job.production_stage_started_at = null;
     }
   });
 
