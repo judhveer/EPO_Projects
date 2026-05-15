@@ -186,7 +186,7 @@ export const createJobCard = async (req, res) => {
       calculateJobCompletionDeadline(delivery_date);
 
     const initialStage = is_direct_to_production
-      ? "production"
+      ? "ready_for_production"
       : "coordinator_review";
 
     // ✅ 1. Create JobCard (auto-generates job_no via hook)
@@ -524,8 +524,8 @@ export const createJobCard = async (req, res) => {
       new_stage: initialStage,
       performed_by_id: req.user?.id || null,
       remarks: is_direct_to_production
-        ? "(Job created -> Direct to Production) Job sent directly to production"
-        : "(Job created -> Coordinator review) Job sent for coordinator review",
+        ? "(Job created → Ready for Production) Direct to production flag set"
+        : "(Job created → Coordinator review) Job sent for coordinator review",
       transaction: t,
     });
 
@@ -1294,11 +1294,11 @@ export const updateJobCard = async (req, res) => {
   if (nowRevertedFromProd) {
     // Only allow revert if the job is actually in the production stage
     // that was set by the direct-to-production flag.
-    if (jobCard.status !== "production") {
+    if (jobCard.status !== "ready_for_production") {
       return res.status(400).json({
         message:
-          `Cannot uncheck Direct to Production: job is in "${(jobCard.status || "").replace(/_/g, " ")}" stage, not in Production. ` +
-          `Only jobs currently in Production can be reverted to Coordinator Review.`,
+          `Cannot uncheck Direct to Production: job is in "${(jobCard.status || "").replace(/_/g, " ")}" stage, not in Ready for Production. ` +
+          `Only jobs currently in Ready for Production can be reverted to Coordinator Review.`,
       });
     }
   }
@@ -1316,13 +1316,13 @@ export const updateJobCard = async (req, res) => {
     // ── Stage transitions ──────────────────────────────────────────────────
     if (nowMovingToProduction) {
       // Validated above: job.status === "coordinator_review"
-      updates.status = "production";
-      updates.current_stage = "production";
+      updates.status = "ready_for_production";
+      updates.current_stage = "ready_for_production";
       await advanceStage({
         job_no,
-        new_stage: "production",
+        new_stage: "ready_for_production",
         performed_by_id: req.user?.id || null,
-        remarks: "(Job updated → Direct to Production)",
+        remarks: "(Job updated → Direct to Production, ready for production)",
         transaction: t,
       });
     }
@@ -1669,9 +1669,9 @@ export const updateJobCard = async (req, res) => {
           jobCardChanges,
           jobItemChanges,
           stage_transition: nowMovingToProduction
-            ? "pending → production"
+            ? "coordinator_review → ready_for_production"
             : nowRevertedFromProd
-              ? "production → coordinator_review"
+              ? "ready_for_production → coordinator_review"
               : null,
         },
       },
@@ -1708,7 +1708,7 @@ export const updateJobCard = async (req, res) => {
         jobCardChanges,
         jobItemChanges,
         stageTransition: nowMovingToProduction
-          ? "production"
+          ? "ready_for_production"
           : nowRevertedFromProd
             ? "coordinator_review"
             : null,
@@ -2166,9 +2166,13 @@ function renderUpdatedChanges(
  * null / other         → Process Coordinators + CRM + Designer (if assigned)
  */
 const STAGE_ROLE_MAP = {
-  production: ["Production", "Process Coordinator", "CRM"],
+  ready_for_production: ["Production", "Process Coordinator", "CRM"],
   coordinator_review: ["Process Coordinator", "CRM"],
 };
+
+
+
+
 
 // =====================================================
 // 4. ✉️ Helper: Sends notification mail to CRM, Coordinators, Designer for Updated / Cancelled Job
