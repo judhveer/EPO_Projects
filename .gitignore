@@ -9,6 +9,11 @@ backend/credentials.json
 backend/credentials_epo.json
 
 
+backend/challan.json
+
+
+*challan.json
+
 backend/src/reports/out
 
 
