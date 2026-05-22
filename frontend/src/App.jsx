@@ -40,6 +40,7 @@ import ProductionDashboard from "./pages/jobFms/ProductionDashboard.jsx"
 import OutboundOrders from "./components/jobFms/OutboundOrders.jsx";
 import PendingBillingDashboard from "./components/jobFms/accounts/PendingBillingDashboard.jsx";
 import QuotationDashboard from "./pages/jobFms/QuotationDashboard.jsx";
+import DeliveryChallanPage from "./pages/jobFms/DeliveryChallanPage.jsx";
 
 
 
@@ -55,6 +56,9 @@ export default function App() {
     <Routes>
       {/* ✅ PUBLIC ROUTES */}
       <Route path="/disc-test" element={<DiscTest />} />
+
+      {/* ADD this route BEFORE the ProtectedRoute block (after the /disc-test route) */}
+      <Route path="/delivery/confirm/:token" element={<DeliveryChallanPage />} />
 
       {/* Public: /login -> if already authed redirect to /home */}
 
