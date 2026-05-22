@@ -54,7 +54,7 @@ const REVERSE_TRANSITIONS = new Map([
   ['quality_check',     ['binding', 'printing']],
   ['packaging',         ['quality_check']],
   ['ready_to_dispatch', ['packaging']],
-  ['out_for_delivery',  ['ready_to_dispatch']],
+  ['out_for_delivery',  []],
 ]);
 
 export function getValidForwardStages(currentStage) {
@@ -108,3 +108,16 @@ export function isPickupDelivery(deliveryLocation) {
 export function isShipmentDelivery(deliveryLocation) {
   return typeof deliveryLocation === 'string' && deliveryLocation.endsWith('_SHIPMENT');
 }
+
+/**
+ * Stages where at least one worker name must be recorded before transitioning.
+ * ready_to_dispatch and out_for_delivery are excluded — dispatch/delivery
+ * uses delivery_persons_name separately.
+ */
+export const STAGES_REQUIRING_WORKERS = Object.freeze([
+  "printing",
+  "binding",
+  "quality_check",
+  "packaging",
+  "out_for_delivery",
+]);
