@@ -1,17 +1,43 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import api from "../../../lib/api.js";
 import StageChip from "./StageChip.jsx";
+import WorkerSelect from "./WorkerSelect.jsx";
+
+const STAGES_REQUIRING_WORKERS = ["printing", "binding", "quality_check", "packaging"];
+
+const STAGE_WORKER_LABEL = {
+  printing: "Printing Workers",
+  binding: "Binding Workers",
+  quality_check: "QC Workers",
+  packaging: "Packaging Workers",
+  out_for_delivery: "Delivery Workers",
+};
+
+const STATUS_BADGE = {
+  pending: "bg-orange-100 text-orange-700",
+  confirmed: "bg-green-100 text-green-700",
+  overridden: "bg-gray-100 text-gray-600",
+};
 
 export default function AdvanceStageModal({ job, onClose, onSuccess }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [opts, setOpts] = useState(null);
   const [error, setError] = useState(null);
-  const [action, setAction] = useState(null); // { type, stage? }
-  const [deliveryPersonsName, setDeliveryPersonsName] = useState("");
+  const [action, setAction] = useState(null);
+  const [workerIds, setWorkerIds] = useState([]);
   const [remarks, setRemarks] = useState("");
+  const [existingWorkers, setExistingWorkers] = useState({});
+  const [overriding, setOverriding] = useState(null); // assignment_id being overridden
+  const [overrideForm, setOverrideForm] = useState({
+    reason: "",
+    challanNo: "",
+    challanFile: null,
+    materialFile: null,
+  });
 
+  // Load valid stages + delivery assignments
   useEffect(() => {
     if (!job) return;
     let cancelled = false;
@@ -29,38 +55,101 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
     return () => { cancelled = true; };
   }, [job?.job_no]);
 
-  const requiresDeliveryNames = action?.type === "forward" && action.stage === "out_for_delivery";
-  const requiresRemarks = action?.type === "reverse";
+  // Load existing stage workers for revert pre-population
+  useEffect(() => {
+    if (!job) return;
+    let cancelled = false;
+    api.get(`/api/fms/production/${job.job_no}/stage-workers`)
+      .then(({ data }) => { if (!cancelled) setExistingWorkers(data || {}); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [job?.job_no]);
 
-  const resetSelection = () => {
-    setAction(null); setError(null); setRemarks(""); setDeliveryPersonsName("");
+  const handleActionSelect = useCallback((newAction) => {
+    setAction(newAction);
+    setError(null);
+    setRemarks("");
+    // On revert, pre-populate existing worker IDs for that stage
+    if (newAction.type === "reverse" && newAction.stage) {
+      const existing = existingWorkers[newAction.stage] || [];
+      setWorkerIds(existing.map((w) => w.worker_id).filter(Boolean));
+    } else {
+      setWorkerIds([]);
+    }
+  }, [existingWorkers]);
+
+  const handleOverride = async (assignmentId) => {
+    const { reason, challanNo, challanFile } = overrideForm;
+    if (!reason.trim()) { setError("Override reason is required."); return; }
+    if (!challanNo.trim()) { setError("Challan number is required."); return; }
+    if (!challanFile) { setError("Challan file is required."); return; }
+
+    setSubmitting(true); setError(null);
+    try {
+      const fd = new FormData();
+      fd.append("override_reason", reason.trim());
+      fd.append("challan_no", challanNo.trim());
+      fd.append("challan_file", challanFile);
+      if (overrideForm.materialFile) {
+        fd.append("material_photo", overrideForm.materialFile);
+      }
+
+      const { data } = await api.post(
+        `/api/fms/production/${job.job_no}/delivery-assignments/${assignmentId}/override`,
+        fd, 
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+
+      if (data.all_confirmed) { 
+        onSuccess?.(); 
+        onClose(); 
+      }
+      else {
+        // Refresh opts to show updated assignment statuses
+        const { data: fresh } = await api.get(`/api/fms/production/${job.job_no}/valid-stages`);
+        setOpts(fresh);
+        setOverriding(null); 
+        setOverrideForm({ 
+          reason: "", 
+          challanNo: "", 
+          challanFile: null, 
+          materialFile: null 
+        });
+      }
+    } catch (err) {
+      setError(err?.response?.data?.message || "Override failed.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleSubmit = async () => {
     if (!action) return;
     setError(null);
+    const requiresWorkers = STAGES_REQUIRING_WORKERS.includes(action.stage) || action.stage === "out_for_delivery";
+    if (requiresWorkers && workerIds.length === 0) {
+      setError(`At least one worker is required for ${action.stage?.replace(/_/g, " ")}.`);
+      return;
+    }
+    if (action.type === "reverse" && !remarks.trim()) {
+      setError("Remarks are required for revert."); return;
+    }
     setSubmitting(true);
     try {
       let url, body;
       if (action.type === "forward") {
         url = `/api/fms/production/${job.job_no}/advance-stage`;
-        body = { to_stage: action.stage };
-        if (remarks.trim()) body.remarks = remarks.trim();
-        if (action.stage === "out_for_delivery") {
-          if (!deliveryPersonsName.trim()) throw new Error("Delivery person name(s) is required.");
-          body.delivery_persons_name = deliveryPersonsName.trim();
-        }
+        body = { to_stage: action.stage, worker_ids: requiresWorkers ? workerIds : [], remarks: remarks.trim() || undefined };
       } else if (action.type === "reverse") {
-        if (!remarks.trim()) throw new Error("Remarks are required for revert.");
         url = `/api/fms/production/${job.job_no}/revert-stage`;
-        body = { to_stage: action.stage, remarks: remarks.trim() };
+        body = { to_stage: action.stage, worker_ids: requiresWorkers ? workerIds : [], remarks: remarks.trim() };
       } else {
+        // deliver (pickup only)
         url = `/api/fms/production/${job.job_no}/mark-delivered`;
         body = remarks.trim() ? { remarks: remarks.trim() } : {};
       }
       await api.post(url, body);
-      onSuccess?.();
-      onClose();
+      onSuccess?.(); onClose();
     } catch (err) {
       setError(err?.response?.data?.message || err.message || "Action failed.");
     } finally {
@@ -68,26 +157,28 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
     }
   };
 
+  const requiresWorkers = action?.stage && (STAGES_REQUIRING_WORKERS.includes(action.stage) || action.stage === "out_for_delivery");
+
+  // Delivery assignments panel (shown when shipment job is in out_for_delivery)
+  const showDeliveryPanel = opts?.delivery_mode === "shipment" &&
+    opts?.current_production_stage === "out_for_delivery" &&
+    opts?.delivery_assignments?.length > 0;
+
   return (
     <AnimatePresence>
       {job && (
-        <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          onClick={onClose}
-        >
+        <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
           <motion.div
             initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.96, opacity: 0 }}
             transition={{ type: "spring", stiffness: 200, damping: 22 }}
             className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
+            onClick={(e) => e.stopPropagation()}>
+
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="text-xl font-bold text-blue-700">Update Stage</h3>
-                <p className="text-sm text-gray-500">
-                  Job <span className="font-semibold">#{job.job_no}</span> — {job.client_name}
-                </p>
+                <p className="text-sm text-gray-500">Job <span className="font-semibold">#{job.job_no}</span> — {job.client_name}</p>
               </div>
               <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
             </div>
@@ -96,9 +187,7 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
               <div className="text-xs text-gray-500 mb-1">Current Stage</div>
               <StageChip value={opts?.current_production_stage || opts?.status} fallback="Not Started" />
               {opts?.delivery_mode && (
-                <div className="text-xs text-gray-500 mt-2">
-                  Delivery: <span className="font-semibold uppercase">{opts.delivery_mode}</span>
-                </div>
+                <div className="text-xs text-gray-500 mt-2">Delivery: <span className="font-semibold uppercase">{opts.delivery_mode}</span></div>
               )}
             </div>
 
@@ -106,60 +195,212 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
               <div className="flex justify-center py-8">
                 <div className="animate-spin h-8 w-8 border-b-2 border-blue-700 rounded-full"></div>
               </div>
-            ) : error && !action ? (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded">{error}</div>
             ) : (
               <>
+                {/* Delivery assignments status panel */}
+                {showDeliveryPanel && (
+                  <div className="mb-4 border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600 uppercase">
+                      Delivery Assignment Status
+                    </div>
+
+                    {opts.delivery_assignments.map((da) => (
+                      <div key={da.id} className="px-3 py-2.5 border-t border-gray-100">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <span className="text-sm font-medium">{da.worker_name}</span>
+                            {da.challan_no && (
+                              <span className="text-xs text-gray-500 ml-2">Challan: {da.challan_no}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE[da.status]}`}>
+                              {da.status}
+                            </span>
+                            {da.status === "pending" && overriding !== da.id && (
+                              <button
+                                onClick={() => {
+                                  setOverriding(da.id);
+                                  setOverrideForm({ reason: "", challanNo: "", challanFile: null, materialFile: null });
+                                  setError(null);
+                                }}
+                                className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 border border-orange-300 rounded hover:bg-orange-200"
+                              >
+                                Override
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Override form — expands below the assignment row */}
+                        {overriding === da.id && (
+                          <div className="mt-3 pt-3 border-t border-orange-100 space-y-2.5">
+                            <p className="text-xs font-semibold text-orange-700">
+                              Override: upload documents on behalf of {da.worker_name}
+                            </p>
+
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                                Override Reason <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={overrideForm.reason}
+                                onChange={(e) => setOverrideForm((f) => ({ ...f, reason: e.target.value }))}
+                                placeholder="Why are you overriding?"
+                                disabled={submitting}
+                                className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-400"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                                Challan Number <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={overrideForm.challanNo}
+                                onChange={(e) => setOverrideForm((f) => ({ ...f, challanNo: e.target.value }))}
+                                placeholder="e.g. CH-2026-00451"
+                                disabled={submitting}
+                                className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-400"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                                Challan Document <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                disabled={submitting}
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f && f.size > 10 * 1024 * 1024) {
+                                    alert("File too large. Max 10 MB.");
+                                    e.target.value = "";
+                                    return;
+                                  }
+                                  setOverrideForm((prev) => ({ ...prev, challanFile: f || null }));
+                                }}
+                                className="w-full text-xs file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-orange-100 file:text-orange-700 hover:file:bg-orange-200"
+                              />
+                              {overrideForm.challanFile && (
+                                <p className="text-[11px] text-green-700 mt-0.5">
+                                  ✓ {overrideForm.challanFile.name}
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                                Material Photo{" "}
+                                <span className="text-gray-400 font-normal">(optional)</span>
+                              </label>
+                              <input
+                                type="file"
+                                accept=".jpg,.jpeg,.png"
+                                disabled={submitting}
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f && f.size > 10 * 1024 * 1024) {
+                                    alert("File too large. Max 10 MB.");
+                                    e.target.value = "";
+                                    return;
+                                  }
+                                  setOverrideForm((prev) => ({ ...prev, materialFile: f || null }));
+                                }}
+                                className="w-full text-xs file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
+                              />
+                              {overrideForm.materialFile && (
+                                <p className="text-[11px] text-green-700 mt-0.5">
+                                  ✓ {overrideForm.materialFile.name}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="flex gap-2 pt-1">
+                              <button
+                                onClick={() => {
+                                  setOverriding(null);
+                                  setOverrideForm({ reason: "", challanNo: "", challanFile: null, materialFile: null });
+                                  setError(null);
+                                }}
+                                disabled={submitting}
+                                className="flex-1 py-1.5 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleOverride(da.id)}
+                                disabled={submitting}
+                                className="flex-1 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold disabled:opacity-50"
+                              >
+                                {submitting ? "Uploading..." : "Confirm Override"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    <div className="bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                      Job will move to Delivered automatically when all assignments are confirmed or overridden.
+                    </div>
+                  </div>
+                )}
+
+                {/* Forward actions */}
                 {opts?.forward_stages?.length > 0 && (
                   <div className="mb-4">
                     <div className="text-xs font-semibold text-gray-600 uppercase mb-2">Move Forward To</div>
                     <div className="grid grid-cols-2 gap-2">
                       {opts.forward_stages.map((s) => (
-                        <button
-                          key={s.value}
-                          onClick={() => { setAction({ type: "forward", stage: s.value }); setError(null); }}
+                        <button key={s.value} onClick={() => handleActionSelect({ type: "forward", stage: s.value })}
                           className={`px-3 py-2 rounded-lg border text-sm font-medium transition ${
                             action?.type === "forward" && action.stage === s.value
                               ? "bg-blue-600 text-white border-blue-600"
                               : "bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:bg-blue-50"
-                          }`}
-                        >
+                          }`}>
                           → {s.label}
+                          {(STAGES_REQUIRING_WORKERS.includes(s.value) || s.value === "out_for_delivery") && (
+                            <span className="block text-[10px] opacity-60 mt-0.5">select workers</span>
+                          )}
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
 
+                {/* Mark Delivered — pickup only */}
                 {opts?.can_mark_delivered && (
                   <div className="mb-4">
-                    <button
-                      onClick={() => { setAction({ type: "deliver" }); setError(null); }}
+                    <button onClick={() => handleActionSelect({ type: "deliver" })}
                       className={`w-full px-3 py-2 rounded-lg border text-sm font-semibold transition ${
                         action?.type === "deliver"
                           ? "bg-green-600 text-white border-green-600"
                           : "bg-white text-green-700 border-green-400 hover:bg-green-50"
-                      }`}
-                    >
-                      ✅ Mark as Delivered ({opts.delivery_mode === "pickup" ? "Customer Collected" : "Driver Confirmed"})
+                      }`}>
+                      ✅ Mark as Delivered (Customer Collected)
                     </button>
                   </div>
                 )}
 
+                {/* Reverse actions */}
                 {opts?.reverse_stages?.length > 0 && (
                   <div className="mb-4">
-                    <div className="text-xs font-semibold text-gray-600 uppercase mb-2">Revert To (remarks required)</div>
+                    <div className="text-xs font-semibold text-gray-600 uppercase mb-2">
+                      Revert To <span className="text-orange-500">(remarks required)</span>
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       {opts.reverse_stages.map((s) => (
-                        <button
-                          key={s.value}
-                          onClick={() => { setAction({ type: "reverse", stage: s.value }); setError(null); }}
+                        <button key={s.value} onClick={() => handleActionSelect({ type: "reverse", stage: s.value })}
                           className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition ${
                             action?.type === "reverse" && action.stage === s.value
                               ? "bg-orange-500 text-white border-orange-500"
                               : "bg-white text-orange-700 border-orange-300 hover:bg-orange-50"
-                          }`}
-                        >
+                          }`}>
                           ↶ {s.label}
                         </button>
                       ))}
@@ -167,41 +408,38 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
                   </div>
                 )}
 
+                {/* Context inputs after action selected */}
                 {action && (
-                  <div className="border-t pt-4 mt-2 space-y-3">
-                    {requiresDeliveryNames && (
+                  <div className="border-t pt-4 mt-2 space-y-4">
+                    {requiresWorkers && (
                       <div>
                         <label className="block text-xs font-semibold text-gray-700 mb-1">
-                          Delivery Person Name(s) <span className="text-red-500">*</span>
+                          {STAGE_WORKER_LABEL[action.stage] || "Workers"} <span className="text-red-500">*</span>
                         </label>
-                        <input
-                          type="text"
-                          value={deliveryPersonsName}
-                          onChange={(e) => setDeliveryPersonsName(e.target.value)}
-                          placeholder="e.g. Ramesh, Suresh"
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        <WorkerSelect
+                          role={action.stage === "out_for_delivery" ? "delivery" : action.stage}
+                          value={workerIds}
+                          onChange={setWorkerIds}
+                          disabled={submitting}
                         />
-                        <p className="text-xs text-gray-400 mt-1">Comma-separated if multiple.</p>
                       </div>
                     )}
 
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">
-                        Remarks {requiresRemarks && <span className="text-red-500">*</span>}
+                        Remarks {action.type === "reverse" && <span className="text-red-500">*</span>}
                       </label>
-                      <textarea
-                        value={remarks}
-                        onChange={(e) => setRemarks(e.target.value)}
-                        rows={2}
-                        placeholder={requiresRemarks ? "Reason for revert (required)" : "Optional note"}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                      />
+                      <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={2}
+                        placeholder={action.type === "reverse" ? "Reason for revert (required)" : "Optional note"}
+                        disabled={submitting}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
                     </div>
 
                     {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-2 rounded">{error}</div>}
 
-                    <div className="flex justify-end gap-2 pt-2">
-                      <button onClick={resetSelection} disabled={submitting}
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button onClick={() => { setAction(null); setError(null); setRemarks(""); setWorkerIds([]); }}
+                        disabled={submitting}
                         className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium">
                         Change Action
                       </button>
@@ -213,8 +451,8 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
                   </div>
                 )}
 
-                {!action && !opts?.forward_stages?.length && !opts?.can_mark_delivered && !opts?.reverse_stages?.length && (
-                  <div className="text-center text-gray-500 py-4 text-sm">No actions available for this job.</div>
+                {error && !action && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-2 rounded mt-2">{error}</div>
                 )}
               </>
             )}
