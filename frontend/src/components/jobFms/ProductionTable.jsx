@@ -18,6 +18,33 @@ const STAGE_PILLS = [
 
 
 
+// Groups stageWorkers array by stage_name, deduplicates names.
+// Returns: { printing: ['Ramesh', 'Suresh'], binding: ['Kumar'], ... }
+function groupWorkersByStage(stageWorkers = []) {
+  const map = {};
+  for (const w of stageWorkers) {
+    if (!map[w.stage_name]) map[w.stage_name] = new Set();
+    map[w.stage_name].add(w.worker_name);
+  }
+  // Convert Sets to arrays
+  const result = {};
+  for (const stage of Object.keys(map)) {
+    result[stage] = [...map[stage]];
+  }
+  return result;
+}
+
+const STAGE_ICON = {
+  printing: "🖨️",
+  binding: "📎",
+  quality_check: "🔍",
+  packaging: "📦",
+  out_for_delivery: "🚚",
+};
+
+const STAGE_DISPLAY_ORDER = ["printing", "binding", "quality_check", "packaging", "out_for_delivery"];
+
+
 export default function ProductionTable() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -60,7 +87,7 @@ export default function ProductionTable() {
     return () => window.removeEventListener("keydown", onEsc);
   }, [activeJob, itemSidebarJobNo]);
 
-  const columnCount = 14;
+  const columnCount = 15;
 
   if (error) {
     return (
@@ -103,6 +130,11 @@ export default function ProductionTable() {
             <tr>
               <th className="border p-2 sticky left-0 bg-blue-800 z-40 text-center font-semibold w-[80px]">Job No</th>
               <th className="border p-2 w-[140px]">Current Stage</th>
+              <th className="border p-2 w-[220px]">
+                {stageFilter && STAGE_DISPLAY_ORDER.includes(stageFilter)
+                  ? `${stageFilter.replace(/_/g, " ")} Workers`.replace(/\b\w/g, (c) => c.toUpperCase())
+                  : "Stage Workers"}
+              </th>
               <th className="border p-2 w-[150px]">Created On</th>
               <th className="border p-2 w-[180px]">Client</th>
               <th className="border p-2 w-[100px]">Items</th>
@@ -137,6 +169,44 @@ export default function ProductionTable() {
                       fallback={job.status === "ready_for_production" ? "Not Started" : "—"}
                     />
                   </td>
+
+                  <td className="border p-2 align-top">
+                    {(() => {
+                      const byStage = groupWorkersByStage(job.stageWorkers);
+                      const activeStages = stageFilter
+                        ? STAGE_DISPLAY_ORDER.filter((s) => s === stageFilter && byStage[s]?.length > 0)
+                        : STAGE_DISPLAY_ORDER.filter((s) => byStage[s]?.length > 0);
+
+                      if (activeStages.length === 0) {
+                        return <span className="text-gray-400 text-xs italic">—</span>;
+                      }
+
+                      return (
+                        <div className="space-y-1.5">
+                          {activeStages.map((s) => (
+                            <div key={s} className="flex items-start gap-1 text-xs leading-tight">
+                              <span className="shrink-0">{STAGE_ICON[s]}</span>
+                              <div>
+                                <span
+                                  className={`font-semibold ${
+                                    job.production_stage === s
+                                      ? "text-blue-700"   // currently active stage → blue
+                                      : "text-gray-400"  // past stage → muted
+                                  }`}
+                                >
+                                  {s.replace(/_/g, " ")}:{" "}
+                                </span>
+                                <span className={job.production_stage === s ? "text-gray-800" : "text-gray-400"}>
+                                  {byStage[s].join(", ")}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </td>
+
                   <td className="border p-2">
                     {DateTime.fromJSDate(new Date(job.createdAt)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
