@@ -19,7 +19,10 @@ export default function associateJobFmsModels(models) {
     PaperMaster,
     SizeMaster,
     WideFormatMaterial,
-    JobItemCosting
+    JobItemCosting,
+    JobProductionStageWorker,
+    ProductionWorkerMaster,
+    DeliveryAssignment,
   } = models;
 
   // 🔗 JobCard ↔ JobItem
@@ -126,4 +129,66 @@ export default function associateJobFmsModels(models) {
     onDelete: "CASCADE",
   });  
 
+
+  // 🔗 JobProductionStageWorker
+  if (JobProductionStageWorker) {
+    JobCard.hasMany(JobProductionStageWorker, {
+      as: "stageWorkers",
+      foreignKey: "job_no",
+      onDelete: "CASCADE",
+    });
+    JobProductionStageWorker.belongsTo(JobCard, {
+      as: "jobCard",
+      foreignKey: "job_no",
+    });
+    JobProductionStageWorker.belongsTo(User, {
+      as: "recorder",
+      foreignKey: "recorded_by_id",
+    });
+  }
+
+  // 🔗 ProductionWorkerMaster
+  if (ProductionWorkerMaster) {
+    ProductionWorkerMaster.hasMany(JobProductionStageWorker, {
+      foreignKey: "worker_id",
+      as: "stageAssignments",
+    });
+    ProductionWorkerMaster.hasMany(DeliveryAssignment, {
+      foreignKey: "worker_id",
+      as: "deliveryAssignments",
+    });
+  }
+
+  // 🔗 DeliveryAssignment
+  if (DeliveryAssignment) {
+    JobCard.hasMany(DeliveryAssignment, {
+      as: "deliveryAssignments",
+      foreignKey: "job_no",
+      onDelete: "CASCADE",
+    });
+    DeliveryAssignment.belongsTo(JobCard, { 
+      foreignKey: "job_no",
+      as: "jobCard"
+    });
+    DeliveryAssignment.belongsTo(ProductionWorkerMaster, { 
+      foreignKey: "worker_id", 
+      as: "worker" 
+    });
+    DeliveryAssignment.belongsTo(User, { 
+      foreignKey: "assigned_by_id", 
+      as: "assignedBy" 
+    });
+    DeliveryAssignment.belongsTo(User, { 
+      foreignKey: "overridden_by_id", 
+      as: "overriddenBy" 
+    });
+  }
+
+  // 🔗 JobProductionStageWorker — update to add worker_id link
+  if (JobProductionStageWorker && ProductionWorkerMaster) {
+    JobProductionStageWorker.belongsTo(ProductionWorkerMaster, {
+      foreignKey: "worker_id",
+      as: "workerMaster",
+    });
+  }
 }

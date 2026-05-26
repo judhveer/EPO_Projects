@@ -251,16 +251,16 @@ export default (sequelize) => {
         allowNull: true,
         comment: "Captured when entering out_for_delivery (shipment only).",
       },
-      challan_no: {
-        type: DataTypes.STRING(100),
-        allowNull: true,
-        comment: "Required for completion of *_SHIPMENT deliveries.",
-      },
-      challan_file_url: {
-        type: DataTypes.STRING(500),
-        allowNull: true,
-        comment: "Path/URL to uploaded challan document. Required for shipment completion.",
-      },
+      // challan_no: {
+      //   type: DataTypes.STRING(100),
+      //   allowNull: true,
+      //   comment: "Required for completion of *_SHIPMENT deliveries.",
+      // },
+      // challan_file_url: {
+      //   type: DataTypes.STRING(500),
+      //   allowNull: true,
+      //   comment: "Path/URL to uploaded challan document. Required for shipment completion.",
+      // },
     },
     {
       tableName: "jobfms_job_cards",
@@ -342,7 +342,7 @@ export default (sequelize) => {
   });
 
   // Association via client_name
-   JobCard.associate = (models) => {
+  JobCard.associate = (models) => {
     JobCard.belongsTo(models.ClientDetails, {
       foreignKey: "client_name",
       targetKey: "client_name",
@@ -369,6 +369,12 @@ export default (sequelize) => {
     JobCard.hasOne(models.JobCosting, {
       as: "costing",
       foreignKey: "job_card_id",
+    });
+
+    JobCard.hasMany(models.JobProductionStageWorker, {
+      as: "stageWorkers",
+      foreignKey: "job_no",
+      onDelete: "CASCADE",
     });
     
   };

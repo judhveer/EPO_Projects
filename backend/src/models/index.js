@@ -29,6 +29,9 @@ import StageTrackingModel from "./jobFmsModels/StageTracking.model.js";
 import ActivityLogModel from "./jobFmsModels/ActivityLog.model.js";
 import associateJobFmsModels from "./jobFmsModels/associations.js";
 import ClientDetailsModel from "./jobFmsModels/ClientDetails.model.js";
+import JobProductionStageWorkerModel from "./jobFmsModels/JobProductionStageWorker.model.js";
+import ProductionWorkerMasterModel from "./jobFmsModels/ProductionWorkerMaster.model.js";
+import DeliveryAssignmentModel from "./jobFmsModels/DeliveryAssignment.model.js";
 
 // jobFMS job card accounts models:
 import ItemMasterModel from "./jobFmsModels/AccountsJobItems/ItemMaster.model.js";
@@ -69,6 +72,9 @@ const ClientApproval = ClientApprovalModel(sequelize);
 const StageTracking = StageTrackingModel(sequelize);
 const ActivityLog = ActivityLogModel(sequelize);
 const ClientDetails = ClientDetailsModel(sequelize);
+const JobProductionStageWorker = JobProductionStageWorkerModel(sequelize);
+const ProductionWorkerMaster = ProductionWorkerMasterModel(sequelize);
+const DeliveryAssignment = DeliveryAssignmentModel(sequelize);
 
 // Job FMS job card accounts Models:
 const ItemMaster = ItemMasterModel(sequelize);
@@ -101,6 +107,9 @@ associateJobFmsModels({
   PrintingRateMaster,
   JobItemCosting,
   Quotation,
+  JobProductionStageWorker,
+  ProductionWorkerMaster,
+  DeliveryAssignment,
 });
 
 // Associations (ticketId attribute)
@@ -165,7 +174,11 @@ export default {
   StageTracking,
   ActivityLog,
   ClientDetails,
+  JobProductionStageWorker,
+  ProductionWorkerMaster,
+  DeliveryAssignment,
 
+  // Job FMS job card accounts Models:
   ItemMaster,
   PaperMaster,
   BindingMaster,
