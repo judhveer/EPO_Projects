@@ -69,7 +69,13 @@ import commonDashboardRoutes from "./routes/jobFmsRoutes/commonDashboard.routes.
 import productionDashboardRoutes from "./routes/jobFmsRoutes/production.routes.js";
 import outboundRoutes from "./routes/jobFmsRoutes/outbound.routes.js";
 import quotationRoutes from "./routes/jobFmsRoutes/quotation.routes.js";
-import { closeBrowser } from "./controllers/jobFmsController/quotation.controller.js";
+
+
+import workerMasterRoutes from "./routes/jobFmsRoutes/workerMaster.routes.js";
+import deliveryPublicRoutes from "./routes/jobFmsRoutes/deliveryPublic.routes.js";
+
+
+
 
 import notFound from './middlewares/salesPipeline/notFound.js';
 import errorHandler from './middlewares/salesPipeline/error.js';
@@ -77,6 +83,7 @@ import errorHandler from './middlewares/salesPipeline/error.js';
 
 // direct controller import for pause-on-logout (see discussion in AuthContext.jsx)
 import { pauseOnLogout } from "./controllers/jobFmsController/designer.controller.js";
+import { closeBrowser } from "./controllers/jobFmsController/quotation.controller.js";
 
 
 
@@ -124,12 +131,11 @@ const gateByMethod = (permView, permMutate = null) => [
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 
+// Public delivery route — BEFORE auth middleware, outside protected routes
+app.use("/api/public/delivery", deliveryPublicRoutes);
+
 app.use('/api/auth', authRoutes);        // POST /api/auth/login, POST /api/auth/users, GET /api/auth/me
-
-
 app.use("/api/disc", discRoutes);
-
-
 
 
 // salespipeline route define
@@ -239,6 +245,9 @@ app.use("/api/fms/outbound",
 
 
 app.use("/api/fms/quotations", authenticate, quotationRoutes);
+
+// Authenticated worker master route — inside auth-protected routes
+app.use("/api/fms/workers", authenticate, workerMasterRoutes);
 
 //  FOR PENDING BILLS FROM GOOGLE SHEET
 app.use("/api/billing", billingRoutes);
