@@ -1,7 +1,7 @@
 import { DataTypes } from 'sequelize';
 import bcrypt from 'bcryptjs';
 
-export const DEPARTMENTS = ["Job Writer", "Accounts", "Admin", "CRM", "Designer", "EA", "Foundation", "HR", "MIS", "Office Assistant", "Process Coordinator", "Receptionist", "Sales dept", "Tender Executive", ["OWNER"], "Production Coordinator"];
+export const DEPARTMENTS = ["Job Writer", "Accounts", "Admin", "CRM", "Designer", "EA", "Foundation", "HR", "MIS", "Office Assistant", "Process Coordinator", "Receptionist", "Sales dept", "Tender Executive", ["OWNER"], "Production Coordinator", "Production Worker", "Delivery"];
 
 export const ROLES = [
   "BOSS", "ADMIN", "STAFF",
@@ -52,7 +52,7 @@ export default (sequelize) => {
 
     email: {
       type: DataTypes.STRING(128),
-      allowNull: false,
+      allowNull: true,
       unique: true,
       validate: { isEmail: true }
     },

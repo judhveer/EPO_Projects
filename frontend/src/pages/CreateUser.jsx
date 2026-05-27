@@ -5,8 +5,7 @@ import PasswordField, { checkPassword } from '../components/forms/PasswordField'
 
 const DEPARTMENTS = [
   'Accounts', 'Admin', 'CRM', 'Designer', 'EA', 'Foundation', 'HR', 'Job Writer', 'MIS',
-  'Office Assistant', 'Process Coordinator', 'Production Coordinator', 'Receptionist', 'Sales dept', 'Tender Executive', 
-];
+  'Office Assistant', 'Process Coordinator', 'Production Coordinator', 'Receptionist', 'Sales dept', 'Tender Executive', "Production Worker", "Delivery"];
 
 // Full catalog (frontend); we'll filter based on department.
 const ROLES_CATALOG = [
@@ -23,7 +22,7 @@ export default function CreateUser() {
   const isBossAdmin = user?.role === 'BOSS' || user?.role === 'ADMIN';
 
   const [form, setForm] = useState({
-    email: '', username: '', password: '',
+    email: null, username: '', password: '',
     role: 'STAFF', department: 'Admin'
   });
   const [saving, setSaving] = useState(false);
@@ -61,7 +60,7 @@ export default function CreateUser() {
       await api.post('/api/auth/users', form);
       setMsg('User created successfully.');
       setMsgStatus(true);
-      setForm({ email: '', username: '', password: '', role: 'STAFF', department: 'Admin' });
+      setForm({ email: null, username: '', password: '', role: 'STAFF', department: 'Admin' });
     } catch (err) {
       const data = err?.response?.data;
       const fromArray = Array.isArray(data?.errors)
@@ -96,7 +95,7 @@ export default function CreateUser() {
           <div>
             <label className="block text-sm font-medium mb-1 text-slate-700">Email</label>
             <input name="email" value={form.email} onChange={onChange}
-              type="email" className="w-full border rounded-lg px-3 py-2" required />
+              type="email" className="w-full border rounded-lg px-3 py-2"  />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1 text-slate-700">Username</label>
