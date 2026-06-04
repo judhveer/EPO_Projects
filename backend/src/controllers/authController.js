@@ -102,24 +102,36 @@ export async function createUser(req, res) {
 
     const { email, username, role, department, password } = req.body;
 
-    if (!email || !username || !role || !department || !password) {
+    if (!username || !role || !department || !password) {
       return res.status(400).json({
-        message: "Email, username, role, department and password are required",
+        message: "Username, role, department and password are required",
         status: false,
         data: null,
       });
     }
 
-    const exists = await User.findOne({
-      where: { email },
-    });
-
-    if (exists) {
-      return res.status(409).json({
-        message: "Email already in use",
+    // Email required except for Production Worker
+    if (department !== "Production Worker" && !email) {
+      return res.status(400).json({
+        message: `Email is required for ${department}`,
         status: false,
         data: null,
       });
+    }
+
+    // Check email only if provided
+    if (email) {
+      const exists = await User.findOne({
+        where: { email },
+      });
+
+      if (exists) {
+        return res.status(409).json({
+          message: "Email already in use",
+          status: false,
+          data: null,
+        });
+      }
     }
 
     const userNameExists = await User.findOne({
@@ -159,33 +171,38 @@ export async function createUser(req, res) {
     });
 
     /* ---------------- EMAIL SENDING ---------------- */
-    try {
-      const { subject, text, html } = userCreatedEmail({
-        username,
-        email,
-        password,
-        role,
-        department,
-        createdByName: req.user?.username || "Admin",
-      });
+    if (email) {
+      try {
+        const { subject, text, html } = userCreatedEmail({
+          username,
+          email,
+          password,
+          role,
+          department,
+          createdByName: req.user?.username || "Admin",
+        });
 
-      await sendMailForCreateUser({
-        to: email,
-        subject,
-        text,
-        html,
-        attachments: [
-          {
-            filename: "epo-logo.jpg",
-            path: path.resolve("assets/epo-logo.jpg"),
-            cid: "epo-logo",
-          },
-        ],
-      });
-    } catch (mailError) {
-      // IMPORTANT: do not fail user creation if mail fails
-      console.error("Email failed but user created:", mailError.message);
+        await sendMailForCreateUser({
+          to: email,
+          subject,
+          text,
+          html,
+          attachments: [
+            {
+              filename: "epo-logo.jpg",
+              path: path.resolve("assets/epo-logo.jpg"),
+              cid: "epo-logo",
+            },
+          ],
+        });
+      } catch (mailError) {
+        console.error(
+          "Email failed but user created:",
+          mailError.message
+        );
+      }
     }
+
     /* ------------------------------------------------ */
   } catch (error) {
     return res.status(500).json({
@@ -238,3 +255,5 @@ export async function getExecutives(req, res) {
     res.status(500).json({ error: "Failed to fetch Executives" });
   }
 }
+
+
