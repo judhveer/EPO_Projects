@@ -11,6 +11,83 @@ const STAGE_LABELS = {
   out_for_delivery: "Out for Delivery",
 };
 
+
+/**
+ * Live timer component for a worker assignment.
+ *
+ * in_progress → green running timer (ticks every second)
+ * paused      → static orange display showing time worked before pause
+ *
+ * On page refresh the timer initialises from server timestamps so it
+ * is never reset to zero.
+ *
+ * Net work time = (elapsed since start) − total accumulated pause seconds
+ * For paused state we use paused_at as the end point so the current
+ * pause duration is not counted (it has not been committed yet).
+ */
+function WorkTimer({ started_at, paused_at, total_pause_duration_seconds, status }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!started_at) return;
+
+    const calculate = () => {
+      const startMs = new Date(started_at).getTime();
+      const pauseSecs = total_pause_duration_seconds || 0;
+
+      if (status === "in_progress") {
+        return Math.max(
+          0,
+          Math.floor((Date.now() - startMs) / 1000) - pauseSecs
+        );
+      }
+      if (status === "paused" && paused_at) {
+        return Math.max(
+          0,
+          Math.floor((new Date(paused_at).getTime() - startMs) / 1000) -
+            pauseSecs
+        );
+      }
+      return 0;
+    };
+
+    setElapsed(calculate());
+    if (status !== "in_progress") return;
+
+    const interval = setInterval(() => setElapsed(calculate()), 1000);
+    return () => clearInterval(interval);
+  }, [status, started_at, paused_at, total_pause_duration_seconds]);
+
+  const format = (secs) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    const pad = (n) => String(n).padStart(2, "0");
+    if (h > 0) return `${pad(h)}:${pad(m)}:${pad(s)}`;
+    return `${pad(m)}:${pad(s)}`;
+  };
+
+  if (!started_at) return null;
+
+  const isRunning = status === "in_progress";
+
+  return (
+    <div className="text-right shrink-0">
+      <p className={`text-[10px] font-bold uppercase tracking-widest mb-0.5 ${
+        isRunning ? "text-green-500" : "text-orange-400"
+      }`}>
+        {isRunning ? "⏱ Working" : "⏸ Paused"}
+      </p>
+      <p className={`text-xl font-black font-mono tabular-nums leading-none ${
+        isRunning ? "text-green-700" : "text-gray-500"
+      }`}>
+        {format(elapsed)}
+      </p>
+    </div>
+  );
+}
+
+
 // Silent background poll every 30 seconds so newly assigned jobs appear
 // without the worker having to manually refresh.
 const POLL_INTERVAL_MS = 30_000;
@@ -159,7 +236,15 @@ export default function WorkerDashboard() {
 
 // ── Assignment card ───────────────────────────────────────────────────────────
 function AssignmentCard({ assignment, isSubmitting, onAction }) {
-  const { id, status, stage_name, jobCard } = assignment;
+  const {
+    id,
+    status,
+    stage_name,
+    jobCard,
+    started_at,
+    paused_at,
+    total_pause_duration_seconds,
+  } = assignment;
 
   const stageLabel =
     STAGE_LABELS[stage_name] || stage_name?.replace(/_/g, " ");
@@ -212,11 +297,25 @@ function AssignmentCard({ assignment, isSubmitting, onAction }) {
         </div>
 
         {/* Stage pill */}
+        {/* Stage pill with inline timer on the right */}
         <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5 mb-5">
-          <p className="text-[10px] text-blue-400 font-semibold uppercase tracking-widest mb-0.5">
-            Your Stage
-          </p>
-          <p className="text-lg font-black text-blue-800">{stageLabel}</p>
+          <div className="flex justify-between items-start gap-2">
+            <div>
+              <p className="text-[10px] text-blue-400 font-semibold uppercase tracking-widest mb-0.5">
+                Your Stage
+              </p>
+              <p className="text-lg font-black text-blue-800">{stageLabel}</p>
+            </div>
+
+            {started_at && (
+              <WorkTimer
+                started_at={started_at}
+                paused_at={paused_at}
+                total_pause_duration_seconds={total_pause_duration_seconds}
+                status={status}
+              />
+            )}
+          </div>
         </div>
 
         {/* ── Action buttons ── */}
