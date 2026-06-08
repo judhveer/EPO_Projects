@@ -71,7 +71,8 @@ import outboundRoutes from "./routes/jobFmsRoutes/outbound.routes.js";
 import quotationRoutes from "./routes/jobFmsRoutes/quotation.routes.js";
 
 
-import workerMasterRoutes from "./routes/jobFmsRoutes/workerMaster.routes.js";
+import stageWorkerRoutes from "./routes/jobFmsRoutes/stageWorker.routes.js";
+import deliveryWorkerRoutes from "./routes/jobFmsRoutes/deliveryWorker.routes.js";  
 import deliveryPublicRoutes from "./routes/jobFmsRoutes/deliveryPublic.routes.js";
 
 
@@ -247,7 +248,8 @@ app.use("/api/fms/outbound",
 app.use("/api/fms/quotations", authenticate, quotationRoutes);
 
 // Authenticated worker master route — inside auth-protected routes
-app.use("/api/fms/workers", authenticate, workerMasterRoutes);
+app.use("/api/fms/worker", authenticate, stageWorkerRoutes);
+app.use("/api/fms/delivery-worker", authenticate, deliveryWorkerRoutes);
 
 //  FOR PENDING BILLS FROM GOOGLE SHEET
 app.use("/api/billing", billingRoutes);
