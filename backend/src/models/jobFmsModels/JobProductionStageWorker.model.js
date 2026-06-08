@@ -49,6 +49,7 @@ export default (sequelize) => {
           "completed",
           "force_completed",
           "cancelled",
+          "defect_reported",
         ),
         allowNull: false,
         defaultValue: "assigned",
@@ -92,6 +93,12 @@ export default (sequelize) => {
         allowNull: true,
         comment: "Why cancelled — typically coordinator reverted the stage.",
       },
+      caused_rework: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment: "Whether this assignment's output failed QC and caused rework.",
+      }
     },
     {
       tableName: "jobfms_production_stage_workers",
