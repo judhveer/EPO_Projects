@@ -1,5 +1,6 @@
 import express from "express";
 import multer from "multer";
+
 import {
   getJobsForProduction,
   getValidStagesForJob,
@@ -8,6 +9,8 @@ import {
   markJobDelivered,
   getStageWorkersForJob,
   overrideDeliveryAssignment,
+  forceCompleteWorkerAssignment,
+  getWorkerStats
 } from "../../controllers/jobFmsController/production.controller.js";
 
 const router = express.Router();
@@ -38,6 +41,7 @@ const safeUpload = (mw) => (req, res, next) =>
 
 // ── Production Pipeline (Tab 1) ──
 router.get("/", getJobsForProduction);
+router.get("/worker-stats", getWorkerStats);   
 router.get("/:job_no/valid-stages", getValidStagesForJob);
 router.get("/:job_no/stage-workers", getStageWorkersForJob);
 router.post("/:job_no/advance-stage", advanceProductionStage);
@@ -52,6 +56,13 @@ router.post(
     ]),
   ),
   overrideDeliveryAssignment,
+);
+
+// Coordinator force-completes a stuck worker assignment
+// (worker absent, forgot to mark done, etc.)
+router.post(
+  "/:job_no/worker-assignments/:assignment_id/force-complete",
+  forceCompleteWorkerAssignment,
 );
 
 export default router;
