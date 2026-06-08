@@ -41,6 +41,22 @@ import OutboundOrders from "./components/jobFms/OutboundOrders.jsx";
 import PendingBillingDashboard from "./components/jobFms/accounts/PendingBillingDashboard.jsx";
 import QuotationDashboard from "./pages/jobFms/QuotationDashboard.jsx";
 import DeliveryChallanPage from "./pages/jobFms/DeliveryChallanPage.jsx";
+// ── Standalone worker dashboards (outside AppShell) ──
+import WorkerDashboard from "./pages/worker/WorkerDashboard.jsx";
+import DeliveryWorkerDashboard from "./pages/worker/DeliveryWorkerDashboard.jsx";
+
+
+/**
+ * Returns the correct landing route based on user department.
+ * Production Worker and Delivery users have standalone dashboards
+ * completely outside the main AppShell navigation.
+ */
+function getHomeRoute(user) {
+  if (!user) return "/login";
+  if (user.department === "Production Worker") return "/worker";
+  if (user.department === "Delivery") return "/delivery-dashboard";
+  return "/home";
+}
 
 
 
@@ -61,10 +77,9 @@ export default function App() {
       <Route path="/delivery/confirm/:token" element={<DeliveryChallanPage />} />
 
       {/* Public: /login -> if already authed redirect to /home */}
-
       <Route
         path="/login"
-        element={user ? <Navigate to="/home" replace /> : <Login />}
+        element={user ? <Navigate to={getHomeRoute(user)} replace /> : <Login />}
       />
 
 
@@ -72,13 +87,35 @@ export default function App() {
       <Route
         path="/"
         element={
-          user ? (<Navigate to="/home" replace />) : (<Navigate to="/login" replace />)
+          user
+            ? <Navigate to={getHomeRoute(user)} replace />
+            : <Navigate to="/login" replace />
         }
       />
 
 
       {/* Protected routes */}
       <Route element={<ProtectedRoute />}>
+
+        {/* ── Standalone worker dashboards ──
+          These are OUTSIDE AppShell intentionally. Workers on phones see ONLY their simple dashboard — no nav bar, no complex UI, no access to other modules. */}
+        <Route
+          path="/worker"
+          element={
+            user?.department === "Production Worker"
+              ? <WorkerDashboard />
+              : <Navigate to={getHomeRoute(user)} replace />
+          }
+        />
+        <Route
+          path="/delivery-dashboard"
+          element={
+            user?.department === "Delivery"
+              ? <DeliveryWorkerDashboard />
+              : <Navigate to={getHomeRoute(user)} replace />
+          }
+        />
+
         <Route element={<AppShell />}>
           <Route path="/home" element={<Home />} />
           {/* Attendance: everyone authenticated */}
@@ -299,12 +336,13 @@ export default function App() {
           
           {/* --------------- END JOB FMS MODULE --------------- */}
         </Route>
+
       </Route>
 
       {/* wildcard: if unmatched route under protected area, send to home */}
       <Route
         path="*"
-        element={<Navigate to={user ? "/home" : "/login"} replace />}
+        element={<Navigate to={user ? getHomeRoute(user) : "/login"} replace />}
       />
 
     </Routes>
