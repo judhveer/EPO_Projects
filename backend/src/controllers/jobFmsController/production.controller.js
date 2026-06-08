@@ -361,41 +361,72 @@ export const advanceProductionStage = async (req, res) => {
       });
 
       if (incompleteAssignments.length > 0) {
-        for (const a of incompleteAssignments) {
-          const completedAt =
-            a.status === "paused" && a.paused_at
-              ? new Date(a.paused_at)
-              : now;
 
-          await a.update(
-            {
-              status: "force_completed",
-              completed_at: completedAt,
-              paused_at: null,
-              force_completed_by_id: req.user?.id || null,
-            },
-            { transaction: t }
-          );
-
-          // ── ADDED: record reason in ActivityLog so scoring has context ──
-          await db.ActivityLog.create(
-            {
-              job_no,
-              action: "worker_assignment_force_completed",
-              performed_by_id: req.user?.id || null,
-              meta: {
-                assignment_id: a.id,
-                worker_name: a.worker_name,
-                previous_status: a.status,
-                completed_at: completedAt,
-                reason: `Auto force-completed: coordinator advanced stage from ${STAGE_LABELS[fromStage] || fromStage} to ${STAGE_LABELS[to_stage] || to_stage}.`,
+        for(const a of incompleteAssignments){
+          if(a.status === "assigned"){
+            // Worker was assigned but never pressed START.
+            // No work was done — cancel cleanly.
+            // force_completed should only apply to workers who actually started.
+            await a.update(
+              {
+                status: "cancelled",
+                cancelled_at: now,
+                cancelled_reason: `Stage advanced to ${STAGE_LABELS[to_stage] || to_stage} before worker started.`,
               },
-            },
-            { transaction: t }
-          );
+              { transaction: t }
+            );
+
+            await db.ActivityLog.create(
+              {
+                job_no,
+                action: "worker_assignment_cancelled_on_advance",
+                performed_by_id: req.user?.id || null,
+                meta: {
+                  assignment_id: a.id,
+                  worker_name: a.worker_name,
+                  reason: `Coordinator advanced to ${STAGE_LABELS[to_stage] || to_stage}. Worker had not started.`,
+                },
+              },
+              { transaction: t }
+            );
+          }
+          else{
+            // Worker started (in_progress or paused) — force complete with correct end time.
+            const completedAt = a.status === "paused" && a.paused_at ? new Date(a.paused_at) : now;
+            await a.update(
+              {
+                status: "force_completed",
+                completed_at: completedAt,
+                paused_at: null,
+                force_completed_by_id: req.user?.id || null,
+              },
+              { transaction: t }
+            );
+
+            // ── ADDED: record reason in ActivityLog so scoring has context ──
+            await db.ActivityLog.create(
+              {
+                job_no,
+                action: "worker_assignment_force_completed",
+                performed_by_id: req.user?.id || null,
+                meta: {
+                  assignment_id: a.id,
+                  worker_name: a.worker_name,
+                  previous_status: a.status,
+                  completed_at: completedAt,
+                  reason: `Auto force-completed: coordinator advanced stage from ${STAGE_LABELS[fromStage] || fromStage} to ${STAGE_LABELS[to_stage] || to_stage}.`,
+                },
+              },
+              { transaction: t }
+            );
+          }
         }
       }
-      autoForcedCount = incompleteAssignments.length;
+      // Count only workers who actually started — assigned workers were simply cancelled
+      autoForcedCount = incompleteAssignments.filter(
+        (a) => ["in_progress", "paused"].includes(a.status)
+      ).length;
+
     }
 
     await job.update(
@@ -633,24 +664,91 @@ export const revertProductionStage = async (req, res) => {
 
     const now = new Date();
 
-    // CHANGED: Cancel all non-complete worker assignments for the FROM stage.
-    // Status = cancelled, with reason recorded for audit/scoring.
-    // completed and force_completed records are preserved as-is (historical).
-    await db.JobProductionStageWorker.update(
-      {
-        status: "cancelled",
-        cancelled_at: now,
-        cancelled_reason: `Stage reverted from ${STAGE_LABELS[fromStage] || fromStage} to ${STAGE_LABELS[to_stage] || to_stage} by coordinator. Remarks: ${remarks.trim()}`,
-      },
-      {
+
+
+    // ── Assignment handling depends on whether we are reverting FROM quality_check ──
+    // Any revert FROM QC = defect was detected by the QC worker(s).
+    // Workers who were actively working get credit (defect_reported).
+    // Workers who were assigned but never started get cancelled (no work done).
+    // For all other stages, keep the existing blanket-cancel behaviour.
+
+    if(fromStage === "quality_check") {
+      // ── Handle QC workers individually based on their current state ──────────
+      const activeQcAssignments = await db.JobProductionStageWorker.findAll({
         where: {
           job_no,
-          stage_name: fromStage,
-          status: { [Op.in]: ["assigned", "in_progress", "paused"] },
+          stage_name: "quality_check",
+          status: { [Op.in]: ["in_progress", "paused", "assigned"] },
         },
         transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      
+      for(const a of activeQcAssignments) {
+        if (["in_progress", "paused"].includes(a.status)) {
+          // Worker did productive inspection work — credit them for detecting the defect.
+          // Time logic: same as force-complete (paused → use paused_at, in_progress → now).
+          const completedAt = a.status === "paused" && a.paused_at ? new Date(a.paused_at) : now;
+          
+          await a.update(
+            {
+              status: "defect_reported",
+              completed_at: completedAt,
+              paused_at: null,
+            },
+            { transaction: t }
+          );
+        }
+        else{
+          // Worker was assigned but never started — genuinely no work done.
+          await a.update(
+            {
+              status: "cancelled",
+              cancelled_at: now,
+              cancelled_reason: `Stage reverted from Quality Check to ${STAGE_LABELS[to_stage] || to_stage}: ${remarks.trim()}`,
+            },
+            { transaction: t }
+          );
+        }
       }
-    );
+
+      // ── Mark ALL workers who completed the TO stage (e.g. Printing) as caused_rework ──
+      // Multiple workers may have worked on that stage together — all share responsibility.
+      // Using UPDATE (not increment) because caused_rework is a boolean flag, so
+      // marking an already-marked assignment 1→1 is idempotent and safe.
+
+      await db.JobProductionStageWorker.update(
+        { caused_rework: true },
+        {
+          where: {
+            job_no,
+            stage_name: to_stage,
+            status: { [Op.in]: ["completed", "force_completed"] },
+          },
+          transaction: t,
+        }
+      );
+
+    }
+    else {
+      // ── Standard revert: cancel all active assignments for the FROM stage ────
+      await db.JobProductionStageWorker.update(
+        {
+          status: "cancelled",
+          cancelled_at: now,
+          cancelled_reason: `Stage reverted from ${STAGE_LABELS[fromStage] || fromStage} to ${STAGE_LABELS[to_stage] || to_stage} by coordinator. Remarks: ${remarks.trim()}`,
+        },
+        {
+          where: {
+            job_no,
+            stage_name: fromStage,
+            status: { [Op.in]: ["assigned", "in_progress", "paused"] },
+          },
+          transaction: t,
+        }
+      );
+    }
+
 
     const updates = {
       production_stage: to_stage,
@@ -725,13 +823,18 @@ export const revertProductionStage = async (req, res) => {
     await ActivityLog.create(
       {
         job_no,
-        action: "production_stage_reverted",
+        action: fromStage === "quality_check"
+          ? "quality_defect_detected"
+          : "production_stage_reverted",
         performed_by_id: req.user?.id || null,
         meta: {
           from_stage: fromStage,
           to_stage,
           workers: selectedWorkers.map((w) => w.username),
           remarks: remarks.trim(),
+          ...(fromStage === "quality_check" && {
+            rework_attributed_to_stage: to_stage,
+          }),
         },
       },
       { transaction: t }
@@ -1250,6 +1353,10 @@ export const getWorkerStats = async (req, res) => {
               [db.sequelize.literal("SUM(CASE WHEN status = 'force_completed' THEN 1 ELSE 0 END)"), "force_completed"],
               [db.sequelize.literal("SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END)"), "cancelled"],
               [db.sequelize.literal("SUM(CASE WHEN status IN ('completed','force_completed') AND DATE(completed_at) = CURDATE() THEN 1 ELSE 0 END)"), "done_today"],
+              // NEW: QC defect detections (positive metric for QC workers)
+              [db.sequelize.literal("SUM(CASE WHEN status = 'defect_reported' THEN 1 ELSE 0 END)"), "defects_reported"],
+              // NEW: Assignments where this worker's output failed QC and caused rework
+              [db.sequelize.literal("SUM(CASE WHEN caused_rework = 1 THEN 1 ELSE 0 END)"), "rework_caused"],
             ],
             where: { worker_id: { [Op.in]: productionIds } },
             group: ["worker_id"],
@@ -1381,8 +1488,9 @@ export const getWorkerStats = async (req, res) => {
             total_done:        parseInt(s.total_done)        || 0,
             self_completed:    parseInt(s.self_completed)    || 0,
             force_completed:   parseInt(s.force_completed)   || 0,
-            cancelled:         parseInt(s.cancelled)         || 0,
             done_today:        parseInt(s.done_today)        || 0,
+            defects_reported:  parseInt(s.defects_reported)  || 0,
+            rework_caused:     parseInt(s.rework_caused)     || 0,
           },
         };
       }
@@ -1412,8 +1520,9 @@ export const getWorkerStats = async (req, res) => {
           total_done:        parseInt(s.total_done)        || 0,
           self_completed:    parseInt(s.total_done)        || 0,
           force_completed:   parseInt(s.force_completed)   || 0,
-          cancelled:         0,
           done_today:        parseInt(s.done_today)        || 0,
+          defects_reported:  0,  // Delivery workers do not do QC
+          rework_caused:     0,  // Delivery workers do not produce print output
         },
       };
     });
