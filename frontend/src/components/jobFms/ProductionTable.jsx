@@ -16,22 +16,30 @@ const STAGE_PILLS = [
   { value: "out_for_delivery", label: "Out for Delivery" },
 ];
 
-
-
-// Groups stageWorkers array by stage_name, deduplicates names.
-// Returns: { printing: ['Ramesh', 'Suresh'], binding: ['Kumar'], ... }
-function groupWorkersByStage(stageWorkers = []) {
+/**
+ * Groups stageWorkers by stage_name and computes completion counts.
+ * Cancelled assignments (from reverted stages) are excluded.
+ *
+ * activelyWorking = in_progress or paused (started but not done).
+ * Used to distinguish "Not started" (all assigned, nobody pressed START)
+ * from "0/3 done" (some workers are actively working).
+ */
+function getWorkerStageSummary(stageWorkers = []) {
   const map = {};
   for (const w of stageWorkers) {
-    if (!map[w.stage_name]) map[w.stage_name] = new Set();
-    map[w.stage_name].add(w.worker_name);
+    if (w.status === "cancelled") continue;
+    if (!map[w.stage_name]) {
+      map[w.stage_name] = { names: [], total: 0, done: 0, activelyWorking: 0 };
+    }
+    if (w.worker_name) map[w.stage_name].names.push(w.worker_name);
+    map[w.stage_name].total++;
+    if (["completed", "force_completed"].includes(w.status)) {
+      map[w.stage_name].done++;
+    } else if (["in_progress", "paused"].includes(w.status)) {
+      map[w.stage_name].activelyWorking++;
+    }
   }
-  // Convert Sets to arrays
-  const result = {};
-  for (const stage of Object.keys(map)) {
-    result[stage] = [...map[stage]];
-  }
-  return result;
+  return map;
 }
 
 const STAGE_ICON = {
@@ -133,7 +141,7 @@ export default function ProductionTable() {
               <th className="border p-2 w-[220px]">
                 {stageFilter && STAGE_DISPLAY_ORDER.includes(stageFilter)
                   ? `${stageFilter.replace(/_/g, " ")} Workers`.replace(/\b\w/g, (c) => c.toUpperCase())
-                  : "Stage Workers"}
+                  : "Workers"}
               </th>
               <th className="border p-2 w-[150px]">Created On</th>
               <th className="border p-2 w-[180px]">Client</th>
@@ -172,36 +180,116 @@ export default function ProductionTable() {
 
                   <td className="border p-2 align-top">
                     {(() => {
-                      const byStage = groupWorkersByStage(job.stageWorkers);
+                      const currentStage = job.production_stage;
+
+                      // ── Special case: out_for_delivery ───────────────────────────────
+                      // Delivery workers live in DeliveryAssignment, not JobProductionStageWorker.
+                      // Show delivery confirmation status instead of stage worker summary.
+                      if (currentStage === "out_for_delivery") {
+                        const das = job.deliveryAssignments || [];
+                        if (das.length === 0) {
+                          return <span className="text-gray-400 text-xs italic">—</span>;
+                        }
+                        const total = das.length;
+                        const done = das.filter((da) =>
+                          ["confirmed", "overridden"].includes(da.status)
+                        ).length;
+                        const allConfirmed = done === total;
+
+                        return (
+                          <div className="text-xs">
+                            <div className="flex items-center gap-1 flex-wrap mb-0.5">
+                              <span className="shrink-0">🚚</span>
+                              <span className="font-semibold text-blue-700">Out for Delivery</span>
+                              <span
+                                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${
+                                  allConfirmed
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-orange-100 text-orange-700"
+                                }`}
+                              >
+                                {allConfirmed ? "All confirmed ✓" : `${done}/${total} confirmed`}
+                              </span>
+                            </div>
+                            <div className="pl-4 text-[11px] text-gray-700 leading-snug">
+                              {das.map((da) => da.worker_name).join(", ")}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // ── All other production stages ───────────────────────────────────
+                      const stageMap = getWorkerStageSummary(job.stageWorkers);
+
                       const activeStages = stageFilter
-                        ? STAGE_DISPLAY_ORDER.filter((s) => s === stageFilter && byStage[s]?.length > 0)
-                        : STAGE_DISPLAY_ORDER.filter((s) => byStage[s]?.length > 0);
+                        ? STAGE_DISPLAY_ORDER.filter(
+                            (s) => s === stageFilter && stageMap[s]
+                          )
+                        : STAGE_DISPLAY_ORDER.filter((s) => stageMap[s]);
 
                       if (activeStages.length === 0) {
                         return <span className="text-gray-400 text-xs italic">—</span>;
                       }
 
                       return (
-                        <div className="space-y-1.5">
-                          {activeStages.map((s) => (
-                            <div key={s} className="flex items-start gap-1 text-xs leading-tight">
-                              <span className="shrink-0">{STAGE_ICON[s]}</span>
-                              <div>
-                                <span
-                                  className={`font-semibold ${
-                                    job.production_stage === s
-                                      ? "text-blue-700"   // currently active stage → blue
-                                      : "text-gray-400"  // past stage → muted
-                                  }`}
-                                >
-                                  {s.replace(/_/g, " ")}:{" "}
-                                </span>
-                                <span className={job.production_stage === s ? "text-gray-800" : "text-gray-400"}>
-                                  {byStage[s].join(", ")}
-                                </span>
+                        <div className="space-y-2">
+                          {activeStages.map((s) => {
+                            const info = stageMap[s];
+                            const isCurrent = s === currentStage;
+                            const allDone = info.total > 0 && info.done === info.total;
+
+                            // FIX: "Not started" only when ALL workers are still on 'assigned'
+                            // (nobody has pressed START yet). If any are in_progress or paused,
+                            // they have started — show "X/Y done" in orange instead.
+                            const noneStarted =
+                              info.total > 0 &&
+                              info.done === 0 &&
+                              info.activelyWorking === 0;
+
+                            return (
+                              <div key={s} className="text-xs">
+                                <div className="flex items-center gap-1 flex-wrap mb-0.5">
+                                  <span className="shrink-0">{STAGE_ICON[s]}</span>
+                                  <span
+                                    className={`font-semibold capitalize ${
+                                      isCurrent ? "text-blue-700" : "text-gray-400"
+                                    }`}
+                                  >
+                                    {s.replace(/_/g, " ")}
+                                  </span>
+
+                                  {/* Pill shown only for current active stage */}
+                                  {isCurrent && info.total > 0 && (
+                                    <span
+                                      className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${
+                                        allDone
+                                          ? "bg-green-100 text-green-700"
+                                          : noneStarted
+                                          ? "bg-gray-100 text-gray-500"
+                                          : "bg-orange-100 text-orange-700"
+                                      }`}
+                                    >
+                                      {allDone
+                                        ? "All done ✓"
+                                        : noneStarted
+                                        ? "Not started"
+                                        : `${info.done}/${info.total} done`}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {info.names.length > 0 && (
+                                  <div
+                                    className={`pl-4 text-[11px] leading-snug ${
+                                      isCurrent ? "text-gray-700" : "text-gray-400"
+                                    }`}
+                                  >
+                                    {info.names.join(", ")}
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       );
                     })()}
