@@ -7,7 +7,6 @@ export default function associateJobFmsModels(models) {
     JobAssignment,
     ClientApproval,
     ProductionRecord,
-    FileAttachment,
     Notification,
     StageTracking,
     ActivityLog,
@@ -21,8 +20,8 @@ export default function associateJobFmsModels(models) {
     WideFormatMaterial,
     JobItemCosting,
     JobProductionStageWorker,
-    ProductionWorkerMaster,
     DeliveryAssignment,
+    // ProductionWorkerMaster removed — table dropped, workers are now Users
   } = models;
 
   // 🔗 JobCard ↔ JobItem
@@ -38,97 +37,131 @@ export default function associateJobFmsModels(models) {
     as: "jobItems",
     foreignKey: "item_master_id",
   });
-  JobItem.belongsTo(ItemMaster, { as: "itemMaster", foreignKey: "item_master_id" });
+  JobItem.belongsTo(ItemMaster, {
+    as: "itemMaster",
+    foreignKey: "item_master_id",
+  });
 
-
-// 🔗 JobItem ↔ PaperMaster  (selected paper)
+  // 🔗 JobItem ↔ PaperMaster (selected paper)
   JobItem.belongsTo(PaperMaster, {
     as: "selectedPaper",
     foreignKey: "selected_paper_id",
   });
 
-  // JobItem ↔ WideFormatMaterial (selected wide format material)
+  // 🔗 JobItem ↔ WideFormatMaterial
   JobItem.belongsTo(WideFormatMaterial, {
     as: "selectedWideMaterial",
     foreignKey: "selected_wide_material_id",
   });
-
-  // WideFormatMaterial ↔ JobItem (reverse association)
   WideFormatMaterial.hasMany(JobItem, {
     as: "jobItems",
     foreignKey: "selected_wide_material_id",
   });
 
-    // (selected cover paper)
+  // 🔗 JobItem ↔ PaperMaster (selected cover paper)
   JobItem.belongsTo(PaperMaster, {
     as: "selectedCoverPaper",
     foreignKey: "selected_cover_paper_id",
   });
 
-// 🔗 JobCard ↔ JobAssignment
-  JobCard.hasMany(JobAssignment, { as: "assignments", foreignKey: "job_no", onDelete: "CASCADE"});
+  // 🔗 JobCard ↔ JobAssignment
+  JobCard.hasMany(JobAssignment, {
+    as: "assignments",
+    foreignKey: "job_no",
+    onDelete: "CASCADE",
+  });
   JobAssignment.belongsTo(JobCard, { as: "jobCard", foreignKey: "job_no" });
 
-
-
-
   // 🔗 JobAssignment ↔ User
-  JobAssignment.belongsTo(User, { as: "designer", foreignKey: "designer_id" });
-  JobAssignment.belongsTo(User, { as: "assignedBy", foreignKey: "assigned_by_id" });
-
-
+  JobAssignment.belongsTo(User, {
+    as: "designer",
+    foreignKey: "designer_id",
+  });
+  JobAssignment.belongsTo(User, {
+    as: "assignedBy",
+    foreignKey: "assigned_by_id",
+  });
 
   // 🔗 ClientApproval
   if (ClientApproval) {
-    JobCard.hasMany(ClientApproval, { as: "clientApprovals", foreignKey: "job_no", onDelete: "CASCADE", });
-    ClientApproval.belongsTo(JobCard, { as: "jobCard", foreignKey: "job_no" });
-    ClientApproval.belongsTo(User, { as: "handledBy", foreignKey: "handled_by_id" });
+    JobCard.hasMany(ClientApproval, {
+      as: "clientApprovals",
+      foreignKey: "job_no",
+      onDelete: "CASCADE",
+    });
+    ClientApproval.belongsTo(JobCard, {
+      as: "jobCard",
+      foreignKey: "job_no",
+    });
+    ClientApproval.belongsTo(User, {
+      as: "handledBy",
+      foreignKey: "handled_by_id",
+    });
   }
-
 
   // 🔗 ProductionRecord
   if (ProductionRecord) {
-    JobCard.hasOne(ProductionRecord, { as: "production", foreignKey: "job_no", onDelete: "CASCADE", });
-    ProductionRecord.belongsTo(JobCard, { as: "jobCard", foreignKey: "job_no" });
-    ProductionRecord.belongsTo(User, { as: "producedBy", foreignKey: "produced_by_id" });
+    JobCard.hasOne(ProductionRecord, {
+      as: "production",
+      foreignKey: "job_no",
+      onDelete: "CASCADE",
+    });
+    ProductionRecord.belongsTo(JobCard, {
+      as: "jobCard",
+      foreignKey: "job_no",
+    });
+    ProductionRecord.belongsTo(User, {
+      as: "producedBy",
+      foreignKey: "produced_by_id",
+    });
   }
-
-
-   // 🔗 FileAttachment
-  if (FileAttachment) {
-    JobCard.hasMany(FileAttachment, { as: "attachments", foreignKey: "job_no", onDelete: "CASCADE", });
-    FileAttachment.belongsTo(JobCard, { as: "jobCard", foreignKey: "job_no" });
-    FileAttachment.belongsTo(User, { as: "uploadedBy", foreignKey: "uploaded_by_id" });
-  }
-
 
 
   // 🔗 StageTracking
   if (StageTracking) {
-    JobCard.hasMany(StageTracking, { as: "stages", foreignKey: "job_no", onDelete: "CASCADE", });
-    StageTracking.belongsTo(JobCard, { as: "jobCard", foreignKey: "job_no" });
-    StageTracking.belongsTo(User, { as: "performedBy", foreignKey: "performed_by_id" });
+    JobCard.hasMany(StageTracking, {
+      as: "stages",
+      foreignKey: "job_no",
+      onDelete: "CASCADE",
+    });
+    StageTracking.belongsTo(JobCard, {
+      as: "jobCard",
+      foreignKey: "job_no",
+    });
+    StageTracking.belongsTo(User, {
+      as: "performedBy",
+      foreignKey: "performed_by_id",
+    });
   }
-
 
   // 🔗 ActivityLog
   if (ActivityLog) {
-    JobCard.hasMany(ActivityLog, { as: "activities", foreignKey: "job_no",  onDelete: "CASCADE", });
-    ActivityLog.belongsTo(JobCard, { as: "jobCard", foreignKey: "job_no" });
-    ActivityLog.belongsTo(User, { as: "performedBy", foreignKey: "performed_by_id" });
+    JobCard.hasMany(ActivityLog, {
+      as: "activities",
+      foreignKey: "job_no",
+      onDelete: "CASCADE",
+    });
+    ActivityLog.belongsTo(JobCard, {
+      as: "jobCard",
+      foreignKey: "job_no",
+    });
+    ActivityLog.belongsTo(User, {
+      as: "performedBy",
+      foreignKey: "performed_by_id",
+    });
   }
 
-  // 🔗 Notification belongs to user
+  // 🔗 Notification
   if (Notification) {
     Notification.belongsTo(User, { as: "user", foreignKey: "user_id" });
   }
 
+  // 🔗 JobItem ↔ JobItemCosting
   JobItem.hasOne(models.JobItemCosting, {
     as: "costing",
     foreignKey: "job_item_id",
     onDelete: "CASCADE",
-  });  
-
+  });
 
   // 🔗 JobProductionStageWorker
   if (JobProductionStageWorker) {
@@ -141,21 +174,20 @@ export default function associateJobFmsModels(models) {
       as: "jobCard",
       foreignKey: "job_no",
     });
+    // Coordinator who recorded/created the assignment
     JobProductionStageWorker.belongsTo(User, {
       as: "recorder",
       foreignKey: "recorded_by_id",
     });
-  }
-
-  // 🔗 ProductionWorkerMaster
-  if (ProductionWorkerMaster) {
-    ProductionWorkerMaster.hasMany(JobProductionStageWorker, {
+    // The floor worker assigned to this stage (was ProductionWorkerMaster, now User)
+    JobProductionStageWorker.belongsTo(User, {
+      as: "worker",
       foreignKey: "worker_id",
-      as: "stageAssignments",
     });
-    ProductionWorkerMaster.hasMany(DeliveryAssignment, {
-      foreignKey: "worker_id",
-      as: "deliveryAssignments",
+    // Coordinator who force-completed a stuck assignment
+    JobProductionStageWorker.belongsTo(User, {
+      as: "forceCompletedBy",
+      foreignKey: "force_completed_by_id",
     });
   }
 
@@ -166,29 +198,32 @@ export default function associateJobFmsModels(models) {
       foreignKey: "job_no",
       onDelete: "CASCADE",
     });
-    DeliveryAssignment.belongsTo(JobCard, { 
+    DeliveryAssignment.belongsTo(JobCard, {
       foreignKey: "job_no",
-      as: "jobCard"
+      as: "jobCard",
     });
-    DeliveryAssignment.belongsTo(ProductionWorkerMaster, { 
-      foreignKey: "worker_id", 
-      as: "worker" 
-    });
-    DeliveryAssignment.belongsTo(User, { 
-      foreignKey: "assigned_by_id", 
-      as: "assignedBy" 
-    });
-    DeliveryAssignment.belongsTo(User, { 
-      foreignKey: "overridden_by_id", 
-      as: "overriddenBy" 
-    });
-  }
-
-  // 🔗 JobProductionStageWorker — update to add worker_id link
-  if (JobProductionStageWorker && ProductionWorkerMaster) {
-    JobProductionStageWorker.belongsTo(ProductionWorkerMaster, {
+    // Delivery worker (was ProductionWorkerMaster, now User)
+    DeliveryAssignment.belongsTo(User, {
       foreignKey: "worker_id",
-      as: "workerMaster",
+      as: "worker",
+    });
+    DeliveryAssignment.belongsTo(User, {
+      foreignKey: "assigned_by_id",
+      as: "assignedBy",
+    });
+    DeliveryAssignment.belongsTo(User, {
+      foreignKey: "overridden_by_id",
+      as: "overriddenBy",
     });
   }
 }
+
+
+
+
+
+
+
+
+
+
