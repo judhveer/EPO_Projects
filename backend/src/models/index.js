@@ -30,7 +30,6 @@ import ActivityLogModel from "./jobFmsModels/ActivityLog.model.js";
 import associateJobFmsModels from "./jobFmsModels/associations.js";
 import ClientDetailsModel from "./jobFmsModels/ClientDetails.model.js";
 import JobProductionStageWorkerModel from "./jobFmsModels/JobProductionStageWorker.model.js";
-import ProductionWorkerMasterModel from "./jobFmsModels/ProductionWorkerMaster.model.js";
 import DeliveryAssignmentModel from "./jobFmsModels/DeliveryAssignment.model.js";
 
 // jobFMS job card accounts models:
@@ -73,7 +72,6 @@ const StageTracking = StageTrackingModel(sequelize);
 const ActivityLog = ActivityLogModel(sequelize);
 const ClientDetails = ClientDetailsModel(sequelize);
 const JobProductionStageWorker = JobProductionStageWorkerModel(sequelize);
-const ProductionWorkerMaster = ProductionWorkerMasterModel(sequelize);
 const DeliveryAssignment = DeliveryAssignmentModel(sequelize);
 
 // Job FMS job card accounts Models:
@@ -108,7 +106,6 @@ associateJobFmsModels({
   JobItemCosting,
   Quotation,
   JobProductionStageWorker,
-  ProductionWorkerMaster,
   DeliveryAssignment,
 });
 
@@ -175,7 +172,6 @@ export default {
   ActivityLog,
   ClientDetails,
   JobProductionStageWorker,
-  ProductionWorkerMaster,
   DeliveryAssignment,
 
   // Job FMS job card accounts Models:
