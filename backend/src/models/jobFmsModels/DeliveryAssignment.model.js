@@ -97,7 +97,8 @@ export default (sequelize) => {
       foreignKey: "job_no",
       as: "jobCard",
     });
-    DeliveryAssignment.belongsTo(models.ProductionWorkerMaster, {
+    // worker_id now points to User (was ProductionWorkerMaster before)
+    DeliveryAssignment.belongsTo(models.User, {
       foreignKey: "worker_id",
       as: "worker",
     });

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import ProductionTable from "../../components/jobFms/ProductionTable.jsx";
-import WorkerManagement from "../../components/jobFms/production/WorkerManagement.jsx";
+import WorkerStats from "../../components/jobFms/production/WorkerStats.jsx";
 
 
 export default function ProductionDashboard() {
@@ -31,7 +31,7 @@ export default function ProductionDashboard() {
         </button>
       </div>
 
-      {tab === "pipeline" ? <ProductionTable /> : <WorkerManagement />}
+      {tab === "pipeline" ? <ProductionTable /> : <WorkerStats />}
     </div>
   );
 }

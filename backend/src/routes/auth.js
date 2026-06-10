@@ -18,7 +18,7 @@ router.post(
     '/users',
     authenticate,
     requireBossOrAdmin,
-    body('email').isEmail(),
+    body('email').optional({ checkFalsy: true }).isEmail(),
     body('username').isString().isLength({ min: 3}),
     body('password').isStrongPassword({minLength: 8, minSymbols: 0}),
     body('role').isString(),
