@@ -75,6 +75,8 @@ import stageWorkerRoutes from "./routes/jobFmsRoutes/stageWorker.routes.js";
 import deliveryWorkerRoutes from "./routes/jobFmsRoutes/deliveryWorker.routes.js";  
 import deliveryPublicRoutes from "./routes/jobFmsRoutes/deliveryPublic.routes.js";
 
+import pushNotificationRoutes from "./routes/pushNotification.routes.js";
+
 
 
 
@@ -254,6 +256,8 @@ app.use("/api/fms/delivery-worker", authenticate, deliveryWorkerRoutes);
 //  FOR PENDING BILLS FROM GOOGLE SHEET
 app.use("/api/billing", billingRoutes);
 
+// Push notification subscription management
+app.use("/api/notifications", pushNotificationRoutes);
 
 
 // error handling middlewares
