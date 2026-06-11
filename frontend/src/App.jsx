@@ -46,6 +46,19 @@ import WorkerDashboard from "./pages/worker/WorkerDashboard.jsx";
 import DeliveryWorkerDashboard from "./pages/worker/DeliveryWorkerDashboard.jsx";
 
 
+
+// Blocks restricted-department users from entering AppShell.
+// They can only access their own standalone dashboard or /login.
+function WorkerGuard({ user, children }) {
+  const restrictedDepts = ["Production Worker", "Delivery"];
+  if (user && restrictedDepts.includes(user.department)) {
+    return <Navigate to={getHomeRoute(user)} replace />;
+  }
+  return children;
+}
+
+
+
 /**
  * Returns the correct landing route based on user department.
  * Production Worker and Delivery users have standalone dashboards
@@ -116,7 +129,11 @@ export default function App() {
           }
         />
 
-        <Route element={<AppShell />}>
+        <Route element={
+          <WorkerGuard user={user}> 
+            <AppShell />
+          </WorkerGuard>
+        }>
           <Route path="/home" element={<Home />} />
           {/* Attendance: everyone authenticated */}
           <Route path="/attendance" element={<AttendanceDashboard />} />
