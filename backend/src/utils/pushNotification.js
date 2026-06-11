@@ -72,3 +72,22 @@ export async function sendPushToUser(userId, payload) {
  * @param {object} payload
  */
 
+export async function sendPushToDepartment(department, payload) {
+    const users = await db.User.findAll({
+        where:{
+            department,
+            isActive: true,
+        },
+        attributes: ["id"],
+        include: [{
+            model: db.PushSubscription,
+            as: "pushSubscriptions",
+            attributes: ["id"],
+            required: true,
+        }],
+    });
+
+    await Promise.allSettled(
+        users.map( (user) => sendPushToUser(user.id, payload) )
+    );
+}
