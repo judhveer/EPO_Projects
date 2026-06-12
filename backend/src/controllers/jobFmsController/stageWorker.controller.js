@@ -1,6 +1,8 @@
 import db from "../../models/index.js";
 import { Op } from "sequelize";
 
+import { sendPushToDepartment } from  "../../utils/pushNotification.js";
+
 const WORKER_DEPT = "Production Worker";
 
 function ensureWorkerRole(req) {
@@ -366,6 +368,8 @@ export const completeAssignment = async (req, res) => {
         title: "Stage Complete ✓",
         body: `Job #${assignment.job_no} — All workers finished ${stageLabel}`,
         icon: "/favicon.png",
+        vibrate: [300, 100, 300],
+        requireInteraction: true,
         data: { url: "/job-fms/production" },
       }).catch(() => {
         console.error("Failed to send push notification to coordinators about stage completion.");
