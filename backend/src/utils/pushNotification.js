@@ -24,7 +24,7 @@ webpush.setVapidDetails(
 
 export async function sendPushToUser(userId, payload) {
     const subscriptions = await db.PushSubscription.findAll({
-        where: { userId },
+        where: { user_id: userId },
     });
 
     if(subscriptions.length === 0) {
@@ -45,6 +45,10 @@ export async function sendPushToUser(userId, payload) {
                         },
                     },
                     payloadString,
+                    {
+                        urgency: "high",    // wake device from Doze, deliver immediately
+                        TTL: 86400,         // if device is offline, push server keeps retrying for 24h (default TTL is 4 weeks; 24h is right for job assignments — a day-old assignment alert is stale anyway)
+                    }
                 );
             } catch (err){
                 // 410 Gone or 404 = subscription is expired/deleted by the browser.
