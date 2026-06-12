@@ -12,6 +12,7 @@ export default (sequelize) => {
       user_id: {
         type: DataTypes.UUID,
         allowNull: false,
+        field: 'user_id',
       },
       // The full push service URL — unique per browser+device combination
       endpoint: {
