@@ -99,6 +99,11 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
   const [forcingComplete, setForcingComplete] = useState(null); // assignment id
   const [forceReason, setForceReason] = useState("");
 
+  // NEW: Additional worker assignment state
+  const [assigningMore, setAssigningMore] = useState(false);
+  const [additionalWorkerIds, setAdditionalWorkerIds] = useState([]);
+  const [assigningMoreSubmitting, setAssigningMoreSubmitting] = useState(false);
+
   // Load valid stages + delivery assignments + worker summary
   useEffect(() => {
     if (!job) return;
@@ -144,6 +149,8 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
       setError(null);
       setRemarks("");
       setAcknowledgedIncomplete(false);
+      setAssigningMore(false);      
+      setAdditionalWorkerIds([]); 
       if (newAction.type === "reverse" && newAction.stage) {
         const existing = existingWorkers[newAction.stage] || [];
         setWorkerIds(existing.map((w) => w.worker_id).filter(Boolean));
@@ -178,6 +185,34 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
       setError(err?.response?.data?.message || "Force completion failed.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+
+  // Assigns extra workers to the currently active stage without changing the stage
+  const handleAssignMore = async () => {
+    if (additionalWorkerIds.length === 0) {
+      setError("Select at least one worker to assign.");
+      return;
+    }
+    setAssigningMoreSubmitting(true);
+    setError(null);
+    try {
+      await api.post(
+        `/api/fms/production/${job.job_no}/assign-additional-workers`,
+        { worker_ids: additionalWorkerIds }
+      );
+      // Refresh summary to show the newly assigned workers
+      const { data: fresh } = await api.get(
+        `/api/fms/production/${job.job_no}/valid-stages`
+      );
+      setOpts(fresh);
+      setAssigningMore(false);
+      setAdditionalWorkerIds([]);
+    } catch (err) {
+      setError(err?.response?.data?.message || "Failed to assign workers.");
+    } finally {
+      setAssigningMoreSubmitting(false);
     }
   };
 
@@ -368,7 +403,7 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
                 ════════════════════════════════════════════════════════ */}
                 {showWorkerSummary && (
                   <div className="mb-4 border border-gray-200 rounded-lg overflow-hidden">
-                    {/* Panel header with completion count */}
+                    {/* Panel header with completion count + assign more button */}
                     <div
                       className={`px-3 py-2 text-xs font-semibold uppercase flex justify-between items-center ${
                         opts.stage_worker_summary.all_done
@@ -377,16 +412,33 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
                       }`}
                     >
                       <span>Stage Workers</span>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                          opts.stage_worker_summary.all_done
-                            ? "bg-green-100 text-green-700"
-                            : "bg-orange-100 text-orange-700"
-                        }`}
-                      >
-                        {opts.stage_worker_summary.done}/
-                        {opts.stage_worker_summary.total} done
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {/* Only show Assign More when not already in that mode */}
+                        {!assigningMore && (
+                          <button
+                            onClick={() => {
+                              setAssigningMore(true);
+                              setAdditionalWorkerIds([]);
+                              setForcingComplete(null);   // close force-complete if open
+                              setForceReason("");
+                              setError(null);
+                            }}
+                            className="text-[11px] px-2 py-0.5 bg-blue-100 text-blue-700 border border-blue-200 rounded hover:bg-blue-200 normal-case font-semibold transition"
+                          >
+                            ＋ Assign More
+                          </button>
+                        )}
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                            opts.stage_worker_summary.all_done
+                              ? "bg-green-100 text-green-700"
+                              : "bg-orange-100 text-orange-700"
+                          }`}
+                        >
+                          {opts.stage_worker_summary.done}/
+                          {opts.stage_worker_summary.total} done
+                        </span>
+                      </div>
                     </div>
 
                     {/* Warning banner if not all done */}
@@ -438,6 +490,8 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
                                   onClick={() => {
                                     setForcingComplete(w.id);
                                     setForceReason("");
+                                    setAssigningMore(false);     
+                                    setAdditionalWorkerIds([]);  
                                     setError(null);
                                   }}
                                   className="text-xs px-2 py-0.5 bg-red-100 text-red-700 border border-red-300 rounded hover:bg-red-200 whitespace-nowrap"
@@ -487,6 +541,70 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
                         </div>
                       );
                     })}
+
+                    {/* ── Assign More Workers form ── */}
+                    {assigningMore && (
+                      <div className="border-t border-blue-100 bg-blue-50 px-3 py-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <p className="text-xs font-semibold text-blue-700">
+                            Assign Additional Workers to{" "}
+                            {STAGE_WORKER_LABEL[opts.current_production_stage] || "this stage"}
+                          </p>
+                          <button
+                            onClick={() => {
+                              setAssigningMore(false);
+                              setAdditionalWorkerIds([]);
+                              setError(null);
+                            }}
+                            className="text-gray-400 hover:text-gray-600 text-base leading-none"
+                          >
+                            ×
+                          </button>
+                        </div>
+
+                        <WorkerSelect
+                          role={opts.current_production_stage}
+                          value={additionalWorkerIds}
+                          onChange={setAdditionalWorkerIds}
+                          disabled={assigningMoreSubmitting}
+                          excludeIds={
+                            // Hide workers who are already actively on this stage
+                            // so coordinator cannot accidentally double-assign them
+                            opts.stage_worker_summary.workers
+                              .filter((w) =>
+                                ["assigned", "in_progress", "paused"].includes(w.status)
+                              )
+                              .map((w) => w.worker_id)
+                          }
+                        />
+
+                        <div className="flex gap-2 mt-3">
+                          <button
+                            onClick={() => {
+                              setAssigningMore(false);
+                              setAdditionalWorkerIds([]);
+                              setError(null);
+                            }}
+                            disabled={assigningMoreSubmitting}
+                            className="flex-1 py-1.5 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleAssignMore}
+                            disabled={
+                              assigningMoreSubmitting || additionalWorkerIds.length === 0
+                            }
+                            className="flex-1 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold disabled:opacity-50"
+                          >
+                            {assigningMoreSubmitting
+                              ? "Assigning..."
+                              : `Assign ${additionalWorkerIds.length > 0 ? additionalWorkerIds.length + " " : ""}Worker${additionalWorkerIds.length !== 1 ? "s" : ""}`}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    
                   </div>
                 )}
                 {/* ════════════════ END worker summary panel ════════════════ */}
