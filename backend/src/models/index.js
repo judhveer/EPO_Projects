@@ -152,12 +152,12 @@ StageHistory.belongsTo(Lead, {
 
 // Push subscriptions — cross-concern, not jobFms specific
 User.hasMany(PushSubscription, {
-  foreignKey: "user_id", 
+  foreignKey: { name: "user_id", field: "user_id" },
   as: "pushSubscriptions", 
   onDelete: "CASCADE" 
 });
 PushSubscription.belongsTo(User, {
-  foreignKey: "user_id", 
+  foreignKey: { name: "user_id", field: "user_id" },
   as: "user" 
 });
 
