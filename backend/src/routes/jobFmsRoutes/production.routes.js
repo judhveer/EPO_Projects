@@ -10,7 +10,8 @@ import {
   getStageWorkersForJob,
   overrideDeliveryAssignment,
   forceCompleteWorkerAssignment,
-  getWorkerStats
+  getWorkerStats,
+  assignAdditionalWorkers
 } from "../../controllers/jobFmsController/production.controller.js";
 
 const router = express.Router();
@@ -64,5 +65,8 @@ router.post(
   "/:job_no/worker-assignments/:assignment_id/force-complete",
   forceCompleteWorkerAssignment,
 );
+
+// Coordinator assigns extra workers to the currently active stage
+router.post("/:job_no/assign-additional-workers", assignAdditionalWorkers);
 
 export default router;
