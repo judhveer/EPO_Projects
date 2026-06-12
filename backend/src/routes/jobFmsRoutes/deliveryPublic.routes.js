@@ -8,7 +8,7 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB per file
   fileFilter: (req, file, cb) => {
-    const allowed = ["application/pdf", "image/jpeg", "image/jpg", "image/png"];
+    const allowed = ["application/pdf", "image/jpeg", "image/png"];
     allowed.includes(file.mimetype)
       ? cb(null, true)
       : cb(new Error("Only PDF, JPG, PNG allowed."));
