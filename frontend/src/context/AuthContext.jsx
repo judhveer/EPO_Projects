@@ -2,6 +2,11 @@ import { createContext, useContext, useEffect, useMemo, useState, useCallback } 
 import { setAuthToken, registerPauseOnLogout } from '../lib/api';
 import api from '../lib/api';
 
+import {
+  registerPushNotifications,
+  unregisterPushNotifications,
+} from "../utils/pushNotifications.js";
+
 const AuthContext = createContext(null);
 
 
@@ -55,6 +60,9 @@ export function AuthProvider({ children }) {
                 setAuthToken(localStorage.getItem('token'));
                 const { data } = await api.get('/api/auth/me');
                 setUser(data.user);
+                // Re-register push subscription on page refresh
+                // (the token is already in localStorage)
+                registerPushNotifications(localStorage.getItem('token')).catch(() => {});
             }
             catch(error) {
                 setUser(null);
@@ -75,10 +83,14 @@ export function AuthProvider({ children }) {
 
 
     const login = async (identifier, password) => {
-        console.log("login called");
         const { data } = await api.post('/api/auth/login', { identifier, password });
         setAuthToken(data.token);
         setUser(data.user);
+
+        // Register for push notifications after login
+        // Fire-and-forget — don't block login if this fails
+        registerPushNotifications(data.token).catch(() => {});
+
         return data.user;
     };
 
@@ -90,6 +102,10 @@ export function AuthProvider({ children }) {
         // Only meaningful for designers — other roles have no active timer.
         // The backend endpoint is a no-op for non-designers.
         const token = localStorage.getItem('token');
+
+        // Unsubscribe from push before clearing token
+        unregisterPushNotifications(token).catch(() => {});
+
         firePauseOnLogout(token);
         setAuthToken(null);
         setUser(null);
