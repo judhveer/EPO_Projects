@@ -33,7 +33,16 @@ self.addEventListener('push', (event) => {
         payload = { title: "Notification", body: event.data.text() };
     }
 
-    const { title, body, icon = "/favicon.png", badge = "/favicon.png", data = {} } = payload;
+    const { 
+        title, 
+        body, 
+        icon = "/favicon.png", 
+        badge = "/favicon.png", 
+        vibrate = [500, 200, 500, 200, 500],   // 3 strong pulses
+        requireInteraction = true,              // stays visible until worker taps it
+        data = {} 
+    } = payload;
+
     // event.waitUntil tells the browser: don't kill the service worker
     // until this promise resolves. Without it, the browser might kill the SW
     // before showNotification finishes, and the notification never appears.
@@ -44,8 +53,14 @@ self.addEventListener('push', (event) => {
             icon, 
             badge, 
             data,       // stored on the notification, accessible in notificationclick
-            vibrate: [200, 100, 200], // vibration pattern for Android
-            requireInteraction: false,  // auto-dismiss on desktop, but not on mobile
+            vibrate,  
+            requireInteraction,     // notification will NOT auto-dismiss — worker must tap it
+            silent: false,          // allow system notification sound to play
+            tag: data.tag || "jobfms-general",  // same tag = replace + re-alert
+            renotify: true,         // re-vibrate/re-sound on replacement
+            actions: [
+                { action: "open", title: "View Job" },
+            ],
         })
     );
 });
