@@ -28,6 +28,7 @@ export default function WorkerSelect({
   value = [],
   onChange,
   disabled = false,
+  exludeIds = [],
 }) {
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -70,6 +71,9 @@ export default function WorkerSelect({
   };
 
   const selectedWorkers = workers.filter((w) => value.includes(w.id));
+
+  // Hide workers who are excluded (already active on the stage)
+  // AND hide workers already selected (they show as chips above)
   const unselected = workers.filter((w) => !value.includes(w.id));
 
   // Human-readable label for empty state message
@@ -94,6 +98,10 @@ export default function WorkerSelect({
       </div>
     );
   }
+
+  // All available workers are either selected or excluded
+  const allAccountedFor =
+    unselected.length === 0 && workers.length > 0;
 
   return (
     <div>
@@ -143,7 +151,14 @@ export default function WorkerSelect({
         </div>
       )}
 
-      {value.length === 0 && (
+      {/* All workers are already on this stage */}
+      {!disabled && allAccountedFor && selectedWorkers.length === 0 && (
+        <div className="text-xs text-gray-400 py-2 bg-gray-50 border border-gray-200 rounded px-3">
+          All available workers are already assigned to this stage.
+        </div>
+      )}
+
+      {value.length === 0 && !allAccountedFor && (
         <p className="text-xs text-gray-400 mt-1">
           Click a worker above to add them.
         </p>

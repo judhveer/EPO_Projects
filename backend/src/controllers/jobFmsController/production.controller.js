@@ -23,10 +23,10 @@ import {
 
 const { JobCard, ActivityLog } = db;
 
-// ──────────────────────────────────────────────────────────────────────
+// ─────────────────────────
 // Role guard — production dashboard is owned by Production Coordinator.
 // Admin is allowed for support / oversight.
-// ──────────────────────────────────────────────────────────────────────
+// ─────────────────────────
 const ALLOWED_DEPARTMENTS = ["Admin", "Production Coordinator"];
 
 function ensureProductionRole(req) {
@@ -1537,5 +1537,162 @@ export const getWorkerStats = async (req, res) => {
     });
   } catch (err) {
     return respondToError(res, err, "Failed to fetch worker stats.");
+  }
+};
+
+
+
+
+// ══════════════════════════════════════════════════════════════════════
+//  POST /api/fms/production/:job_no/assign-additional-workers
+//  Assigns extra workers to the CURRENTLY ACTIVE stage of a job.
+//  Used when a coordinator needs more hands on a stage already in progress.
+//  Does NOT advance or revert the stage — purely additive.
+//  Rules:
+//  - Job must be in_production
+//  - Current stage must be one that requires workers (not out_for_delivery)
+//  - Workers must be "Production Worker" department and active
+//  - Workers must NOT already have an active (assigned/in_progress/paused)
+//    assignment for this job+stage — prevents duplicate active assignments
+// ══════════════════════════════════════════════════════════════════════
+export const assignAdditionalWorkers = async (req, res) => {
+  const t = await db.sequelize.transaction();
+  try {
+    ensureProductionRole(req);
+    const { job_no } = req.params;
+    const { worker_ids = [] } = req.body;
+
+    if (!Array.isArray(worker_ids) || worker_ids.length === 0) {
+      throw Object.assign(
+        new Error("At least one worker is required."),
+        { statusCode: 400 }
+      );
+    }
+
+    const job = await db.JobCard.findByPk(job_no, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!job) {
+      throw Object.assign(new Error("Job not found."), { statusCode: 404 });
+    }
+
+    if (job.status !== "in_production") {
+      throw Object.assign(
+        new Error("Job is not currently in production."),
+        { statusCode: 400 }
+      );
+    }
+
+    const currentStage = job.production_stage;
+
+    // out_for_delivery uses DeliveryAssignment — not handled here
+    if (!STAGES_REQUIRING_WORKERS.includes(currentStage)) {
+      throw Object.assign(
+        new Error(`Stage "${currentStage}" does not support additional worker assignment.`),
+        { statusCode: 400 }
+      );
+    }
+
+    // Validate workers exist, are active, and are Production Workers
+    const selectedWorkers = await db.User.findAll({
+      where: { id: worker_ids, isActive: true },
+      attributes: ["id", "username", "email", "department"],
+      transaction: t,
+    });
+
+    if (selectedWorkers.length !== worker_ids.length) {
+      throw Object.assign(
+        new Error("One or more selected workers were not found or are inactive."),
+        { statusCode: 400 }
+      );
+    }
+
+    const wrongDept = selectedWorkers.find(
+      (w) => w.department !== "Production Worker"
+    );
+    if (wrongDept) {
+      throw Object.assign(
+        new Error(`User "${wrongDept.username}" is not a Production Worker.`),
+        { statusCode: 400 }
+      );
+    }
+
+    // Block if any selected worker is already actively on this stage
+    // (assigned/in_progress/paused = still working, cannot double-assign)
+    // completed/force_completed/cancelled are fine — they can be re-assigned
+    const alreadyActive = await db.JobProductionStageWorker.findAll({
+      where: {
+        job_no,
+        stage_name: currentStage,
+        worker_id: { [Op.in]: worker_ids },
+        status: { [Op.in]: ["assigned", "in_progress", "paused"] },
+      },
+      attributes: ["worker_id", "worker_name"],
+      transaction: t,
+    });
+
+    if (alreadyActive.length > 0) {
+      const names = alreadyActive.map((a) => a.worker_name).join(", ");
+      throw Object.assign(
+        new Error(
+          `These workers are already actively assigned to this stage: ${names}`
+        ),
+        { statusCode: 400 }
+      );
+    }
+
+    // Create new assignments — status starts as "assigned"
+    await db.JobProductionStageWorker.bulkCreate(
+      selectedWorkers.map((w) => ({
+        job_no,
+        stage_name: currentStage,
+        worker_name: w.username,
+        worker_id: w.id,
+        recorded_by_id: req.user?.id || null,
+        status: "assigned",
+      })),
+      { transaction: t }
+    );
+
+    await db.ActivityLog.create(
+      {
+        job_no,
+        action: "additional_workers_assigned",
+        performed_by_id: req.user?.id || null,
+        meta: {
+          stage: currentStage,
+          workers: selectedWorkers.map((w) => w.username),
+        },
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
+
+    // Notify newly assigned workers — fire-and-forget, never block response
+    const stageLabel = STAGE_LABELS[currentStage] || currentStage;
+    // selectedWorkers.forEach((w) => {
+    //   sendPushToUser(w.id, {
+    //     title: "New Job Assigned",
+    //     body: `Job #${job_no} · ${job.client_name} | ${stageLabel}`,
+    //     icon: "/favicon.png",
+    //     vibrate: [500, 200, 500, 200, 500],
+    //     requireInteraction: true,
+    //     data: { url: "/worker", tag: `job-${job_no}` },
+    //   }).catch(() => {});
+    // });
+
+    return res.json({
+      message: `${selectedWorkers.length} worker(s) assigned to ${stageLabel}.`,
+      assigned: selectedWorkers.map((w) => ({
+        id: w.id,
+        username: w.username,
+      })),
+    });
+  } catch (error) {
+    await t.rollback().catch(() => {});
+    return respondToError(res, error, "Failed to assign additional workers.");
   }
 };
