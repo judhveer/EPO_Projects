@@ -611,8 +611,11 @@ export const advanceProductionStage = async (req, res) => {
           title: "New Job Assigned",
           body: `Job #${job_no} · ${job.client_name} | ${stageLabel}`,
           icon: "/favicon.png",
-          data: { url: "/worker" },
-        }).catch(() => { 
+          vibrate: [500, 200, 500, 200, 500],
+          requireInteraction: true,
+          data: { url: "/worker", tag: `job-${job_no}` },
+        }).catch((err) => { 
+          console.log("error: ", err);
           // fire-and-forget, never block the response
           console.warn(`Failed to send push notification to user ${w.id} (${w.username}) for job ${job_no} stage assignment.`);
         });
