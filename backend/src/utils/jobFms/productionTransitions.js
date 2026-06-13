@@ -41,9 +41,9 @@ export const STAGE_LABELS = Object.freeze({
 // Use a Map so we can key by `null` (entering production from ready_for_production).
 const FORWARD_TRANSITIONS = new Map([
   [null,                ['printing', 'binding']],          // entry — printing skip is rare but allowed
-  ['printing',          ['binding', 'quality_check']],     // binding skip allowed
-  ['binding',           ['quality_check']],                // QC never skipped
-  ['quality_check',     ['packaging']],
+  ['printing',          ['binding', 'quality_check', 'ready_to_dispatch']],     // binding skip allowed
+  ['binding',           ['quality_check', 'ready_to_dispatch']],                // QC skippable for simple jobs
+  ['quality_check',     ['packaging', 'ready_to_dispatch']],
   ['packaging',         ['ready_to_dispatch']],
   ['ready_to_dispatch', ['out_for_delivery']],             // shipment path; pickup uses markDelivered
   ['out_for_delivery',  []],                               // terminal sub-stage -> markDelivered
@@ -53,7 +53,7 @@ const REVERSE_TRANSITIONS = new Map([
   ['binding',           ['printing']],
   ['quality_check',     ['binding', 'printing']],
   ['packaging',         ['quality_check']],
-  ['ready_to_dispatch', ['packaging']],
+  ['ready_to_dispatch', ['packaging', 'quality_check', 'binding', 'printing']],
   ['out_for_delivery',  []],
 ]);
 
