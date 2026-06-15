@@ -38,7 +38,7 @@ self.addEventListener('push', (event) => {
         body, 
         icon = "/favicon.png", 
         badge = "/favicon.png", 
-        vibrate = [500, 200, 500, 200, 500],   // 3 strong pulses
+        vibrate = [1000, 200, 1000, 200, 2000],   // 3 strong pulses
         requireInteraction = true,              // stays visible until worker taps it
         data = {} 
     } = payload;
