@@ -8,6 +8,9 @@ import path from "path";
 import { v4 as uuidv4 } from "uuid";
 
 import { uploadChallanToDrive, uploadMaterialPhotoToDrive } from "../../utils/jobFms/googleDriveUpload.js"
+import { sendPushToUser, sendPushToDepartment } from "../../utils/pushNotification.js";
+
+
 
 import {
   STAGE_LABELS,
@@ -597,6 +600,30 @@ export const advanceProductionStage = async (req, res) => {
     );
 
     await t.commit();
+
+    // ── Fire push notifications after commit (fire-and-forget) ──────────
+    // We notify AFTER commit so the DB is consistent when worker opens the app
+    if(STAGES_REQUIRING_WORKERS.includes(to_stage) && selectedWorkers.length > 0){
+      // Notify assigned workers of their new assignment
+      const stageLabel = STAGE_LABELS[to_stage] || to_stage;
+      selectedWorkers.forEach( (w) => {
+        sendPushToUser(w.id, {
+          title: "New Job Assigned",
+          body: `Job #${job_no} · ${job.client_name} | ${stageLabel}`,
+          icon: "/favicon.png",
+          vibrate: [500, 200, 500, 200, 500],
+          requireInteraction: true,
+          data: { url: "/worker", tag: `job-${job_no}` },
+        }).catch((err) => { 
+          console.log("error: ", err);
+          // fire-and-forget, never block the response
+          console.warn(`Failed to send push notification to user ${w.id} (${w.username}) for job ${job_no} stage assignment.`);
+        });
+      });
+    }
+
+
+
     return res.json({
       message: `Stage advanced to ${STAGE_LABELS[to_stage]}.`,
       job_no,

@@ -1,6 +1,8 @@
 import db from "../../models/index.js";
 import { Op } from "sequelize";
 
+import { sendPushToDepartment } from  "../../utils/pushNotification.js";
+
 const WORKER_DEPT = "Production Worker";
 
 function ensureWorkerRole(req) {
@@ -345,6 +347,36 @@ export const completeAssignment = async (req, res) => {
     );
 
     await t.commit();
+
+    // Check if all workers for this stage are now done
+    // If yes, notify coordinators so they can advance the stage
+    const remainingCount = await db.JobProductionStageWorker.count({
+      where: {
+        job_no: assignment.job_no,
+        stage_name: assignment.stage_name,
+        status: {
+          [Op.in]: ["assigned", "in_progress", "paused"],
+        }
+      },
+    });
+
+    if(remainingCount === 0){
+      // All workers done — notify Production Coordinators
+      const stageLabel = { printing: "Printing", binding: "Binding", quality_check: "Quality Check", packaging: "Packaging"} [assignment.stage_name] || assignment.stage_name;
+
+      sendPushToDepartment("Production Coordinator", {
+        title: "Stage Complete ✓",
+        body: `Job #${assignment.job_no} — All workers finished ${stageLabel}`,
+        icon: "/favicon.png",
+        vibrate: [300, 100, 300],
+        requireInteraction: true,
+        data: { url: "/job-fms/production" },
+      }).catch(() => {
+        console.error("Failed to send push notification to coordinators about stage completion.");
+      });
+    }
+
+
     return res.json({
       message: "Assignment marked as done. Well done!",
       assignment,

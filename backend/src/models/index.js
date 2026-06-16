@@ -31,6 +31,7 @@ import associateJobFmsModels from "./jobFmsModels/associations.js";
 import ClientDetailsModel from "./jobFmsModels/ClientDetails.model.js";
 import JobProductionStageWorkerModel from "./jobFmsModels/JobProductionStageWorker.model.js";
 import DeliveryAssignmentModel from "./jobFmsModels/DeliveryAssignment.model.js";
+import PushSubscriptionModel from "./jobFmsModels/PushSubscription.model.js";
 
 // jobFMS job card accounts models:
 import ItemMasterModel from "./jobFmsModels/AccountsJobItems/ItemMaster.model.js";
@@ -73,6 +74,7 @@ const ActivityLog = ActivityLogModel(sequelize);
 const ClientDetails = ClientDetailsModel(sequelize);
 const JobProductionStageWorker = JobProductionStageWorkerModel(sequelize);
 const DeliveryAssignment = DeliveryAssignmentModel(sequelize);
+const PushSubscription = PushSubscriptionModel(sequelize);
 
 // Job FMS job card accounts Models:
 const ItemMaster = ItemMasterModel(sequelize);
@@ -147,6 +149,19 @@ StageHistory.belongsTo(Lead, {
   as: "lead",
 });
 
+
+// Push subscriptions — cross-concern, not jobFms specific
+User.hasMany(PushSubscription, {
+  foreignKey: { name: "user_id", field: "user_id" },
+  as: "pushSubscriptions", 
+  onDelete: "CASCADE" 
+});
+PushSubscription.belongsTo(User, {
+  foreignKey: { name: "user_id", field: "user_id" },
+  as: "user" 
+});
+
+
 export default {
   sequelize,
   Lead,
@@ -173,6 +188,7 @@ export default {
   ClientDetails,
   JobProductionStageWorker,
   DeliveryAssignment,
+  PushSubscription,
 
   // Job FMS job card accounts Models:
   ItemMaster,
