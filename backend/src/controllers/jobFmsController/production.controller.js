@@ -1700,16 +1700,16 @@ export const assignAdditionalWorkers = async (req, res) => {
 
     // Notify newly assigned workers — fire-and-forget, never block response
     const stageLabel = STAGE_LABELS[currentStage] || currentStage;
-    // selectedWorkers.forEach((w) => {
-    //   sendPushToUser(w.id, {
-    //     title: "New Job Assigned",
-    //     body: `Job #${job_no} · ${job.client_name} | ${stageLabel}`,
-    //     icon: "/favicon.png",
-    //     vibrate: [500, 200, 500, 200, 500],
-    //     requireInteraction: true,
-    //     data: { url: "/worker", tag: `job-${job_no}` },
-    //   }).catch(() => {});
-    // });
+    selectedWorkers.forEach((w) => {
+      sendPushToUser(w.id, {
+        title: "New Job Assigned",
+        body: `Job #${job_no} · ${job.client_name} | ${stageLabel}`,
+        icon: "/favicon.png",
+        vibrate: [1000, 200, 1000, 200, 1000],
+        requireInteraction: true,
+        data: { url: "/worker", tag: `job-${job_no}` },
+      }).catch(() => {});
+    });
 
     return res.json({
       message: `${selectedWorkers.length} worker(s) assigned to ${stageLabel}.`,
