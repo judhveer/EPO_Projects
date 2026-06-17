@@ -93,14 +93,16 @@ export default function DashboardFilters({ filters, setFilters, resetPage, crmUs
         className="border rounded px-2 py-1 text-xs"
       >
         <option value="">Stage</option>
-        <option value="assigned_to_designer">Assigned</option>
+        <option value="assigned_to_designer">Assigned To Designer</option>
         <option value="design_in_progress">Design In Progress</option>
         <option value="sent_for_approval">Sent for Approval</option>
         <option value="awaiting_client_response">Awaiting Client</option>
         <option value="client_changes">Client Changes</option>
-        <option value="approved">Approved</option>
-        <option value="production">Production</option>
+        <option value="ready_for_production">Ready For Production</option>
+        <option value="in_production">Production</option>
+        <option value="delivered">Delivered</option>
         <option value="completed">Completed</option>
+        <option value="cancelled">Cancelled</option>
       </select>
 
       {/* DIRECT TO PRODUCTION */}
