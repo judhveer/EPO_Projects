@@ -64,6 +64,35 @@ export default function ProductionTable() {
   const [totalJobs, setTotalJobs] = useState(0);
   const [stageFilter, setStageFilter] = useState("");
 
+  const resetPage = () => setPage(1);
+
+  // 🔹 Filters (backend-driven)
+  const [filters, setFilters] = useState({
+    search: "",
+    execution_location: "",
+    status: "",
+    delivery_location: "",
+  });
+  const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
+
+  const update = (key, value) => {
+    resetPage();
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const emptyFilters = {
+    search: "",
+    execution_location: "",
+    status: "",
+    delivery_location: "",
+  };
+
+  const clearFilters = () => {
+    resetPage();
+    setFilters(emptyFilters);
+    setDebouncedSearch(""); // clear instantly instead of waiting for the 300ms debounce
+  };
+
   const totalPages = totalJobs > 0 ? Math.ceil(totalJobs / limit) : 1;
 
   const fetchJobs = useCallback(async () => {
@@ -71,6 +100,10 @@ export default function ProductionTable() {
     try {
       const params = { page, limit };
       if (stageFilter) params.stage = stageFilter;
+      if (debouncedSearch) params.search = debouncedSearch;
+      if (filters.execution_location) params.execution_location = filters.execution_location;
+      if (filters.status) params.status = filters.status;
+      if (filters.delivery_location) params.delivery_location = filters.delivery_location;
       const { data } = await api.get("/api/fms/production", { params });
       setJobs(data.data);
       setTotalJobs(data.total || 0);
@@ -80,9 +113,23 @@ export default function ProductionTable() {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, stageFilter]);
+  }, [page, limit, stageFilter, debouncedSearch, filters.status, filters.execution_location, filters.delivery_location]);
 
-  useEffect(() => { fetchJobs(); }, [fetchJobs]);
+  // Single source of truth: fetchJobs is recreated whenever anything it
+  // reads changes, and this effect just reacts to that. Don't reintroduce
+  // a second effect with its own hand-maintained dependency list — that's
+  // exactly what caused stageFilter changes to silently stop refetching.
+  useEffect(() => { 
+    fetchJobs(); 
+  }, [fetchJobs]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(filters.search);
+    }, 300); // 300ms is ideal for dashboards
+
+    return () => clearTimeout(timer);
+  }, [filters.search]);
 
   useEffect(() => {
     const onEsc = (e) => {
@@ -108,8 +155,63 @@ export default function ProductionTable() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
-        <h2 className="text-2xl font-bold text-blue-700">🏭 Production Pipeline</h2>
+      <div className="flex justify-between items-center flex-wrap mb-3 gap-2">
+        <div className="bg-white p-2 shadow-sm grid grid-cols-5 gap-2 sticky top-0 z-20">
+          {/* SEARCH */}
+          <input
+            value={filters.search}
+            onChange={(e) => update("search", e.target.value)}
+            placeholder="🔍 Job No, Client, Designer Name, CRM"
+            className="col-span-1 border rounded px-2 py-1 text-xs"
+          />
+
+          {/* EXECUTION LOCATION */}
+          <select
+            value={filters.execution_location}
+            onChange={(e) => update("execution_location", e.target.value)}
+            className="border rounded px-2 py-1 text-xs"
+          >
+            <option value="">Execution Location</option>
+            <option value="In-Bound">In-Bound</option>
+            <option value="Out-Bound">Out-Bound</option>
+          </select>
+
+          {/* STATUS / STAGE */}
+          <select
+            value={filters.status}
+            onChange={(e) => update("status", e.target.value)}
+            className="border rounded px-2 py-1 text-xs"
+          >
+            <option value="">Stage</option>
+            <option value="ready_for_production">Ready For Production</option>
+            <option value="in_production">Production</option>
+          </select>
+
+          {/* DELIVERY LOCATION */}
+          <select
+            value={filters.payment_status}
+            onChange={(e) => update("delivery_location", e.target.value)}
+            className="border rounded px-1 py-1 text-xs"
+          >
+            <option value="">Delivery Location</option>
+            <option value="EPO_TO_CUSTOMER_SHIPMENT">EPO To Customer (Shipment)</option>
+            <option value="EPO_TO_CUSTOMER_PICKUP">EPO To Customer (Pickup)</option>
+            <option value="MM_TO_CUSTOMER_SHIPMENT">MM To Customer (Shipment)</option>
+            <option value="MM_TO_CUSTOMER_PICKUP">MM To Customer (Pickup)</option>
+            <option value="MM_TO_EPO_TO_CUSTOMER_SHIPMENT">MM To EPO To Customer (Shipment)</option>
+            <option value="MM_TO_EPO_TO_CUSTOMER_PICKUP">MM To EPO To Customer (Pickup)</option>
+          </select>
+
+          {/* CLEAR */}
+          <button
+            onClick={clearFilters}
+            className="bg-gray-300 hover:bg-gray-500 hover:text-white rounded px-2 py-2 text-xs col-span-1"
+          >
+            Clear
+          </button>
+
+        </div>
+        
         <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full">
           <span className="text-xs text-blue-700 font-medium">Total Jobs</span>
           <span className="text-sm font-bold text-blue-800">{totalJobs}</span>
