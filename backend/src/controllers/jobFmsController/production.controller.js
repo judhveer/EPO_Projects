@@ -47,6 +47,7 @@ function respondToError(res, error, fallbackMsg) {
   return res.status(status).json({ message: error.message || fallbackMsg });
 }
 
+
 // ══════════════════════════════════════════════════════════════════════
 //  PRODUCTION PIPELINE DASHBOARD (Tab 1)
 // ══════════════════════════════════════════════════════════════════════
@@ -56,15 +57,54 @@ function respondToError(res, error, fallbackMsg) {
 // ═════════
 export const getJobsForProduction = async (req, res) => {
   try {
-    const { page = 1, limit = 50, stage } = req.query;
+    const { page = 1, limit = 50, stage, status, execution_location, search, delivery_location } = req.query;
     const pageNum = Math.max(parseInt(page, 10) || 1, 1);
     const limitNum = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
     const offset = (pageNum - 1) * limitNum;
 
+    console.log("req.query: ", req.query);
+
     const where = {
       status: { [Op.in]: ["ready_for_production", "in_production"] },
     };
-    if (stage) where.production_stage = stage;
+
+    // Only allow narrowing to one of the two statuses this dashboard is
+    // scoped to. Without this check, a status param could replace the
+    // Op.in restriction above and expose jobs outside the intended range
+    // (e.g. status=completed, status=cancelled).
+    const ALLOWED_DASHBOARD_STATUSES = ["ready_for_production", "in_production"];
+
+    if (stage) {
+      where.production_stage = stage;
+    }
+    else if(status && ALLOWED_DASHBOARD_STATUSES.includes(status)){
+      where.status = status;
+    }
+
+    if (execution_location) {
+      where.execution_location = execution_location;
+    }
+
+    if(delivery_location){
+      where.delivery_location = delivery_location;
+    }
+    // Trim first — fixes the bug where "0" or a whitespace-only search
+    // silently matched job_no = -1 instead of falling through to text fields.
+    // SIMPLE search (LIKE) — since no FULLTEXT
+    const searchTerm = typeof search === "string" ? search.trim() : "";
+    if(searchTerm){
+      const orConditions = [
+        { client_name: { [Op.like]: `%${searchTerm}%` } },
+        { order_handled_by: { [Op.like]: `%${searchTerm}%` } },
+        { assigned_designer: { [Op.like]: `%${searchTerm}%` } },
+      ];
+      // Only add the job_no condition when the term is purely numeric —
+      // avoids the old magic "-1 sentinel" entirely.
+      if (/^\d+$/.test(searchTerm)) {
+        orConditions.push({ job_no: Number(searchTerm) });
+      }
+      where[Op.or] = orConditions;
+    }
 
     const total = await JobCard.count({ where });
 
