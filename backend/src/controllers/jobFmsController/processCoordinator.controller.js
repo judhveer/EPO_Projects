@@ -112,6 +112,32 @@ export const assignDesigner = async (req, res) => {
       },
     });
 
+    // ── Push: designer ──────────────────────────────────────────────────────────
+    sendPushToUser(desginer.id, {
+      title: "New Job Assigned",
+      body: `Job #${job_no} has been assigned to you.`,
+      icon: "/favicon.png",
+      vibrate: [500, 200, 500, 200, 500],
+      requireInteraction: true,
+      data: { url: "/job-fms/designer", tag: `job-${job_no}` },
+    }).catch((err) =>
+      console.warn(`Push failed for designer ${desginer.username} on job ${job_no}:`, err.message)
+    );
+
+    // ── Push: CRM ────────────────────────────────────────────────────────────────
+    if (crmUser?.id) {
+      sendPushToUser(crmUser.id, {
+        title: "Designer Assigned",
+        body: `Job #${job_no} assigned to ${desginer.username}.`,
+        icon: "/favicon.png",
+        vibrate: [500, 200, 500, 200, 500],
+        requireInteraction: true,
+        data: { url: "/job-fms/common", tag: `job-${job_no}` },
+      }).catch((err) =>
+        console.warn(`Push failed for CRM ${crmUser.username} on job ${job_no}:`, err.message)
+      );
+    }
+
     const attachments = [
       {
         filename: "epo-logo.jpg",
@@ -147,33 +173,6 @@ export const assignDesigner = async (req, res) => {
         }),
         attachments,
       });
-    }
-
-
-    // ── Push: designer ──────────────────────────────────────────────────────────
-    sendPushToUser(desginer.id, {
-      title: "New Job Assigned",
-      body: `Job #${job_no} has been assigned to you.`,
-      icon: "/favicon.png",
-      vibrate: [500, 200, 500, 200, 500],
-      requireInteraction: true,
-      data: { url: "/job-fms/designer", tag: `job-${job_no}` },
-    }).catch((err) =>
-      console.warn(`Push failed for designer ${desginer.username} on job ${job_no}:`, err.message)
-    );
-
-    // ── Push: CRM ────────────────────────────────────────────────────────────────
-    if (crmUser?.id) {
-      sendPushToUser(crmUser.id, {
-        title: "Designer Assigned",
-        body: `Job #${job_no} assigned to ${desginer.username}.`,
-        icon: "/favicon.png",
-        vibrate: [500, 200, 500, 200, 500],
-        requireInteraction: true,
-        data: { url: "/job-fms/common", tag: `job-${job_no}` },
-      }).catch((err) =>
-        console.warn(`Push failed for CRM ${crmUser.username} on job ${job_no}:`, err.message)
-      );
     }
 
   } catch (err) {
