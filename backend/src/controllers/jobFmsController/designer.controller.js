@@ -20,6 +20,8 @@ import {
   crmDesignStartedTemplate,
 } from "../../email/templates/emailTemplates.js";
 
+import { sendPushToUser } from "../../utils/pushNotification.js";
+
 // Get all jobs for Designers
 export const getAllJobsForDesginer = async (req, res) => {
   console.log("getAllJobsForDesginer called:");
@@ -97,11 +99,16 @@ export const getAllJobsForDesginer = async (req, res) => {
 // ── Pure helper — same logic runs on frontend too ──────────────────────────
 // deliveryDate, jobCreatedAt: JS Date objects
 // priority: "Urgent" | "High" | "Medium" | "Low"
-export function calculateMaxDesignDeadline(deliveryDate, jobCreatedAt, priority, instance = 1, assignedAt = null) {
-  
-  const now         = new Date();
-  const totalMs     = deliveryDate.getTime() - jobCreatedAt.getTime();
-  const totalDays   = totalMs / (1000 * 60 * 60 * 24);
+export function calculateMaxDesignDeadline(
+  deliveryDate,
+  jobCreatedAt,
+  priority,
+  instance = 1,
+  assignedAt = null,
+) {
+  const now = new Date();
+  const totalMs = deliveryDate.getTime() - jobCreatedAt.getTime();
+  const totalDays = totalMs / (1000 * 60 * 60 * 24);
 
   let deadline;
 
@@ -116,10 +123,9 @@ export function calculateMaxDesignDeadline(deliveryDate, jobCreatedAt, priority,
     d.setUTCDate(d.getUTCDate() - 1);
     d.setUTCHours(14, 0, 0, 0);
     deadline = d;
-  }
-  else{
+  } else {
     // ── Rule 3: Any longer delivery → 50% of total duration ────────────────
-    deadline = new Date(jobCreatedAt.getTime() + totalMs * 0.50);
+    deadline = new Date(jobCreatedAt.getTime() + totalMs * 0.5);
   }
 
   // ── Redesign override (instance > 1) ────────
@@ -129,10 +135,10 @@ export function calculateMaxDesignDeadline(deliveryDate, jobCreatedAt, priority,
     const remainingMs = deadline.getTime() - now.getTime();
     const fourHoursMs = 4 * 60 * 60 * 1000;
 
-    if(remainingMs < fourHoursMs){
+    if (remainingMs < fourHoursMs) {
       // Window is exhausted or nearly gone → grant fresh 4 hours from assignment time
       const base = assignedAt ? new Date(assignedAt) : now;
-      deadline   = new Date(base.getTime() + fourHoursMs);
+      deadline = new Date(base.getTime() + fourHoursMs);
     }
     // else: window still has ≥ 4 hours left → keep the calculated deadline unchanged
   }
@@ -157,11 +163,13 @@ export const setEstimatedTime = async (req, res) => {
         status: { [Op.in]: ["assigned", "in_progress"] },
       },
       order: [["created_at", "DESC"]],
-      include: [{
-        model:      JobCard,
-        as:         "jobCard",
-        attributes: ["delivery_date", "created_at", "task_priority"],
-      }],
+      include: [
+        {
+          model: JobCard,
+          as: "jobCard",
+          attributes: ["delivery_date", "created_at", "task_priority"],
+        },
+      ],
     });
 
     if (!assignment) {
@@ -181,41 +189,41 @@ export const setEstimatedTime = async (req, res) => {
     }
 
     // ── Guard 2: enforce deadline rule ──────────────────────────────────
-    const deliveryDate  = new Date(assignment.jobCard.dataValues.delivery_date);
-    const jobCreatedAt  = new Date(assignment.jobCard.dataValues.created_at);
-    const priority      = assignment.jobCard.dataValues.task_priority;
+    const deliveryDate = new Date(assignment.jobCard.dataValues.delivery_date);
+    const jobCreatedAt = new Date(assignment.jobCard.dataValues.created_at);
+    const priority = assignment.jobCard.dataValues.task_priority;
 
     // ── Pass instance + assigned_at so redesign gets 4-hour window ──────────
     const maxAllowed = calculateMaxDesignDeadline(
       deliveryDate,
       jobCreatedAt,
       priority,
-      assignment.instance   ?? 1,   // ← new
-      assignment.assigned_at,       // ← new
+      assignment.instance ?? 1, // ← new
+      assignment.assigned_at, // ← new
     );
-
 
     if (estimatedTime > maxAllowed) {
       // Format in IST for the error message
       const maxStr = maxAllowed.toLocaleString("en-IN", {
-        timeZone:    "Asia/Kolkata",
-        day:         "2-digit",
-        month:       "short",
-        year:        "numeric",
-        hour:        "2-digit",
-        minute:      "2-digit",
-        hour12:      true,
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
       });
       return res.status(400).json({
         error: `Estimated completion time cannot exceed ${maxStr} based on the delivery schedule.`,
-        max_allowed_iso: maxAllowed.toISOString(),   // frontend uses this to clamp the picker
+        max_allowed_iso: maxAllowed.toISOString(), // frontend uses this to clamp the picker
       });
     }
 
     assignment.estimated_completion_time = estimated_completion_time;
     await assignment.save();
 
-    const totalDays = (deliveryDate.getTime() - jobCreatedAt.getTime()) / (1000 * 60 * 60 * 24);
+    const totalDays =
+      (deliveryDate.getTime() - jobCreatedAt.getTime()) / (1000 * 60 * 60 * 24);
 
     // Log Action
     await ActivityLog.create({
@@ -225,10 +233,14 @@ export const setEstimatedTime = async (req, res) => {
       meta: {
         estimated_completion_time,
         max_allowed: maxAllowed.toISOString(),
-        rule_applied: assignment.instance > 1 ? "redesign_4h"
-          : priority === "Urgent"             ? "urgent_4h"
-          : totalDays <= 2                    ? "next_day_1930"
-          : "fifty_percent",
+        rule_applied:
+          assignment.instance > 1
+            ? "redesign_4h"
+            : priority === "Urgent"
+              ? "urgent_4h"
+              : totalDays <= 2
+                ? "next_day_1930"
+                : "fifty_percent",
         instance: assignment.instance,
       },
     });
@@ -245,7 +257,6 @@ export const setEstimatedTime = async (req, res) => {
     });
   }
 };
-
 
 // ── Shared helper: pause any currently running job for this designer ──────────
 // Called before start and resume to enforce the single-active-job rule.
@@ -274,8 +285,8 @@ const autoPauseActiveJob = async (designerUsername, currentJobNo, t) => {
       },
     ],
     transaction: t,
-    lock: t.LOCK.UPDATE,    // row-level lock on JobAssignment
-    skipLocked: false,       // wait if locked — don't skip silently
+    lock: t.LOCK.UPDATE, // row-level lock on JobAssignment
+    skipLocked: false, // wait if locked — don't skip silently
   });
 
   if (!activeAssignment) return null;
@@ -312,7 +323,6 @@ const autoPauseActiveJob = async (designerUsername, currentJobNo, t) => {
   return pausedJobNo;
 };
 
-
 // Designer's API to START TASK
 export const designerStartTask = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -323,7 +333,7 @@ export const designerStartTask = async (req, res) => {
     const assignment = await JobAssignment.findOne({
       where: { job_no, status: "assigned" },
       transaction: t,
-      lock: t.LOCK.UPDATE, 
+      lock: t.LOCK.UPDATE,
     });
 
     if (!assignment) {
@@ -340,7 +350,7 @@ export const designerStartTask = async (req, res) => {
 
     // ── Auto-pause any currently running job for this designer ────────────
     const autoPausedJobNo = await autoPauseActiveJob(
-      req.user.username,  // designer identifier — matches JobCard.assigned_designer
+      req.user.username, // designer identifier — matches JobCard.assigned_designer
       job_no,
       t,
     );
@@ -392,15 +402,15 @@ export const designerStartTask = async (req, res) => {
 
     await t.commit();
 
-    res.json({ 
-      message: "Task started", 
+    res.json({
+      message: "Task started",
       assignment,
       // null when nothing was running before
       auto_paused_job_no: autoPausedJobNo,
     });
 
-    try{
-      /* ------------------ EMAIL NOTIFICATIONS ------------------ */
+    try {
+      /* ------------------ EMAIL AND PUSH NOTIFICATIONS ------------------ */
 
       // Fetch CRM user
       const crmUser = await User.findOne({
@@ -412,6 +422,40 @@ export const designerStartTask = async (req, res) => {
         where: { department: "Process Coordinator" },
       });
 
+      // 📧 Push notification to Process Coordinators
+      if (coordinators.length) {
+        // ── Push: (fire-and-forget) ─────────────────────────────────────
+        coordinators.forEach((coordinator) => {
+          sendPushToUser(coordinator.id, {
+            title: "Designer Started Work",
+            body: `The designer has started working on Job #${job_no}.`,
+            icon: "/favicon.png",
+            vibrate: [500, 200, 500, 200, 500],
+            requireInteraction: true,
+            data: { url: "/job-fms/coordinator", tag: `job-${job_no}` },
+          }).catch((err) =>
+            console.warn(
+              `Push failed for Process coordinator on job ${job_no}:`,
+              err.message,
+            ),
+          );
+        });
+      }
+      // 📧 Push notification to CRM
+      if (crmUser?.id) {
+        sendPushToUser(crmUser?.id, {
+          title: "Designer Started Work",
+          body: `The designer has started working on Job #${job_no}.`,
+          icon: "/favicon.png",
+          vibrate: [500, 200, 500, 200, 500],
+          requireInteraction: true,
+          data: { url: "/job-fms/common", tag: `job-${job_no}` },
+        }).catch((err) =>
+          console.warn(`Push failed for CRM on job ${job_no}:`, err.message),
+        );
+      }
+
+      // Email
       const attachments = [
         {
           filename: "epo-logo.jpg",
@@ -453,18 +497,13 @@ export const designerStartTask = async (req, res) => {
           attachments,
         });
       }
-
       console.log(
         "Emails sent successfully for action designer Started the task.",
       );
-
-    }
-    catch(err){
+    } catch (err) {
       console.error(err);
       console.error("Error in sending emails!");
     }
-
-
   } catch (err) {
     if (!t.finished) {
       await t.rollback();
@@ -484,10 +523,10 @@ export const designerPauseTask = async (req, res) => {
     const { job_no } = req.params;
 
     const assignment = await JobAssignment.findOne({
-      where: { 
-        job_no, 
-        status: "in_progress", 
-        is_paused: false, 
+      where: {
+        job_no,
+        status: "in_progress",
+        is_paused: false,
       },
       transaction: t,
       lock: t.LOCK.UPDATE, // optional: prevents race conditions
@@ -526,12 +565,14 @@ export const designerPauseTask = async (req, res) => {
     await assignment.save({ transaction: t });
     await jobDesignTimeLog.save({ transaction: t });
 
-    await ActivityLog.create({
-      job_no,
-      performed_by_id: req.user?.id || null,
-      action: "Designer Pause Task",
-      meta: { jobDesignTimeLog },
-    },{ transaction: t },
+    await ActivityLog.create(
+      {
+        job_no,
+        performed_by_id: req.user?.id || null,
+        action: "Designer Pause Task",
+        meta: { jobDesignTimeLog },
+      },
+      { transaction: t },
     );
 
     await t.commit(); // ✅ commit if everything succeeds
@@ -553,8 +594,8 @@ export const designerResumeTask = async (req, res) => {
     const { job_no } = req.params;
 
     const assignment = await JobAssignment.findOne({
-      where: { 
-        job_no, 
+      where: {
+        job_no,
         status: "in_progress",
         is_paused: true,
       },
@@ -564,8 +605,8 @@ export const designerResumeTask = async (req, res) => {
 
     if (!assignment) {
       await t.rollback();
-      return res.status(404).json({ 
-        error: "No paused task found to resume" 
+      return res.status(404).json({
+        error: "No paused task found to resume",
       });
     }
 
@@ -576,7 +617,6 @@ export const designerResumeTask = async (req, res) => {
       t,
     );
 
-
     // ── Resume this job ───────────────────────────────────────────────────
     await JobDesignTime.create(
       { assignment_id: assignment.id, start_time: new Date() },
@@ -586,12 +626,15 @@ export const designerResumeTask = async (req, res) => {
     assignment.is_paused = false;
     await assignment.save({ transaction: t });
 
-    await ActivityLog.create({
-      job_no,
-      performed_by_id: req.user?.id || null,
-      action: "Designer Resume Task",
-      meta: { assignment, auto_paused_job: autoPausedJobNo },
-    }, { transaction: t },);
+    await ActivityLog.create(
+      {
+        job_no,
+        performed_by_id: req.user?.id || null,
+        action: "Designer Resume Task",
+        meta: { assignment, auto_paused_job: autoPausedJobNo },
+      },
+      { transaction: t },
+    );
 
     await t.commit();
     return res.json({
@@ -616,6 +659,7 @@ export const designerEndTask = async (req, res) => {
 
     const assignment = await JobAssignment.findOne({
       where: { job_no, status: "in_progress" },
+      transaction: t,
     });
 
     if (!assignment)
@@ -630,6 +674,7 @@ export const designerEndTask = async (req, res) => {
         end_time: null,
       },
       order: [["start_time", "DESC"]],
+      transaction: t,
     });
 
     if (openLog) {
@@ -643,6 +688,7 @@ export const designerEndTask = async (req, res) => {
     // Calculate total duration from JobDesignTime logs
     const designLogs = await JobDesignTime.findAll({
       where: { assignment_id: assignment.id },
+      transaction: t,
     });
 
     let totalSeconds = calculateTotalSeconds(designLogs);
@@ -655,7 +701,9 @@ export const designerEndTask = async (req, res) => {
     await assignment.save({ transaction: t });
 
     // Update JobCard ->
-    const job = await JobCard.findByPk(job_no);
+    const job = await JobCard.findByPk(job_no, {
+      transaction: t,
+    });
     job.status = "sent_for_approval";
     job.current_stage = "sent_for_approval";
     await job.save({ transaction: t });
@@ -704,6 +752,42 @@ export const designerEndTask = async (req, res) => {
       where: { department: "Process Coordinator" },
     });
 
+    // 📧 Push notification to Process Coordinators
+    if (coordinators.length) {
+      // ── Push: (fire-and-forget) ─────────────────────────────────────
+      coordinators.forEach((coordinator) => {
+        sendPushToUser(coordinator.id, {
+          title: "Design Completed",
+          body: `The designer has completed Job #${job_no}.`,
+          icon: "/favicon.png",
+          vibrate: [500, 200, 500, 200, 500],
+          requireInteraction: true,
+          data: { url: "/job-fms/coordinator", tag: `job-${job_no}` },
+        }).catch((err) =>
+          console.warn(
+            `Push failed for Process coordinator on DesignerEndTask job ${job_no}:`,
+            err.message,
+          ),
+        );
+      });
+    }
+    // 📧 Push notification to CRM
+    if (crmUser?.id) {
+      sendPushToUser(crmUser?.id, {
+        title: "Design Completed",
+        body: `Design for Job #${job_no} has been completed. Please send it to the client for approval.`,
+        icon: "/favicon.png",
+        vibrate: [500, 200, 500, 200, 500],
+        requireInteraction: true,
+        data: { url: "/job-fms/common", tag: `job-${job_no}` },
+      }).catch((err) =>
+        console.warn(
+          `Push failed for CRM on DesignerEndTask job ${job_no}:`,
+          err.message,
+        ),
+      );
+    }
+
     // Prepare logo attachment safely
     const attachments = [
       {
@@ -725,7 +809,7 @@ export const designerEndTask = async (req, res) => {
         dashboardUrl: `${process.env.LEADS_URL}/job-fms/process-coordinator`,
       }),
       attachments,
-    });
+    }).catch((err) => console.error("Coordinator email failed:", err));
 
     // 📧 Notify CRM
     if (crmUser?.email) {
@@ -740,7 +824,7 @@ export const designerEndTask = async (req, res) => {
           dashboardUrl: `${process.env.LEADS_URL}/job-fms/crm`,
         }),
         attachments,
-      });
+      }).catch((err) => console.error("CRM email failed:", err));
     }
     console.log("Emails sent successfully for action designer End the task.");
   } catch (err) {
@@ -847,7 +931,9 @@ export const pauseOnLogout = async (req, res) => {
       meta: { trigger: "logout", username: designerUsername },
     });
 
-    console.log(`pause-on-logout: Job #${job_no} paused for ${designerUsername}`);
+    console.log(
+      `pause-on-logout: Job #${job_no} paused for ${designerUsername}`,
+    );
   } catch (err) {
     console.error("pause-on-logout error:", err);
   }
