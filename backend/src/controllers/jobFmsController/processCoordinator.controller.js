@@ -10,6 +10,8 @@ import {
 } from "../../email/templates/emailTemplates.js";
 import path from "path";
 
+import { sendPushToUser } from "../../utils/pushNotification.js"
+
 // Get all jobs for Process Coordinator
 export const getAllJobsForProcessCoordinator = async (req, res) => {
   try {
@@ -145,6 +147,33 @@ export const assignDesigner = async (req, res) => {
         }),
         attachments,
       });
+    }
+
+
+    // ── Push: designer ──────────────────────────────────────────────────────────
+    sendPushToUser(desginer.id, {
+      title: "New Job Assigned",
+      body: `Job #${job_no} has been assigned to you.`,
+      icon: "/favicon.png",
+      vibrate: [500, 200, 500, 200, 500],
+      requireInteraction: true,
+      data: { url: "/job-fms/designer", tag: `job-${job_no}` },
+    }).catch((err) =>
+      console.warn(`Push failed for designer ${desginer.username} on job ${job_no}:`, err.message)
+    );
+
+    // ── Push: CRM ────────────────────────────────────────────────────────────────
+    if (crmUser?.id) {
+      sendPushToUser(crmUser.id, {
+        title: "Designer Assigned",
+        body: `Job #${job_no} assigned to ${desginer.username}.`,
+        icon: "/favicon.png",
+        vibrate: [500, 200, 500, 200, 500],
+        requireInteraction: true,
+        data: { url: "/job-fms/common", tag: `job-${job_no}` },
+      }).catch((err) =>
+        console.warn(`Push failed for CRM ${crmUser.username} on job ${job_no}:`, err.message)
+      );
     }
 
   } catch (err) {
@@ -362,7 +391,23 @@ export const coordinatorSetEstimatedTime = async (req, res) => {
       meta:            { estimated_completion_time },
     });
 
-    return res.json({ message: "Estimated time updated", assignment });
+    res.json({ 
+      message: "Estimated time updated", 
+      assignment 
+    });
+
+    // ── Push: designer (fire-and-forget) ─────────────────────────────────────
+    sendPushToUser(assignment.designer_id, {
+      title: "Estimated Time Set",
+      body: `Job #${job_no} — coordinator set a completion deadline.`,
+      icon: "/favicon.png",
+      vibrate: [500, 200, 500, 200, 500],
+      requireInteraction: true,
+      data: { url: "/job-fms/designer", tag: `job-${job_no}` },
+    }).catch((err) =>
+      console.warn(`Push failed for designer on job ${job_no}:`, err.message)
+    );
+
   }
   catch(err){
     console.error("[coordinatorSetEstimatedTime]", err);
