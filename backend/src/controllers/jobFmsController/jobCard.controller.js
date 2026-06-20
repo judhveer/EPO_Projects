@@ -595,7 +595,7 @@ export const createJobCard = async (req, res) => {
           title: "New Job Created",
           body: `Job #${job_no} · ${jobCard.client_name}`,
           icon: "/favicon.png",
-          vibrate: [500, 200, 500, 200, 500],
+          vibrate: [1000, 200, 1000, 200, 1000],
           requireInteraction: true,
           data: { url: "/job-fms/common", tag: `job-${job_no}` },
         }).catch((err) => { 
@@ -613,7 +613,7 @@ export const createJobCard = async (req, res) => {
           title: "New Job Created",
           body: `Job #${job_no} · ${jobCard.client_name}`,
           icon: "/favicon.png",
-          vibrate: [500, 200, 500, 200, 500],
+          vibrate: [1000, 200, 1000, 200, 1000],
           requireInteraction: true,
           data: { url: "/job-fms/coordinator", tag: `job-${job_no}` },
         }).catch((err) => { 
@@ -697,7 +697,7 @@ export const createJobCard = async (req, res) => {
             title: "New Job Created",
             body: `New Direct To Production job received: #${job_no} · ${jobCard.client_name}`,
             icon: "/favicon.png",
-            vibrate: [500, 200, 500, 200, 500],
+            vibrate: [1000, 200, 1000, 200, 1000],
             requireInteraction: true,
             data: { url: "/job-fms/production", tag: `job-${job_no}` },
           }).catch((err) => { 
@@ -2324,7 +2324,7 @@ async function sendJobNotificationEmail({
         ? `Job #${job_no} · ${job.client_name} has been cancelled.`
         : `Job #${job_no} · ${job.client_name} has been updated. Please review the changes.`,
       icon: '/favicon.png',
-      vibrate: [500, 200, 500, 200, 500],
+      vibrate: [1000, 200, 1000, 200, 1000],
       requireInteraction: true,
     };
 
