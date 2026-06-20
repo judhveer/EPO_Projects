@@ -117,7 +117,7 @@ export const assignDesigner = async (req, res) => {
       title: "New Job Assigned",
       body: `Job #${job_no} has been assigned to you.`,
       icon: "/favicon.png",
-      vibrate: [500, 200, 500, 200, 500],
+      vibrate: [1000, 200, 1000, 200, 1000],
       requireInteraction: true,
       data: { url: "/job-fms/designer", tag: `job-${job_no}` },
     }).catch((err) =>
@@ -130,7 +130,7 @@ export const assignDesigner = async (req, res) => {
         title: "Designer Assigned",
         body: `Job #${job_no} assigned to ${desginer.username}.`,
         icon: "/favicon.png",
-        vibrate: [500, 200, 500, 200, 500],
+        vibrate: [1000, 200, 1000, 200, 1000],
         requireInteraction: true,
         data: { url: "/job-fms/common", tag: `job-${job_no}` },
       }).catch((err) =>
@@ -400,7 +400,7 @@ export const coordinatorSetEstimatedTime = async (req, res) => {
       title: "Estimated Time Set",
       body: `Job #${job_no} — coordinator set a completion deadline.`,
       icon: "/favicon.png",
-      vibrate: [500, 200, 500, 200, 500],
+      vibrate: [1000, 200, 1000, 200, 1000],
       requireInteraction: true,
       data: { url: "/job-fms/designer", tag: `job-${job_no}` },
     }).catch((err) =>
