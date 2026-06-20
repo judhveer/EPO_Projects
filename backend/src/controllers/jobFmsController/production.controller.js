@@ -651,7 +651,7 @@ export const advanceProductionStage = async (req, res) => {
           title: "New Job Assigned",
           body: `Job #${job_no} · ${job.client_name} | ${stageLabel}`,
           icon: "/favicon.png",
-          vibrate: [500, 200, 500, 200, 500],
+          vibrate: [1000, 200, 1000, 200, 1000],
           requireInteraction: true,
           data: { url: "/worker", tag: `job-${job_no}` },
         }).catch((err) => { 
