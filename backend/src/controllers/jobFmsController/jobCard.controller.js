@@ -590,7 +590,6 @@ export const createJobCard = async (req, res) => {
 
     // Push notification to CRM
     if(crmUser?.id){
-      console.log("sending push notification to crm");
       sendPushToUser(crmUser?.id, {
           title: "New Job Created",
           body: `Job #${job_no} · ${jobCard.client_name}`,
