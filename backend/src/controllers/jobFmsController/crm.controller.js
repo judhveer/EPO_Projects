@@ -159,7 +159,7 @@ export const sendToClient = async (req, res) => {
       coordinators.forEach((coordinator) => {
         sendPushToUser(coordinator.id, {
           title: "Job Sent To Client",
-          body: `CRM has sent Job #${job_no} · ${jobCard.client_name} to the client for approval.`,
+          body: `CRM has sent Job #${job_no} · ${job.client_name} to the client for approval.`,
           icon: "/favicon.png",
           vibrate: [1000, 200, 1000, 200, 1000],
           requireInteraction: true,
@@ -292,7 +292,7 @@ export const approveJobByClient = async (req, res) => {
         coordinators.forEach((coordinator) => {
           sendPushToUser(coordinator.id, {
             title: "Job Approved By Client",
-            body: `Job #${job_no} · ${jobCard.client_name} has been approved by the client and is now ready for production.`,
+            body: `Job #${job_no} · ${job.client_name} has been approved by the client and is now ready for production.`,
             icon: "/favicon.png",
             vibrate: [1000, 200, 1000, 200, 1000],
             requireInteraction: true,
@@ -306,7 +306,7 @@ export const approveJobByClient = async (req, res) => {
       // Push notification to Designer.
       sendPushToUser(designer.id, {
         title: "Job Approved By Client",
-        body: `Job #${job_no} · ${jobCard.client_name} has been approved by the client and is now ready for production.`,
+        body: `Job #${job_no} · ${job.client_name} has been approved by the client and is now ready for production.`,
         icon: "/favicon.png",
         vibrate: [1000, 200, 1000, 200, 1000],
         requireInteraction: true,
@@ -319,7 +319,7 @@ export const approveJobByClient = async (req, res) => {
       // Push notification to Production Coordinators.
       sendPushToDepartment("Production Coordinator", {
         title: "Job Ready For Production",
-        body: `Job #${job_no} · ${jobCard.client_name} has been approved by the client and is now ready for production.`,
+        body: `Job #${job_no} · ${job.client_name} has been approved by the client and is now ready for production.`,
         icon: "/favicon.png",
         vibrate: [1000, 200, 1000, 200, 1000],
         requireInteraction: true,
