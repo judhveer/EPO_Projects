@@ -303,7 +303,7 @@ export const approveJobByClient = async (req, res) => {
           });
         });
       }
-      // Push notification to Process Coordinators.
+      // Push notification to Designer.
       sendPushToUser(designer.id, {
         title: "Job Approved By Client",
         body: `Job #${job_no} · ${jobCard.client_name} has been approved by the client and is now ready for production.`,
