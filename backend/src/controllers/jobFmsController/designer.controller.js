@@ -779,7 +779,7 @@ export const designerEndTask = async (req, res) => {
         icon: "/favicon.png",
         vibrate: [1000, 200, 1000, 200, 1000],
         requireInteraction: true,
-        data: { url: "/job-fms/common", tag: `job-${job_no}` },
+        data: { url: "/job-fms/crm", tag: `job-${job_no}` },
       }).catch((err) =>
         console.warn(
           `Push failed for CRM on DesignerEndTask job ${job_no}:`,
