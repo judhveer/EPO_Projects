@@ -430,7 +430,7 @@ export const designerStartTask = async (req, res) => {
             title: "Designer Started Work",
             body: `The designer has started working on Job #${job_no}.`,
             icon: "/favicon.png",
-            vibrate: [500, 200, 500, 200, 500],
+            vibrate: [1000, 200, 1000, 200, 1000],
             requireInteraction: true,
             data: { url: "/job-fms/coordinator", tag: `job-${job_no}` },
           }).catch((err) =>
@@ -447,7 +447,7 @@ export const designerStartTask = async (req, res) => {
           title: "Designer Started Work",
           body: `The designer has started working on Job #${job_no}.`,
           icon: "/favicon.png",
-          vibrate: [500, 200, 500, 200, 500],
+          vibrate: [1000, 200, 1000, 200, 1000],
           requireInteraction: true,
           data: { url: "/job-fms/common", tag: `job-${job_no}` },
         }).catch((err) =>
@@ -760,7 +760,7 @@ export const designerEndTask = async (req, res) => {
           title: "Design Completed",
           body: `The designer has completed Job #${job_no}.`,
           icon: "/favicon.png",
-          vibrate: [500, 200, 500, 200, 500],
+          vibrate: [1000, 200, 1000, 200, 1000],
           requireInteraction: true,
           data: { url: "/job-fms/coordinator", tag: `job-${job_no}` },
         }).catch((err) =>
@@ -777,7 +777,7 @@ export const designerEndTask = async (req, res) => {
         title: "Design Completed",
         body: `Design for Job #${job_no} has been completed. Please send it to the client for approval.`,
         icon: "/favicon.png",
-        vibrate: [500, 200, 500, 200, 500],
+        vibrate: [1000, 200, 1000, 200, 1000],
         requireInteraction: true,
         data: { url: "/job-fms/common", tag: `job-${job_no}` },
       }).catch((err) =>
