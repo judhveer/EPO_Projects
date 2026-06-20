@@ -13,6 +13,8 @@ import path, { resolve } from "path";
 // ✅ Fix 2 — import Sequelize directly (most reliable)
 import { Transaction } from "sequelize";
 
+import { sendPushToUser } from "../../utils/pushNotification.js";
+
 const {
   JobCard,
   JobItem,
@@ -581,6 +583,47 @@ export const createJobCard = async (req, res) => {
       where: { username: order_handled_by },
     });
 
+    // 3️⃣ Notify all Process Coordinators
+    const coordinators = await User.findAll({
+      where: { department: "Process Coordinator" },
+    });
+
+    // Push notification to CRM
+    if(crmUser?.id){
+      sendPushToUser(crmUser?.id, {
+          title: "New Job Created",
+          body: `Job #${job_no} · ${jobCard.client_name}`,
+          icon: "/favicon.png",
+          vibrate: [1000, 200, 1000, 200, 1000],
+          requireInteraction: true,
+          data: { url: "/job-fms/common", tag: `job-${job_no}` },
+        }).catch((err) => { 
+          console.log("error: ", err);
+          // fire-and-forget, never block the response
+          console.warn(`Failed to send push notification to user ${crmUser?.id} (${crmUser?.username}) for job ${job_no}.`);
+        });
+    }
+
+    // Push notification to Process Coordinators
+    if(coordinators.length > 0){
+      console.log("sending push notification to coordinators");
+      coordinators.forEach( (coordinator) => {
+        sendPushToUser(coordinator.id, {
+          title: "New Job Created",
+          body: `Job #${job_no} · ${jobCard.client_name}`,
+          icon: "/favicon.png",
+          vibrate: [1000, 200, 1000, 200, 1000],
+          requireInteraction: true,
+          data: { url: "/job-fms/coordinator", tag: `job-${job_no}` },
+        }).catch((err) => { 
+          console.log("error: ", err);
+          // fire-and-forget, never block the response
+          console.warn(`Failed to send push notification to user ${coordinator?.id} (${coordinator?.username}) for job ${job_no}.`);
+        });
+      });
+    }
+
+    // Email Notification to CRM
     if (crmUser?.email) {
       const dashboardUrl = `${process.env.LEADS_URL}/jobs/${jobCard.job_no}`;
 
@@ -609,16 +652,11 @@ export const createJobCard = async (req, res) => {
         subject: `New Job Assigned | Job No: ${job_no}`,
         html: crmEmailHTML,
         attachments,
-      });
+      }).catch(err => console.error("CRM job creation email failed:", err));
     }
 
-    // 3️⃣ Notify all Process Coordinators
-    const coordinators = await User.findAll({
-      where: { department: "Process Coordinator" },
-    });
-
+    // Email Notification to Process coordinators
     const coordinatorEmails = coordinators.map((u) => u.email).filter(Boolean);
-
     if (coordinatorEmails.length > 0) {
       const coordinatorEmailHTML = coordinatorJobReviewTemplate({
         jobNo: job_no,
@@ -642,7 +680,7 @@ export const createJobCard = async (req, res) => {
           : `New JobCard - Coordinator Review | Job No: ${job_no}`,
         html: coordinatorEmailHTML,
         attachments,
-      });
+      }).catch(err => console.error("Process Coordinator job creation email failed:", err));
     }
 
     // 4️⃣ Notify Production team — ONLY when job is direct to production
@@ -650,9 +688,27 @@ export const createJobCard = async (req, res) => {
       const productionUsers = await User.findAll({
         where: { department: "Production Coordinator" },
       });
+
+      // Push notification to Production Coordinators.
+      if(productionUsers.length > 0){
+        productionUsers.forEach((productionUser) => {
+          sendPushToUser(productionUser.id, {
+            title: "New Job Created",
+            body: `New Direct To Production job received: #${job_no} · ${jobCard.client_name}`,
+            icon: "/favicon.png",
+            vibrate: [1000, 200, 1000, 200, 1000],
+            requireInteraction: true,
+            data: { url: "/job-fms/production", tag: `job-${job_no}` },
+          }).catch((err) => { 
+            console.log("error: ", err);
+            // fire-and-forget, never block the response
+            console.warn(`Failed to send push notification to user ${productionUser?.id} (${productionUser?.username}) for job ${job_no}.`);
+          });
+        })
+      }
+
       const productionEmails = productionUsers.map((u) => u.email).filter(Boolean);
-
-
+      // Email notification to production coordinators
       if (productionEmails.length > 0) {
         const productionEmailHTML = productionDirectJobTemplate({
           jobNo:             job_no,
@@ -672,12 +728,11 @@ export const createJobCard = async (req, res) => {
           subject:     `🖨️ New Job — Direct to Production | Job No: ${job_no}`,
           html:        productionEmailHTML,
           attachments, // reuses the attachments array already defined above
-        });
+        }).catch(err => console.error("Production Coordinator direct to production email failed:", err));
         console.log("Email sent to production team successfully.");
       }
+
     }
-
-
 
   } catch (error) {
     console.error("❌ Error creating JobCard:", error);
@@ -2250,7 +2305,6 @@ async function sendJobNotificationEmail({
       return;
     }
 
-    // ── Build HTML ─────────────────────────────────────────────────────────
     const isCancelled = actionType === "cancelled";
     const mainContent = isCancelled
       ? renderCancelledEmail(job)
@@ -2262,6 +2316,68 @@ async function sendJobNotificationEmail({
           performedBy,
         );
 
+    // ── Push notifications (fire-and-forget, same pattern as createJobCard) ──
+    const pushPayload = {
+      title: isCancelled ? 'Job Cancelled' : 'Job Updated',
+      body: isCancelled
+        ? `Job #${job_no} · ${job.client_name} has been cancelled.`
+        : `Job #${job_no} · ${job.client_name} has been updated. Please review the changes.`,
+      icon: '/favicon.png',
+      vibrate: [1000, 200, 1000, 200, 1000],
+      requireInteraction: true,
+    };
+
+    if (crmUser?.id) {
+      sendPushToUser(crmUser.id, {
+        ...pushPayload,
+        data: { 
+          url: '/job-fms/common', 
+          tag: `job-${job_no}` 
+        },
+      }).catch((err) =>
+        console.warn(`Push failed for CRM ${crmUser.username} on job ${job_no}:`, err.message)
+      );
+    }
+
+    coordinators.forEach((coordinator) => {
+      sendPushToUser(coordinator.id, {
+        ...pushPayload,
+        data: { 
+          url: '/job-fms/common', 
+          tag: `job-${job_no}` 
+        },
+      }).catch((err) =>
+        console.warn(`Push failed for coordinator ${coordinator.username} on job ${job_no}:`, err.message)
+      );
+    });
+
+    productionUsers.forEach((user) => {
+      sendPushToUser(user.id, {
+        ...pushPayload,
+        data: {
+          url: '/job-fms/production', 
+          tag: `job-${job_no}` 
+        }
+      }).catch((err) => {
+        console.warn(`Push failed for production user ${user.username} on job ${job_no}:`, err.message)
+      })
+    });
+
+    if (designerUser?.id) {
+      sendPushToUser(designerUser.id, {
+        ...pushPayload,
+        data: { 
+          url: '/job-fms/designer', 
+          tag: `job-${job_no}` 
+        },
+      }).catch((err) =>
+        console.warn(`Push failed for designer ${designerUser.username} on job ${job_no}:`, err.message)
+      );
+    }
+    console.log("successfully send the push notification to the users.");
+
+    
+    // ── Build HTML ─────────────────────────────────────────────────────────
     const emailHTML = `
       <div style="font-family:Arial,sans-serif;color:#333;line-height:1.6;max-width:720px;margin:auto">
         <img src="cid:epo-logo" height="50" style="margin-bottom:20px" />
@@ -2299,8 +2415,9 @@ async function sendJobNotificationEmail({
       attachments,
     });
     console.log(`📧 Job update notification sent to: ${recipients.join(", ")}`);
+
   } catch (err) {
-    console.error("❌ Failed to send job notification email:", err.message);
+    console.error("❌ Failed to send job push notification and email:", err.message);
   }
 }
 

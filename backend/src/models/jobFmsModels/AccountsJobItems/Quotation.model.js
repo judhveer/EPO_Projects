@@ -116,7 +116,7 @@ export default (sequelize) => {
             const latest = await Quotation.findOne({
                 order: [["quotation_ref_no", "DESC"]],
             });
-            const nextNo = latest ? Number(latest.quotation_ref_no) + 1 : 10001;
+            const nextNo = latest ? Number(latest.quotation_ref_no) + 1 : 100001;
             quotation.quotation_ref_no = nextNo;
         }
     });

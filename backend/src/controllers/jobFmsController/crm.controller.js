@@ -12,6 +12,8 @@ import {
   productionReadyTemplate,
 } from "../../email/templates/emailTemplates.js";
 
+import { sendPushToUser, sendPushToDepartment } from "../../utils/pushNotification.js";
+
 export const getAllJobsForCRM = async (req, res) => {
   try {
     const total = await JobCard.count({
@@ -152,6 +154,23 @@ export const sendToClient = async (req, res) => {
       where: { department: "Process Coordinator" },
     });
 
+    // Push notification to Process Coordinators.
+    if(coordinators.length > 0){
+      coordinators.forEach((coordinator) => {
+        sendPushToUser(coordinator.id, {
+          title: "Job Sent To Client",
+          body: `CRM has sent Job #${job_no} · ${job.client_name} to the client for approval.`,
+          icon: "/favicon.png",
+          vibrate: [1000, 200, 1000, 200, 1000],
+          requireInteraction: true,
+          data: { url: "/job-fms/common", tag: `job-${job_no}` },
+        }).catch((err) => { 
+          // fire-and-forget, never block the response
+          console.warn(`Failed to send push notification to (${coordinator?.username}) for job ${job_no}.`);
+        });
+      });
+    }
+
     const attachments = [
       {
         filename: "epo-logo.jpg",
@@ -174,7 +193,7 @@ export const sendToClient = async (req, res) => {
             dashboardUrl: `${process.env.LEADS_URL}/jobs/${job.job_no}`,
           }),
           attachments,
-        });
+        }).catch(err => console.error("Coordinator sentToClient email failed:", err));;
       }
     }
   } catch (error) {
@@ -268,6 +287,48 @@ export const approveJobByClient = async (req, res) => {
         },
       });
 
+      // Push notification to Process Coordinators.
+      if(coordinators.length > 0){
+        coordinators.forEach((coordinator) => {
+          sendPushToUser(coordinator.id, {
+            title: "Job Approved By Client",
+            body: `Job #${job_no} · ${job.client_name} has been approved by the client and is now ready for production.`,
+            icon: "/favicon.png",
+            vibrate: [1000, 200, 1000, 200, 1000],
+            requireInteraction: true,
+            data: { url: "/job-fms/common", tag: `job-${job_no}` },
+          }).catch((err) => { 
+            // fire-and-forget, never block the response
+            console.warn(`Failed to send push notification to (${coordinator?.username}) for job ${job_no}.`);
+          });
+        });
+      }
+      // Push notification to Designer.
+      sendPushToUser(designer.id, {
+        title: "Job Approved By Client",
+        body: `Job #${job_no} · ${job.client_name} has been approved by the client and is now ready for production.`,
+        icon: "/favicon.png",
+        vibrate: [1000, 200, 1000, 200, 1000],
+        requireInteraction: true,
+        data: { url: "/job-fms/common", tag: `job-${job_no}` },
+      }).catch((err) => { 
+        // fire-and-forget, never block the response
+        console.warn(`Failed to send push notification to (${designer?.username}) for job ${job_no}.`);
+      });
+
+      // Push notification to Production Coordinators.
+      sendPushToDepartment("Production Coordinator", {
+        title: "Job Ready For Production",
+        body: `Job #${job_no} · ${job.client_name} has been approved by the client and is now ready for production.`,
+        icon: "/favicon.png",
+        vibrate: [1000, 200, 1000, 200, 1000],
+        requireInteraction: true,
+        data: { url: "/job-fms/production", tag: `job-${job_no}` },
+      }).catch((err) => { 
+        // fire-and-forget, never block the response
+        console.warn(`Failed to send push notification to Production Coordinator for job ${job_no}.`);
+      });
+
       const attachments = [
         {
           filename: "epo-logo.jpg",
@@ -339,10 +400,7 @@ export const approveJobByClient = async (req, res) => {
         }
       }
 
-
       // Send to Production (PENDING)
-
-
     } catch (emailError) {
       console.error("Error sending email notifications:", emailError);
     }
@@ -471,6 +529,36 @@ export const clientChanges = async (req, res) => {
           username: job.assigned_designer,
         },
       });
+
+      // Push notification to Process Coordinators.
+      if(coordinators.length > 0){
+        coordinators.forEach((coordinator) => {
+          sendPushToUser(coordinator.id, {
+            title: "Client Changes Requested",
+            body: `Client has requested changes for Job #${job_no} · ${job.client_name}. The job has been reassigned for redesign/correction.`,
+            icon: "/favicon.png",
+            vibrate: [1000, 200, 1000, 200, 1000],
+            requireInteraction: true,
+            data: { url: "/job-fms/common", tag: `job-${job_no}` },
+          }).catch((err) => { 
+            // fire-and-forget, never block the response
+            console.warn(`Failed to send push notification to (${coordinator?.username}) for job ${job_no}.`);
+          });
+        });
+      }
+
+      sendPushToUser(designer.id, {
+        title: "Job Reassigned for Redesign",
+        body: `Client has requested changes for Job #${job_no} · ${job.client_name}. Please review the feedback and update the design.`,
+        icon: "/favicon.png",
+        vibrate: [1000, 200, 1000, 200, 1000],
+        requireInteraction: true,
+        data: { url: "/job-fms/designer", tag: `job-${job_no}` },
+      }).catch((err) => { 
+        // fire-and-forget, never block the response
+        console.warn(`Failed to send push notification to (${designer?.username}) for job ${job_no}.`);
+      });
+
 
       const attachments = [
         {
