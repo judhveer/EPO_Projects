@@ -84,6 +84,7 @@ export default function DashboardFilters({ filters, setFilters, resetPage, crmUs
         <option value="Paid">Paid</option>
         <option value="Half Paid">Half Paid</option>
         <option value="Un-paid">Un-paid</option>
+        <option value="Complimentary">Complimentary</option>
       </select>
 
       {/* STATUS / STAGE */}
