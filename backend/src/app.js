@@ -92,12 +92,6 @@ import { pauseOnLogout } from "./controllers/jobFmsController/designer.controlle
 import { closeBrowser } from "./controllers/jobFmsController/quotation.controller.js";
 
 
-
-
-
-//  FOR PENDING BILLS FROM GOOGLE SHEET
-import billingRoutes from "./pendingBills-module/billing.routes.js";
-
 dotenv.config();
 
 
@@ -255,9 +249,6 @@ app.use("/api/fms/quotations", authenticate, quotationRoutes);
 // Authenticated worker master route — inside auth-protected routes
 app.use("/api/fms/worker", authenticate, stageWorkerRoutes);
 app.use("/api/fms/delivery-worker", authenticate, deliveryWorkerRoutes);
-
-//  FOR PENDING BILLS FROM GOOGLE SHEET
-app.use("/api/billing", billingRoutes);
 
 // Push notification subscription management
 app.use("/api/notifications", pushNotificationRoutes);
