@@ -77,6 +77,9 @@ import deliveryPublicRoutes from "./routes/jobFmsRoutes/deliveryPublic.routes.js
 
 import pushNotificationRoutes from "./routes/pushNotification.routes.js";
 
+import accountsRoutes from "./routes/jobFmsRoutes/accounts.routes.js";
+
+
 
 
 
@@ -258,6 +261,9 @@ app.use("/api/billing", billingRoutes);
 
 // Push notification subscription management
 app.use("/api/notifications", pushNotificationRoutes);
+
+// For Accounts dashboard
+app.use("/api/fms/accounts", accountsRoutes);
 
 
 // error handling middlewares
