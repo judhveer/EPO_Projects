@@ -991,40 +991,54 @@ export const markJobDelivered = async (req, res) => {
       );
     }
 
+    // Edge case: if payment was already settled before delivery,
+    // skip "delivered" and go straight to "completed".
+    const isAlreadySettled = ["Paid", "Complimentary"].includes(job.payment_status);
+    const finalStatus = isAlreadySettled ? "completed" : "delivered";
+
+
     await job.update(
       {
-        status: "delivered",
-        current_stage: "delivered",
+        status: finalStatus,
+        current_stage: finalStatus,
         production_stage: null, // clear sub-stage on phase transition
         delivered_at: new Date(),
+        ...(isAlreadySettled ? { completed_at: new Date() } : {}),
       },
       { transaction: t }
     );
 
     await advanceStage({
       job_no,
-      new_stage: "delivered",
+      new_stage: finalStatus,
       performed_by_id: req.user?.id || null,
-      remarks: `(${isPickup ? "Pickup" : "Shipment"} → Delivered)${remarks ? ": " + remarks.trim() : ""}`,
+      remarks: `(${isPickup ? "Pickup" : "Shipment"} → ${isAlreadySettled ? "Completed" : "Delivered"})${remarks ? ": " + remarks.trim() : ""}`,
       transaction: t,
     });
 
     await ActivityLog.create(
       {
         job_no,
-        action: "job_delivered",
+        action: isAlreadySettled ? "job_auto_completed_on_delivery" : "job_delivered",
         performed_by_id: req.user?.id || null,
         meta: {
           mode: isPickup ? "pickup" : "shipment",
           remarks: remarks?.trim() || null,
+          auto_completed: isAlreadySettled,
+          payment_status_at_delivery: job.payment_status,
         },
       },
       { transaction: t }
     );
 
     await t.commit();
-    return res.json({ 
-      message: "Job marked as delivered.", job_no 
+    return res.json({
+      message: isAlreadySettled
+        ? "Job delivered and auto-completed (payment was already settled)."
+        : "Job marked as delivered.",
+      job_no,
+      status: finalStatus,
+      auto_completed: isAlreadySettled,
     });
   }
   catch(error){
@@ -1323,22 +1337,28 @@ export const overrideDeliveryAssignment = async (req, res) => {
         });
 
         if (job && job.status === "in_production") {
+          const isAlreadySettled = ["Paid", "Complimentary"].includes(job.payment_status);
+          const finalStatus = isAlreadySettled ? "completed" : "delivered";
+
           await job.update({ 
-            status: "delivered", 
-            current_stage: "delivered", 
+            status: finalStatus, 
+            current_stage: finalStatus, 
             production_stage: null, 
-            delivered_at: new Date() 
+            delivered_at: new Date(),
+            ...(isAlreadySettled ? { completed_at: new Date() } : {}), 
           },
             { transaction: t }
           );
           await db.ActivityLog.create(
             {
               job_no,
-              action: "job_delivered",
+              action: isAlreadySettled ? "job_auto_completed_on_delivery" : "job_delivered",
               performed_by_id: req.user?.id || null,
               meta: { 
                 mode: "shipment", 
-                triggered_by: "coordinator_override_completed_all" 
+                triggered_by: "coordinator_override_completed_all", 
+                auto_completed: isAlreadySettled,
+                payment_status_at_delivery: job.payment_status,
               },
             },
             { transaction: t }
