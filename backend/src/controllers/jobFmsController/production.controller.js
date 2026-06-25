@@ -97,6 +97,7 @@ export const getJobsForProduction = async (req, res) => {
         { client_name: { [Op.like]: `%${searchTerm}%` } },
         { order_handled_by: { [Op.like]: `%${searchTerm}%` } },
         { assigned_designer: { [Op.like]: `%${searchTerm}%` } },
+        { reference: { [Op.like]: `%${searchTerm}%` } },
       ];
       // Only add the job_no condition when the term is purely numeric —
       // avoids the old magic "-1 sentinel" entirely.
