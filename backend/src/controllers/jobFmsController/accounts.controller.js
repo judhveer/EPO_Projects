@@ -98,6 +98,7 @@ export const getJobsForAccounts = async (req, res) => {
                 { client_name: { [Op.like]: `%${searchTerm}%` } },
                 { order_handled_by: { [Op.like]: `%${searchTerm}%` } },
                 { order_received_by: { [Op.like]: `%${searchTerm}%` } },
+                { reference: { [Op.like]: `%${searchTerm}%` } },
             ];
             if (/^\d+$/.test(searchTerm)) {
                 searchOr.push({ job_no: Number(searchTerm) });
