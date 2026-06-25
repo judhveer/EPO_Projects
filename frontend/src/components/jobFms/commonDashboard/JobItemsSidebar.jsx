@@ -542,47 +542,6 @@ function ItemCard({ item, index, viewMode }) {
         </Section>
       )}
 
-      {/* ── Pricing Summary ── */}
-      {viewMode === "account" && costing && (
-        <Section title="💰 Pricing" accent="green">
-          <div className="space-y-1">
-            {costing.total_sheet_cost > 0 && (
-              <CostRow
-                label="Total Sheet Cost"
-                value={costing.total_sheet_cost}
-              />
-            )}
-            {costing.total_printing_cost > 0 && (
-              <CostRow
-                label="Total Printing Cost"
-                value={costing.total_printing_cost}
-              />
-            )}
-            {costing.binding_cost > 0 && (
-              <CostRow label="Binding Cost" value={costing.binding_cost} />
-            )}
-            <CostRow
-              label="Sheet Cost / Copy"
-              value={costing.sheet_cost_per_copy}
-            />
-            <CostRow
-              label="Printing Cost / Copy"
-              value={costing.printing_cost_per_copy}
-            />
-            {costing.binding_cost_per_copy > 0 && (
-              <CostRow
-                label="Binding / Copy"
-                value={costing.binding_cost_per_copy}
-              />
-            )}
-            <div className="border-t border-green-200 pt-1 mt-1">
-              <CostRow label="Unit Rate" value={costing.unit_rate} />
-              <CostRow label="Item Total" value={costing.item_total} />
-            </div>
-          </div>
-        </Section>
-      )}
-
       {/* Fallback pricing if no costing row yet */}
       {viewMode === "account" && !costing && (item.unit_rate || item.item_total) && (
         <Section title="💰 Pricing (summary only)" accent="green">
