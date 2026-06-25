@@ -400,7 +400,11 @@ export default function ProductionTable() {
                   <td className="border p-2">
                     {DateTime.fromJSDate(new Date(job.createdAt)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
-                  <td className="border p-2">{job.client_name}</td>
+                  <td className="border p-2">{job.client_name}
+                    {job.reference && (
+                      <> ({job.reference})</>
+                    )}
+                  </td>
                   <td className="border p-2 text-center">
                     {job.item_count || 0}
                     {job.item_count > 0 && (

@@ -88,7 +88,11 @@ export default function DashboardTable({
                       .setZone("Asia/Kolkata")
                       .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
-                  <td className="border p-2">{job.client_name}</td>
+                  <td className="border p-2">{job.client_name} 
+                    {job.reference && (
+                       <> ({job.reference})</>
+                    )} 
+                    </td>
                   <td className="border p-2 text-center text-xs">
                     {job.item_count} items
                     {job.item_count > 0 && (
