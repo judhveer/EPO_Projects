@@ -16,7 +16,9 @@ export default function GlobalNav() {
     can(user, "jobfms.writer.view") ||
     can(user, "jobfms.coordinator.view") ||
     can(user, "jobfms.designer.view") ||
-    can(user, "jobfms.crm.view");
+    can(user, "jobfms.crm.view") ||
+    can(user, "jobfms.production.view") ||
+    can(user, "jobfms.accounts.view");
 
   const link = (to, label) => (
     <NavLink

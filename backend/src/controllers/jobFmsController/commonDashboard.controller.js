@@ -44,6 +44,7 @@ const buildWhereClause = (query) => {
       { contact_number: { [Op.like]: `%${search}%` } },
       { email_id: { [Op.like]: `%${search}%` } },
       { assigned_designer: { [Op.like]: `%${search}%` } },
+      { reference: { [Op.like]: `%${search}%` } },
     ];
   }
 

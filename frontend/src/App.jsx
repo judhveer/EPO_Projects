@@ -38,9 +38,9 @@ import CrmDashboard from "./pages/jobFms/CrmDashboard.jsx";
 import CommonDashboard from "./pages/jobFms/CommonDashboard.jsx";
 import ProductionDashboard from "./pages/jobFms/ProductionDashboard.jsx"
 import OutboundOrders from "./components/jobFms/OutboundOrders.jsx";
-import PendingBillingDashboard from "./components/jobFms/accounts/PendingBillingDashboard.jsx";
 import QuotationDashboard from "./pages/jobFms/QuotationDashboard.jsx";
 import DeliveryChallanPage from "./pages/jobFms/DeliveryChallanPage.jsx";
+import AccountsDashboard from "./pages/jobFms/AccountsDashboard.jsx"
 // ── Standalone worker dashboards (outside AppShell) ──
 import WorkerDashboard from "./pages/worker/WorkerDashboard.jsx";
 import DeliveryWorkerDashboard from "./pages/worker/DeliveryWorkerDashboard.jsx";
@@ -339,16 +339,17 @@ export default function App() {
             />
 
             <Route
-              path="pending-bills"
+              path="accounts"
               element={
                 <Gate
-                  perm="jobfms.bills.view"
+                  perm="jobfms.accounts.view"
                   fallback={<div className="p-6">Not Authorized</div>}
                 >
-                  <PendingBillingDashboard />
+                  <AccountsDashboard />
                 </Gate>
               }
             />
+            
           </Route>
           
           {/* --------------- END JOB FMS MODULE --------------- */}

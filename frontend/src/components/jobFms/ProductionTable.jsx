@@ -161,7 +161,7 @@ export default function ProductionTable() {
           <input
             value={filters.search}
             onChange={(e) => update("search", e.target.value)}
-            placeholder="🔍 Job No, Client, Designer Name, CRM"
+            placeholder="🔍 Job No, Client, Reference, Designer Name, CRM"
             className="col-span-1 border rounded px-2 py-1 text-xs"
           />
 
@@ -400,7 +400,11 @@ export default function ProductionTable() {
                   <td className="border p-2">
                     {DateTime.fromJSDate(new Date(job.createdAt)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
-                  <td className="border p-2">{job.client_name}</td>
+                  <td className="border p-2">{job.client_name}
+                    {job.reference && (
+                      <> ({job.reference})</>
+                    )}
+                  </td>
                   <td className="border p-2 text-center">
                     {job.item_count || 0}
                     {job.item_count > 0 && (

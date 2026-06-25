@@ -29,7 +29,7 @@ export default function DashboardFilters({ filters, setFilters, resetPage, crmUs
       <input
         value={filters.search}
         onChange={(e) => update("search", e.target.value)}
-        placeholder="🔍 Job No, Client, Contact, Email, Designer Name"
+        placeholder="🔍 Job No, Client, Reference, Contact, Email, Designer Name..."
         className="col-span-2 border rounded px-2 py-1 text-xs"
       />
 
@@ -84,6 +84,7 @@ export default function DashboardFilters({ filters, setFilters, resetPage, crmUs
         <option value="Paid">Paid</option>
         <option value="Half Paid">Half Paid</option>
         <option value="Un-paid">Un-paid</option>
+        <option value="Complimentary">Complimentary</option>
       </select>
 
       {/* STATUS / STAGE */}

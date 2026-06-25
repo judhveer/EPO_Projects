@@ -204,12 +204,16 @@ export const confirmDeliveryByToken = async (req, res) => {
         });
 
         if (job && job.status === "in_production") {
+          const isAlreadySettled = ["Paid", "Complimentary"].includes(job.payment_status);
+          const finalStatus = isAlreadySettled ? "completed" : "delivered";
+
           await job.update(
             {
-              status: "delivered",
-              current_stage: "delivered",
+              status: finalStatus,
+              current_stage: finalStatus,
               production_stage: null,
               delivered_at: new Date(),
+              ...(isAlreadySettled ? { completed_at: new Date() } : {}),
             },
             { transaction: t },
           );
@@ -217,11 +221,13 @@ export const confirmDeliveryByToken = async (req, res) => {
           await db.ActivityLog.create(
             {
               job_no: assignment.job_no,
-              action: "job_delivered",
+              action: isAlreadySettled ? "job_auto_completed_on_delivery" : "job_delivered",
               performed_by_id: null,
               meta: {
                 mode: "shipment",
                 triggered_by: "all_delivery_confirmations_received",
+                auto_completed: isAlreadySettled,
+                payment_status_at_delivery: job.payment_status,
               },
             },
             { transaction: t },

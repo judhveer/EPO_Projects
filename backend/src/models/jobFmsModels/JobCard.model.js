@@ -126,7 +126,7 @@ export default (sequelize) => {
         ),
       },
       payment_status: {
-        type: DataTypes.ENUM("Paid", "Half Paid", "Un-paid"),
+        type: DataTypes.ENUM("Paid", "Half Paid", "Un-paid", "Complimentary"),
       },
       status: {
         type: DataTypes.ENUM(
@@ -152,7 +152,7 @@ export default (sequelize) => {
         // type: DataTypes.ENUM("PENDING", "COMPLETED", "CANCELLED", "IN-PROGRESS"),
         // default: "PENDING",
         //  enum: ["pending", "in-progress", "completed", "cancelled"],
-  // default: "pending",
+        // default: "pending",
       },
       is_direct_to_production: {
         type: DataTypes.BOOLEAN,
@@ -224,7 +224,7 @@ export default (sequelize) => {
         onUpdate: "CASCADE",
         onDelete: "SET NULL",
       },
-      production_stage:{
+      production_stage: {
         type: DataTypes.ENUM(
           "printing",
           "binding",
@@ -242,25 +242,38 @@ export default (sequelize) => {
         allowNull: true,
         comment: "Timestamp when the current production_stage began. Used for stage-duration reports.",
       },
-      delivered_at:{
+      delivered_at: {
         type: DataTypes.DATE,
         allowNull: true,
       },
-      delivery_persons_name:{
+      bill_created: {
+        type: DataTypes.ENUM("no", "yes", "complimentary"),
+        allowNull: false,
+        defaultValue: "no",
+        comment: "no=unbilled, yes=billed, complimentary=no charge",
+      },
+      bill_type: {
+        type: DataTypes.ENUM("GST Bill", "PI Bill"),
+        allowNull: true,
+        defaultValue: null,
+        comment: "Required when bill_created=yes. NULL for no/complimentary.",
+      },
+      bill_created_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Timestamp when accountant created the bill.",
+      },
+      bill_created_by_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        comment: "User ID of the accountant who created the bill.",
+      },
+      delivery_persons_name: {
         type: DataTypes.STRING(500),
         allowNull: true,
         comment: "Captured when entering out_for_delivery (shipment only).",
       },
-      // challan_no: {
-      //   type: DataTypes.STRING(100),
-      //   allowNull: true,
-      //   comment: "Required for completion of *_SHIPMENT deliveries.",
-      // },
-      // challan_file_url: {
-      //   type: DataTypes.STRING(500),
-      //   allowNull: true,
-      //   comment: "Path/URL to uploaded challan document. Required for shipment completion.",
-      // },
+
     },
     {
       tableName: "jobfms_job_cards",
@@ -281,7 +294,8 @@ export default (sequelize) => {
         { fields: ["is_direct_to_production"] },
 
         { fields: ["production_stage"] },
-
+        { fields: ["bill_created"] },
+        { fields: ["bill_type"] },
 
         // 📄 SORTING / PAGINATION
         { fields: ["created_at"] },
@@ -376,7 +390,7 @@ export default (sequelize) => {
       foreignKey: "job_no",
       onDelete: "CASCADE",
     });
-    
+
   };
 
   return JobCard;

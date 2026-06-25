@@ -77,6 +77,9 @@ import deliveryPublicRoutes from "./routes/jobFmsRoutes/deliveryPublic.routes.js
 
 import pushNotificationRoutes from "./routes/pushNotification.routes.js";
 
+import accountsRoutes from "./routes/jobFmsRoutes/accounts.routes.js";
+
+
 
 
 
@@ -88,12 +91,6 @@ import errorHandler from './middlewares/salesPipeline/error.js';
 import { pauseOnLogout } from "./controllers/jobFmsController/designer.controller.js";
 import { closeBrowser } from "./controllers/jobFmsController/quotation.controller.js";
 
-
-
-
-
-//  FOR PENDING BILLS FROM GOOGLE SHEET
-import billingRoutes from "./pendingBills-module/billing.routes.js";
 
 dotenv.config();
 
@@ -253,11 +250,11 @@ app.use("/api/fms/quotations", authenticate, quotationRoutes);
 app.use("/api/fms/worker", authenticate, stageWorkerRoutes);
 app.use("/api/fms/delivery-worker", authenticate, deliveryWorkerRoutes);
 
-//  FOR PENDING BILLS FROM GOOGLE SHEET
-app.use("/api/billing", billingRoutes);
-
 // Push notification subscription management
 app.use("/api/notifications", pushNotificationRoutes);
+
+// For Accounts dashboard
+app.use("/api/fms/accounts", accountsRoutes);
 
 
 // error handling middlewares
