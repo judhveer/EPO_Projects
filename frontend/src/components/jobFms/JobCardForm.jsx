@@ -2664,7 +2664,6 @@ export default function JobCardForm({
                 required
               >
                 <option value="">Select</option>
-                <option>Paid</option>
                 <option>Half Paid</option>
                 <option>Un-paid</option>
               </Select>
