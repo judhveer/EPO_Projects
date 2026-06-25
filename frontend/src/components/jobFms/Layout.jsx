@@ -20,7 +20,7 @@ const JOB_FMS_TABS = [
   { key: "crm", label: "CRM", to: "/job-fms/crm", perm: "jobfms.crm.view", },
   { key: "production", label: "Production", to: "/job-fms/production", perm: "jobfms.production.view", },
   { key: "outbound", label: "Outbound Orders", to: "/job-fms/outbound", perm: "jobfms.outbound.view", },
-  { key: "bills", label: "Pending Bills", to: "/job-fms/pending-bills", perm: "jobfms.bills.view", },
+  { key: "accounts", label: "Accounts Dashboard", to: "/job-fms/accounts", perm: "jobfms.accounts.view", },
 ];
 
 export default function JobFmsLayout() {
