@@ -161,7 +161,7 @@ export default function ProductionTable() {
           <input
             value={filters.search}
             onChange={(e) => update("search", e.target.value)}
-            placeholder="🔍 Job No, Client, Designer Name, CRM"
+            placeholder="🔍 Job No, Client, Reference, Designer Name, CRM"
             className="col-span-1 border rounded px-2 py-1 text-xs"
           />
 
