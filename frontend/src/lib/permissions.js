@@ -74,9 +74,6 @@ export function can(user, perm) {
 
         case 'jobfms.crm.view':
             return (isSalesDept(dept) && role === "CRM") || dept === 'CRM';
-
-        case 'jobfms.bills.view':
-            return (isSalesDept(dept) && role === "CRM") || dept === 'CRM' || SUPER.has(role);
         
         case 'jobfms.production.view':
             return dept === 'Production Coordinator';
@@ -86,6 +83,9 @@ export function can(user, perm) {
 
         case 'jobfms.quotation.view':
             return dept === 'Accounts' || (isSalesDept(dept) && role === "CRM") || dept === 'CRM' || dept === 'Tender Executive';
+        
+        case 'jobfms.accounts.view':
+            return dept === 'Accounts' || dept === 'CRM';
 
         default:
             return false;
