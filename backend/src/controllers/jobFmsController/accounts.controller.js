@@ -185,7 +185,6 @@ export const getJobsForAccounts = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────
 export const updateBillInfo = async (req, res) => {
     const t = await db.sequelize.transaction();
-    console.log("req.body: ", req.body);
     try {
         ensureAccountsRole(req);
 
