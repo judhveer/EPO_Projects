@@ -394,17 +394,24 @@ export default function JobWriterTable() {
                         className={`px-3 py-1 rounded-md text-xs font-semibold shadow-sm transition-all ${
                           job.status === "cancelled"
                             ? "bg-gray-400 text-white cursor-not-allowed"
-                            : "bg-blue-600 text-white hover:bg-blue-700"
+                            : job.status === "completed"
+                              ? "bg-green-500 text-white cursor-not-allowed"
+                              : "bg-blue-600 text-white hover:bg-blue-700"
                         }`}
-                        disabled={job.status === "cancelled"}
+                        disabled={job.status === "cancelled" || job.status === "completed"}
                       >
-                        {job.status === "cancelled" ? "Cancelled" : "Active ▾"}
+                        {job.status === "cancelled"
+                          ? "Cancelled"
+                          : job.status === "completed"
+                            ? "Completed"
+                            : "Active ▾"}
                       </button>
                     </div>
 
                     {/* Portal dropdown to body */}
                     {openActionDropdown?.job_no === job.job_no &&
                       job.status !== "cancelled" &&
+                      job.status !== "completed" &&
                       createPortal(
                         <AnimatePresence>
                           <motion.div
