@@ -196,6 +196,8 @@ export const confirmDeliveryByToken = async (req, res) => {
         transaction: t,
       });
 
+      let finalStatus = null;
+
       if (pendingCount === 0) {
         // All done → move job to delivered
         const job = await db.JobCard.findByPk(assignment.job_no, {
@@ -205,7 +207,7 @@ export const confirmDeliveryByToken = async (req, res) => {
 
         if (job && job.status === "in_production") {
           const isAlreadySettled = ["Paid", "Complimentary"].includes(job.payment_status);
-          const finalStatus = isAlreadySettled ? "completed" : "delivered";
+          finalStatus = isAlreadySettled ? "completed" : "delivered";
 
           await job.update(
             {
@@ -236,6 +238,28 @@ export const confirmDeliveryByToken = async (req, res) => {
       }
 
       await t.commit();
+
+      // ── Notify accounts department (non-fatal) ───────────────────────────
+      if (finalStatus) {
+        try {
+          await sendPushToDepartment("Accounts", {
+            title: finalStatus === "completed" ? "Job Completed" : "Job Delivered",
+            body: `Job #${assignment.job_no} has been ${finalStatus === "completed" ? "auto-completed" : "delivered"} (all deliveries confirmed).`,
+            icon: "/favicon.png",
+            vibrate: [1000, 200, 1000, 200, 1000],
+            requireInteraction: true,
+            data: { url: "/job-fms/accounts", tag: `job-${job_no}` },
+          }).catch((err) => {
+            console.warn(`Failed to send push to Accounts dept for job ${job_no}:`, err);
+          });
+          
+        } catch (pushErr) {
+          console.error(`[push] Accounts notification failed for job ${assignment.job_no}:`, pushErr.message);
+        }
+      }
+
+
+
       return res.json({
         message: "Delivery confirmed successfully. Thank you!",
         challan_no: challan_no.trim(),

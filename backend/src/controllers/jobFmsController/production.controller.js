@@ -1033,6 +1033,23 @@ export const markJobDelivered = async (req, res) => {
     );
 
     await t.commit();
+
+    // ── Notify accounts department (non-fatal) ─────────────────────────────
+    try {
+      sendPushToDepartment("Accounts", {
+        title: isAlreadySettled ? "Job Completed" : "Job Delivered",
+        body: `Job #${job_no} has been ${isAlreadySettled ? "auto-completed" : "delivered"} (${isPickup ? "pickup" : "shipment"}).`,
+        icon: "/favicon.png",
+        vibrate: [1000, 200, 1000, 200, 1000],
+        requireInteraction: true,
+        data: { url: "/job-fms/accounts", tag: `job-${job_no}` },
+      }).catch((err) => {
+        console.warn(`Failed to send push to Accounts dept for job ${job_no}:`, err);
+      });
+    } catch (pushErr) {
+      console.error(`[push] Accounts notification failed for job ${job_no}:`, pushErr.message);
+    }
+
     return res.json({
       message: isAlreadySettled
         ? "Job delivered and auto-completed (payment was already settled)."
@@ -1331,6 +1348,8 @@ export const overrideDeliveryAssignment = async (req, res) => {
         transaction: t,
       });
 
+      let finalStatus = null;     // ← hoisted so it's readable after commit
+
       if (pendingCount === 0) {
         const job = await db.JobCard.findByPk(job_no, { 
             transaction: t, 
@@ -1339,7 +1358,7 @@ export const overrideDeliveryAssignment = async (req, res) => {
 
         if (job && job.status === "in_production") {
           const isAlreadySettled = ["Paid", "Complimentary"].includes(job.payment_status);
-          const finalStatus = isAlreadySettled ? "completed" : "delivered";
+          finalStatus = isAlreadySettled ? "completed" : "delivered";
 
           await job.update({ 
             status: finalStatus, 
@@ -1368,6 +1387,26 @@ export const overrideDeliveryAssignment = async (req, res) => {
       }
 
       await t.commit();
+
+      // ── Notify accounts department (non-fatal) ───────────────────────────
+      if (finalStatus) {
+        try {
+          await sendPushToDepartment("Accounts", {
+            title: finalStatus === "completed" ? "Job Completed" : "Job Delivered",
+            body: `Job #${job_no} has been ${finalStatus === "completed" ? "auto-completed" : "delivered"} (coordinator override).`,
+            icon: "/favicon.png",
+            vibrate: [1000, 200, 1000, 200, 1000],
+            requireInteraction: true,
+            data: { url: "/job-fms/accounts", tag: `job-${job_no}` },
+          }).catch((err) => {
+            console.warn(`Failed to send push to Accounts dept for job ${job_no}:`, err);
+          });
+
+        } catch (pushErr) {
+          console.error(`[push] Accounts notification failed for job ${job_no}:`, pushErr.message);
+        }
+      }
+
       return res.json({
         message: "Assignment overridden successfully.",
         all_confirmed: pendingCount === 0,

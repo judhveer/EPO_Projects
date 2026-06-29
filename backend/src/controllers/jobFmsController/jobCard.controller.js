@@ -13,7 +13,7 @@ import path, { resolve } from "path";
 // ✅ Fix 2 — import Sequelize directly (most reliable)
 import { Transaction } from "sequelize";
 
-import { sendPushToUser } from "../../utils/pushNotification.js";
+import { sendPushToUser, sendPushToDepartment } from "../../utils/pushNotification.js";
 
 const {
   JobCard,
@@ -622,6 +622,19 @@ export const createJobCard = async (req, res) => {
         });
       });
     }
+
+    // Push notification to Accounts Department
+    sendPushToDepartment("Accounts", {
+      title: "New Job Created",
+      body: `Job #${job_no} · ${jobCard.client_name} — ₹${total_amount}`,
+      icon: "/favicon.png",
+      vibrate: [1000, 200, 1000, 200, 1000],
+      requireInteraction: true,
+      data: { url: "/job-fms/accounts", tag: `job-${job_no}` },
+    }).catch((err) => {
+      console.warn(`Failed to send push to Accounts dept for job ${job_no}:`, err);
+    });
+
 
     // Email Notification to CRM
     if (crmUser?.email) {
