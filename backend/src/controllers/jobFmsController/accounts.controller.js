@@ -15,7 +15,7 @@ const ACCOUNTS_DEPARTMENTS = ["Accounts", "CRM"];
 
 // Reusable error responder — keeps controllers DRY.
 function respondToError(res, error, fallbackMsg) {
-    const status = error.statusCode || (error instanceof StageTransitionError ? 422 : 500);
+    const status = error.statusCode || 500;
     if (status >= 500) console.error(fallbackMsg, error);
     return res.status(status).json({ message: error.message || fallbackMsg });
 }
