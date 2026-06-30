@@ -40,9 +40,6 @@ export default (sequelize) => {
       rate_per_sheet: {
         type: DataTypes.FLOAT,
       },
-      category: {
-        type: DataTypes.STRING, // Single Sheet, Multiple Sheet, WideFormat
-      },
 
     },
     {
