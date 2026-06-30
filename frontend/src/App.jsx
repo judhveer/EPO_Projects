@@ -37,7 +37,7 @@ import DesignerDashboard from "./pages/jobFms/DesignerDashboard.jsx";
 import CrmDashboard from "./pages/jobFms/CrmDashboard.jsx";
 import CommonDashboard from "./pages/jobFms/CommonDashboard.jsx";
 import ProductionDashboard from "./pages/jobFms/ProductionDashboard.jsx"
-import OutboundOrders from "./components/jobFms/OutboundOrders.jsx";
+import OutBoundDashboard from "./pages/jobFms/OutBoundDashboard.jsx";
 import QuotationDashboard from "./pages/jobFms/QuotationDashboard.jsx";
 import DeliveryChallanPage from "./pages/jobFms/DeliveryChallanPage.jsx";
 import AccountsDashboard from "./pages/jobFms/AccountsDashboard.jsx"
@@ -321,7 +321,7 @@ export default function App() {
                   perm="jobfms.outbound.view"
                   fallback={<div className="p-6">Not Authorized</div>}
                 >
-                  <OutboundOrders />
+                  <OutBoundDashboard />
                 </Gate>
               }
             />
