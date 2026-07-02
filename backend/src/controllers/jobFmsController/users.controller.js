@@ -7,7 +7,10 @@ const { User } = models;
 export const getNonBossUsers = async (req, res) => {
   try {
     const users = await User.findAll({
-      where: { role: { [Op.ne]: "Boss" } },
+      where: { 
+        role: { [Op.ne]: "Boss" },
+        isActive: true,
+      },
       attributes: ["id", "username", "department"],
     });
     res.json(users);
@@ -27,6 +30,7 @@ export const getAllCrms = async (req, res) => {
         role: {
           [Op.in]: ["Staff", "CRM"], // role is either Staff or CRM
         },
+        isActive: true, // only active users
       },
       attributes: ["id", "username", "department", "role"], // add role for clarity
     });
