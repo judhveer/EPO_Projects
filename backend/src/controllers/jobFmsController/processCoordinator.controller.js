@@ -187,7 +187,7 @@ export const assignDesigner = async (req, res) => {
 export const getDesignerStatus = async (req, res) => {
   try {
     const designers = await User.findAll({
-      where: { department: "Designer" },
+      where: { department: "Designer", isActive: true },
     });
 
     const result = [];

@@ -11,6 +11,7 @@ export default function GlobalNav() {
   const showAttendance = can(user, "attendance.view");
   const showSales = can(user, "sales.dashboard.view");
   const showEA = can(user, "ea.dashboard.view");
+  const showAdminPanel = can(user, "admin.panel.view");
 
   const showJobFms =
     can(user, "jobfms.writer.view") ||
@@ -37,7 +38,7 @@ export default function GlobalNav() {
 
   return (
     <header className="bg-white border-b sticky top-0 z-40">
-      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+      <div className="max-w-[100vw] mx-auto px-2 h-16 flex items-center justify-between gap-2">
         {/* Brand */}
         <div className="flex items-center gap-3 min-w-0">
           {/* Put your logo file at /public/logo.png or adjust path */}
@@ -64,6 +65,7 @@ export default function GlobalNav() {
           {showSales && link("/sales", "Sales Dashboard")}
           {showJobFms && link("/job-fms", "Job FMS")}
           {(isBoss || isAdmin) && link("/create-user", "Create User")}
+          {showAdminPanel && link("/admin-panel", "Admin Panel")}
         </nav>
 
         {/* User pill + logout */}
@@ -97,6 +99,7 @@ export default function GlobalNav() {
           {showSales && link("/sales", "Sales Dashboard")}
           {showJobFms && link("/job-fms", "Job FMS")}
           {(isBoss || isAdmin) && link("/create-user", "Create User")}
+          {showAdminPanel && link("/admin-panel", "Admin Panel")}
         </div>
       </nav>
     </header>

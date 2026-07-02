@@ -228,6 +228,8 @@ export default function Home() {
     can(user, "jobfms.crm.view") || 
     can(user, "jobfms.common.view");
 
+  const showAdminPanel = can(user, "jobfms.admin.view");
+
   const showDiscTest = true;
 
   const isBossAdmin = user?.role === "BOSS" || user?.role === "ADMIN";
@@ -263,7 +265,7 @@ export default function Home() {
             desc="Add employees with department & role."
           />
         )}
-        {!showSales && !showEA && !showJobFms && showAttendance && (
+        {!showSales && !showEA && !showJobFms && !showAdminPanel && showAttendance && (
           <div className="sm:col-span-2 lg:col-span-3 text-gray-500">
             You currently have access to Attendance only.
           </div>
@@ -274,6 +276,14 @@ export default function Home() {
                 title="Job FMS Dashboard"
                 desc="Manage job cards, design assignments & approvals."
             />
+        )}
+
+        {showAdminPanel && (
+          <Card
+              to="/admin-panel"
+              title="Admin Dashboard"
+              desc="Centralized administration for managing papers, rates, users, settings, and system insights."
+          />
         )}
 
         {showDiscTest && (

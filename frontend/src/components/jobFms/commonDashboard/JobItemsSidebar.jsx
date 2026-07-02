@@ -246,7 +246,7 @@ function ItemCard({ item, index, viewMode }) {
       {isMultiple && (
         <>
           {/* Inside pages header — always show for Multiple Sheet */}
-          <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+          <div className="text-sm font-medium text-slate-500 uppercase tracking-wide">
             Inside —{" "}
             <span className="text-slate-700 font-semibold">
               {item.inside_pages ?? "—"}

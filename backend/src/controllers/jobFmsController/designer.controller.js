@@ -419,7 +419,10 @@ export const designerStartTask = async (req, res) => {
 
       // Fetch Process Coordinators
       const coordinators = await User.findAll({
-        where: { department: "Process Coordinator" },
+        where: { 
+          department: "Process Coordinator",
+          isActive: true
+        },
       });
 
       // 📧 Push notification to Process Coordinators
@@ -749,7 +752,10 @@ export const designerEndTask = async (req, res) => {
 
     // Fetch all Process Coordinators
     const coordinators = await User.findAll({
-      where: { department: "Process Coordinator" },
+      where: { 
+        department: "Process Coordinator",
+        isActive: true
+      },
     });
 
     // 📧 Push notification to Process Coordinators

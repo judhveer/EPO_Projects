@@ -74,11 +74,12 @@ import quotationRoutes from "./routes/jobFmsRoutes/quotation.routes.js";
 import stageWorkerRoutes from "./routes/jobFmsRoutes/stageWorker.routes.js";
 import deliveryWorkerRoutes from "./routes/jobFmsRoutes/deliveryWorker.routes.js";  
 import deliveryPublicRoutes from "./routes/jobFmsRoutes/deliveryPublic.routes.js";
-
+// Push notification subscription management
 import pushNotificationRoutes from "./routes/pushNotification.routes.js";
-
+// For Accounts dashboard
 import accountsRoutes from "./routes/jobFmsRoutes/accounts.routes.js";
-
+// For Admin Panel
+import adminRoutes from "./adminPanel/routes/index.routes.js";
 
 
 
@@ -255,6 +256,9 @@ app.use("/api/notifications", pushNotificationRoutes);
 
 // For Accounts dashboard
 app.use("/api/fms/accounts", accountsRoutes);
+
+// For Admin Panel
+app.use("/api/admin", authenticate, adminRoutes);
 
 
 // error handling middlewares

@@ -1,13 +1,24 @@
 import { DataTypes } from 'sequelize';
 import bcrypt from 'bcryptjs';
 
-export const DEPARTMENTS = ["Job Writer", "Accounts", "Admin", "CRM", "Designer", "EA", "Foundation", "HR", "MIS", "Office Assistant", "Process Coordinator", "Receptionist", "Sales dept", "Tender Executive", ["OWNER"], "Production Coordinator", "Production Worker", "Delivery"];
+export const DEPARTMENTS = ["Job Writer", "Accounts", "Admin", "CRM", "Designer", "EA", "Foundation", "HR", "MIS", "Office Assistant", "Process Coordinator", "Receptionist", "Sales dept", "Tender Executive", "OWNER", "Production Coordinator", "Production Worker", "Delivery"];
 
 export const ROLES = [
   "BOSS", "ADMIN", "STAFF",
   'RESEARCHER', 'COORDINATOR', 'TELECALLER', 'EXECUTIVE', 'CRM',
   'EA'
 ];
+
+
+// ── Admin Panel dropdown sources ──────────────────────────────────────
+// "OWNER" and "BOSS" stay in the full lists above so the bootstrap BOSS
+// account (created once by scripts/seedAdmin.mjs) keeps validating on
+// every save — including the lastLoginAt update that runs on every
+// login. These two filtered lists are what the Admin Panel actually
+// offers and validates against, so neither value can ever be assigned
+// through the dashboard, even via a direct API call.
+export const ASSIGNABLE_DEPARTMENTS = DEPARTMENTS.filter((d) => d !== "OWNER");
+export const ASSIGNABLE_ROLES = ROLES.filter((r) => r !== "BOSS");
 
 function enforceRoleDeptConsistency(instance) {
   const salesRoles = new Set(['RESEARCHER', 'COORDINATOR', 'TELECALLER', 'EXECUTIVE', 'CRM']);
@@ -20,7 +31,7 @@ function enforceRoleDeptConsistency(instance) {
   }
 
   if (role === 'EA' && dept !== "EA") {
-    throw new Error('EA role must have department="EA"');
+    throw new Error('EA role must have department "EA"');
   }
 }
 
