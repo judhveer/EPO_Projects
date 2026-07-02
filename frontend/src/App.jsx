@@ -44,6 +44,8 @@ import AccountsDashboard from "./pages/jobFms/AccountsDashboard.jsx"
 // ── Standalone worker dashboards (outside AppShell) ──
 import WorkerDashboard from "./pages/worker/WorkerDashboard.jsx";
 import DeliveryWorkerDashboard from "./pages/worker/DeliveryWorkerDashboard.jsx";
+// Admin Panel
+import AdminPanel from "./pages/adminPanel/AdminPanel.jsx";
 
 
 
@@ -160,6 +162,18 @@ export default function App() {
                 fallback={<div className="p-6">Not Authorized</div>}
               >
                 <CreateUser />
+              </Gate>
+            }
+          />
+
+          <Route
+            path="/admin-panel"
+            element={
+              <Gate
+                perm="jobfms.admin.view"
+                fallback={<div className="p-6">Not Authorized</div>}
+              >
+                <AdminPanel />
               </Gate>
             }
           />
