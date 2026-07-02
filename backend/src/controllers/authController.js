@@ -50,7 +50,7 @@ export async function login(req, res) {
 
     if (!user || !user.isActive) {
       return res.status(400).json({
-        message: "Invalid credentials",
+        message: "Invalid credentials or User is InActive",
         status: false,
         data: null,
       });
