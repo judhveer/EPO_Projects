@@ -151,7 +151,10 @@ export const sendToClient = async (req, res) => {
 
     // Fetch Process Coordinators
     const coordinators = await User.findAll({
-      where: { department: "Process Coordinator" },
+      where: { 
+        department: "Process Coordinator",
+        isActive: true
+      },
     });
 
     // Push notification to Process Coordinators.
@@ -278,7 +281,10 @@ export const approveJobByClient = async (req, res) => {
     try {
       // Fetch Process Coordinators
       const coordinators = await User.findAll({
-        where: { department: "Process Coordinator" },
+        where: { 
+          department: "Process Coordinator",
+          isActive: true
+        },
       });
 
       const designer = await User.findOne({
@@ -380,6 +386,7 @@ export const approveJobByClient = async (req, res) => {
         const productionCoordinator = await User.findAll({
           where: {
             department: "Production Coordinator",
+            isActive: true,
           },
         });
         for (const coordinator of productionCoordinator) {
