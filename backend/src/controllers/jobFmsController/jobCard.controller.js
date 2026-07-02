@@ -585,7 +585,7 @@ export const createJobCard = async (req, res) => {
 
     // 3️⃣ Notify all Process Coordinators
     const coordinators = await User.findAll({
-      where: { department: "Process Coordinator" },
+      where: { department: "Process Coordinator", isActive: true },
     });
 
     // Push notification to CRM
@@ -699,7 +699,10 @@ export const createJobCard = async (req, res) => {
     // 4️⃣ Notify Production team — ONLY when job is direct to production
     if (is_direct_to_production) {
       const productionUsers = await User.findAll({
-        where: { department: "Production Coordinator" },
+        where: { 
+          department: "Production Coordinator",
+          isActive: true
+        },
       });
 
       // Push notification to Production Coordinators.
@@ -2279,12 +2282,12 @@ async function sendJobNotificationEmail({
 
     // ── Fetch Process Coordinators ─────────────────────────────────────────
     const coordinators = targetRoles.includes("Process Coordinator")
-      ? await User.findAll({ where: { department: "Process Coordinator" } })
+      ? await User.findAll({ where: { department: "Process Coordinator", isActive: true } })
       : [];
 
     // ── Fetch Production team ──────────────────────────────────────────────
     const productionUsers = targetRoles.includes("Production")
-      ? await User.findAll({ where: { department: "Production Coordinator" } })
+      ? await User.findAll({ where: { department: "Production Coordinator", isActive: true } })
       : [];
 
     // ── Fetch Designer (only if assigned and stage warrants it) ───────────
