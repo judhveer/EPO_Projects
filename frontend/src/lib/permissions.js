@@ -87,6 +87,10 @@ export function can(user, perm) {
         case 'jobfms.accounts.view':
             return dept === 'Accounts' || dept === 'CRM';
 
+        case 'jobfms.admin.view':
+            // BOSS/ADMIN already short-circuited to true via SUPER.has(role) at the top of this function. Anyone reaching this line is neither — no one else gets the Admin Dashboard.
+            return false;
+
         default:
             return false;
 
