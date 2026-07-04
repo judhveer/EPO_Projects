@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import UserManagement from "../../components/adminPanel/users/UserManagement.jsx";
+import PaperManagement from "../../components/adminPanel/papers/PaperManagement.jsx";
 
 const TABS = [
   { key: "users", label: "👥 Users" },
+  { key: "papers", label: "📄 Papers" },
   // Next: papers, wideFormat, insights
 ];
 
@@ -30,6 +32,7 @@ export default function AdminPanel() {
       </div>
 
       {activeTab === "users" && <UserManagement />}
+      {activeTab === "papers" && <PaperManagement />}
     </div>
   );
 }
