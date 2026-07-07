@@ -179,7 +179,7 @@ export const getJobsForAccounts = async (req, res) => {
 //  Creates a bill for a job. LOCKED once submitted — bill_created
 //  cannot be changed from "yes" or "complimentary" back to anything.
 //
-//  bill_created = "yes"           → bill_type required (GST Bill / PI Bill)
+//  bill_created = "yes"           → bill_type required (GST Bill / Bill of Supply)
 //  bill_created = "complimentary" → bill_type = null, payment_status
 //                                   auto-set to "Complimentary"
 // ─────────────────────────────────────────────────────────────────────
@@ -201,9 +201,9 @@ export const updateBillInfo = async (req, res) => {
             );
         }
 
-        if (bill_created === "yes" && !["GST Bill", "PI Bill"].includes(bill_type)) {
+        if (bill_created === "yes" && !["GST Bill", "Bill of Supply"].includes(bill_type)) {
             throw Object.assign(
-                new Error("bill_type is required and must be 'GST Bill' or 'PI Bill'."),
+                new Error("bill_type is required and must be 'GST Bill' or 'Bill of Supply'."),
                 { statusCode: 400 }
             );
         }
