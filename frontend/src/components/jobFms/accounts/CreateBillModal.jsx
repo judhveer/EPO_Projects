@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import api from "../../../lib/api.js";
 
-const BILL_TYPES = ["GST Bill", "PI Bill"];
+const BILL_TYPES = ["GST Bill", "Bill of Supply"];
 
 export default function CreateBillModal({ job, onClose, onSuccess }) {
   const [billCreated, setBillCreated] = useState("yes");
