@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import api from "../../../lib/api.js";
 
 const PAYMENT_STATUSES = ["Un-paid", "Half Paid", "Paid"];
-const MODES_OF_PAYMENT = ["cash", "upi", "neft", "rtgs", "pfms", "cheque"];
+const MODES_OF_PAYMENT = ["cash", "upi", "neft", "rtgs", "pfms", "cheque", "imps"];
 
 export default function UpdatePaymentModal({ job, onClose, onSuccess }) {
   const [paymentStatus, setPaymentStatus] = useState(job.payment_status || "Un-paid");
