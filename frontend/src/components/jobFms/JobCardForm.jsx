@@ -2548,6 +2548,7 @@ export default function JobCardForm({
                 <option value="neft">NEFT</option>
                 <option value="rtgs">RTGS</option>
                 <option value="pfms">PFMS</option>
+                <option value="imps">IMPS</option>
                 <option value="cash">Cash</option>
                 <option value="cheque">Cheque</option>
               </Select>
