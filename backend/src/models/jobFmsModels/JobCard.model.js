@@ -122,7 +122,8 @@ export default (sequelize) => {
           "neft",
           "rtgs",
           "pfms",
-          "cheque"
+          "cheque",
+          "imps"
         ),
       },
       payment_status: {
@@ -253,7 +254,7 @@ export default (sequelize) => {
         comment: "no=unbilled, yes=billed, complimentary=no charge",
       },
       bill_type: {
-        type: DataTypes.ENUM("GST Bill", "PI Bill"),
+        type: DataTypes.ENUM("GST Bill", "Bill of Supply"),
         allowNull: true,
         defaultValue: null,
         comment: "Required when bill_created=yes. NULL for no/complimentary.",
