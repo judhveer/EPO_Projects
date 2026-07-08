@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireBossOrAdmin } from "../../middlewares/authorize.js";
 import adminUsersRoutes from "./adminUsers.routes.js";
 import adminPapersRoutes from "./adminPapers.routes.js";
+import adminWideFormatRoutes from "./adminWideFormat.routes.js";
 
 const router = Router();
 
@@ -12,7 +13,7 @@ router.use(requireBossOrAdmin);
 
 router.use("/users", adminUsersRoutes);
 router.use("/papers", adminPapersRoutes);
-// Next: router.use("/wide-format", adminWideFormatRoutes);
+router.use("/wide-format", adminWideFormatRoutes);
 // Next: router.use("/insights", adminInsightsRoutes);
 
 
