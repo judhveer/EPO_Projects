@@ -28,7 +28,7 @@ export async function getWideFormatDeletionBlockers(materialId, transaction){
     const total = jobItemCount + costingCount;
     if(total === 0) return null;
 
-    const blocker = [];
+    const blockers = [];
     if(jobItemCount > 0){
         blockers.push(`${jobItemCount} job item reference${jobItemCount === 1 ? "" : "s"}`);
     }
