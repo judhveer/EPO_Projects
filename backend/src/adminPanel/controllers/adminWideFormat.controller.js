@@ -83,7 +83,7 @@ export const listWideFormats = async (req, res) => {
             ]
         }
 
-        const [rows, count] = await WideFormatMaterial.findAndCountAll({
+        const { rows, count } = await WideFormatMaterial.findAndCountAll({
             where,
             order: [
                 ["material_name", "ASC"],
@@ -109,7 +109,7 @@ export const listWideFormats = async (req, res) => {
             ],
             order: [["material_name", "ASC"]],
             raw: true,
-        })
+        });
 
         return res.json({
             total: count,
@@ -267,7 +267,7 @@ export const createWideFormat = async (req, res) => {
             }
 
         }
-        else if( material_name === "standee"){
+        else if( material_type === "standee"){
             // Required: board_width_ft, board_height_ft, rate_per_pc. No thickness.
             if (board_width_ft === undefined || board_width_ft === ""){
                 throw Object.assign(new Error("board_width_ft is required for Standee materials."), { statusCode: 400 });
@@ -419,16 +419,16 @@ export const deleteWideFormat = async (req, res) => {
     try{
         const { id } = req.params;
         
-        const materail = await WideFormatMaterial.findByPk(id, {
+        const material = await WideFormatMaterial.findByPk(id, {
             transaction: t,
             lock: t.LOCK.UPDATE,
         });
 
-        if(!materail){
+        if(!material){
             throw Object.assign(new Error("Material not found."), { statusCode: 404 });
         }
 
-        const blockerMessage = getWideFormatDeletionBlockers(id, t);
+        const blockerMessage = await getWideFormatDeletionBlockers(id, t);
         if(blockerMessage){
             throw Object.assign(new Error(blockerMessage), { statusCode: 409 });
         }
@@ -444,6 +444,6 @@ export const deleteWideFormat = async (req, res) => {
     }
     catch(error){
         await t.rollback().catch(() => {});
-        return respondToError(req, error, "Failed to delete material.");
+        return respondToError(res, error, "Failed to delete material.");
     }
 }
