@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import UserManagement from "../../components/adminPanel/users/UserManagement.jsx";
 import PaperManagement from "../../components/adminPanel/papers/PaperManagement.jsx";
+import WideFormatManagement from "../../components/adminPanel/wideFormat/WideFormatManagement.jsx";
 
 const TABS = [
   { key: "users", label: "👥 Users" },
   { key: "papers", label: "📄 Papers" },
-  // Next: papers, wideFormat, insights
+  { key: "wideFormat", label: "🖼️ Wide Format"  },
+  // Next:  insights
 ];
 
 export default function AdminPanel() {
@@ -33,6 +35,7 @@ export default function AdminPanel() {
 
       {activeTab === "users" && <UserManagement />}
       {activeTab === "papers" && <PaperManagement />}
+      {activeTab === "wideFormat" && <WideFormatManagement />}
     </div>
   );
 }
