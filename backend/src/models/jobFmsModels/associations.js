@@ -21,6 +21,7 @@ export default function associateJobFmsModels(models) {
     JobItemCosting,
     JobProductionStageWorker,
     DeliveryAssignment,
+    DesignerTransferRequest,
     // ProductionWorkerMaster removed — table dropped, workers are now Users
   } = models;
 
@@ -31,6 +32,12 @@ export default function associateJobFmsModels(models) {
     onDelete: "CASCADE",
   });
   JobItem.belongsTo(JobCard, { as: "jobCard", foreignKey: "job_no" });
+
+  JobCard.hasMany(DesignerTransferRequest, {
+    as: "transferRequests",
+    foreignKey: "job_no",
+    onDelete: "CASCADE",
+  });
 
   // 🔗 JobItem ↔ ItemMaster
   ItemMaster.hasMany(JobItem, {
@@ -80,6 +87,36 @@ export default function associateJobFmsModels(models) {
   JobAssignment.belongsTo(User, {
     as: "assignedBy",
     foreignKey: "assigned_by_id",
+  });
+
+  JobAssignment.hasMany(DesignerTransferRequest, {
+    as: "transferRequests",
+    foreignKey: "assignment_id",
+    onDelete: "CASCADE",
+  });
+
+  // 🔗 DesignerTransferRequest ↔ JobCard
+  DesignerTransferRequest.belongsTo(JobCard, {
+    as: "jobCard",
+    foreignKey: "job_no",
+  });
+
+  // 🔗 DesignerTransferRequest ↔ JobAssignment
+  DesignerTransferRequest.belongsTo(JobAssignment, {
+    as: "assignment",
+    foreignKey: "assignment_id",
+  });
+
+  // 🔗 DesignerTransferRequest ↔ User (requester)
+  DesignerTransferRequest.belongsTo(User, {
+    as: "fromDesigner",
+    foreignKey: "from_designer_id",
+  });
+
+  // 🔗 DesignerTransferRequest ↔ User (recipient)
+  DesignerTransferRequest.belongsTo(User, {
+    as: "toDesigner",
+    foreignKey: "to_designer_id",
   });
 
   // 🔗 ClientApproval
