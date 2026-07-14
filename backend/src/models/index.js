@@ -32,6 +32,7 @@ import ClientDetailsModel from "./jobFmsModels/ClientDetails.model.js";
 import JobProductionStageWorkerModel from "./jobFmsModels/JobProductionStageWorker.model.js";
 import DeliveryAssignmentModel from "./jobFmsModels/DeliveryAssignment.model.js";
 import PushSubscriptionModel from "./jobFmsModels/PushSubscription.model.js";
+import DesignerTransferRequestModel from "./jobFmsModels/DesignerTransferRequest.model.js";
 
 // jobFMS job card accounts models:
 import ItemMasterModel from "./jobFmsModels/AccountsJobItems/ItemMaster.model.js";
@@ -75,6 +76,7 @@ const ClientDetails = ClientDetailsModel(sequelize);
 const JobProductionStageWorker = JobProductionStageWorkerModel(sequelize);
 const DeliveryAssignment = DeliveryAssignmentModel(sequelize);
 const PushSubscription = PushSubscriptionModel(sequelize);
+const DesignerTransferRequest = DesignerTransferRequestModel(sequelize);
 
 // Job FMS job card accounts Models:
 const ItemMaster = ItemMasterModel(sequelize);
@@ -109,6 +111,7 @@ associateJobFmsModels({
   Quotation,
   JobProductionStageWorker,
   DeliveryAssignment,
+  DesignerTransferRequest,
 });
 
 // Associations (ticketId attribute)
@@ -189,6 +192,7 @@ export default {
   JobProductionStageWorker,
   DeliveryAssignment,
   PushSubscription,
+  DesignerTransferRequest,
 
   // Job FMS job card accounts Models:
   ItemMaster,
