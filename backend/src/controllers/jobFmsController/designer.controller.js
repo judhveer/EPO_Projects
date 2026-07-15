@@ -8,6 +8,7 @@ const {
   User,
   JobDesignTime,
   ClientApproval,
+  DesignerTransferRequest,
 } = db;
 import { advanceStage } from "../../utils/jobFms/stageTracking.js";
 import path from "path";
@@ -74,6 +75,28 @@ export const getAllJobsForDesginer = async (req, res) => {
           order: [["instance", "DESC"]],
           required: false,
         },
+        // ── Transfer requests for this designer (undismissed only) ──────
+        // Returned per job so the row can show inline request status
+        // and the Start button knows whether to show the "cancel?" popup.
+        // separate: true prevents cartesian product with the assignments join.
+        {
+          model: DesignerTransferRequest,
+          as: "transferRequests",
+          where: {
+            from_designer_id: req.user.id,
+            dismissed_by_requester_at: null,
+          },
+          required: false,
+          separate: true,
+          include: [
+            {
+              model: User,
+              as: "toDesigner",
+              attributes: ["id", "username"],
+            },
+          ],
+          order: [["created_at", "DESC"]],
+        }
       ],
       order: [["createdAt", "DESC"]],
     });
