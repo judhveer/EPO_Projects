@@ -289,7 +289,7 @@ export const setEstimatedTime = async (req, res) => {
 //   JobAssignment has no direct designer FK — the designer is tracked on
 //   JobCard.assigned_designer. We find all in-progress, unpaused assignments
 //   whose parent job belongs to this designer, excluding the current job.
-const autoPauseActiveJob = async (designerUsername, currentJobNo, t) => {
+export const autoPauseActiveJob = async (designerUsername, currentJobNo, t) => {
   // Find any in-progress, unpaused assignment for this designer (excluding current job)
   const activeAssignment = await JobAssignment.findOne({
     where: {
