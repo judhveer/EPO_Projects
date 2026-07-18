@@ -6,6 +6,10 @@ import { DateTime } from "luxon";
 import JobItemsSidebar from "./commonDashboard/JobItemsSidebar.jsx";
 import Input from "../salesPipeline/Input.jsx";
 
+import TransferPanel         from "./transferRequests/TransferPanel.jsx";
+import TransferRequestModal  from "./transferRequests/TransferRequestModal.jsx";
+import CancelAndStartModal   from "./transferRequests/CancelAndStartModal.jsx";
+
 
 
 // PURE HELPER — mirrors server logic exactly (no API call needed)
@@ -203,7 +207,7 @@ const JobRow = memo(function JobRow({
   job, index, errMsg,
   onStart, onPause, onResume, onEnd,
   onTempTimeChange, onTimeBlur, onTimeFocus,
-  onViewItems,
+  onViewItems, onTransfer,
 }) {
   // Per-row blur debounce ref — no shared state contention between rows
   const blurTimeoutRef = useRef(null);
@@ -383,16 +387,22 @@ const JobRow = memo(function JobRow({
       </td>
 
       {/* ── Actions ───────────────────────────────────────────────────────── */}
-      <td className="border p-1 sm:p-2 text-center space-y-2 sticky right-0 bg-white z-40 min-w-[100px] group-hover:bg-blue-500 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
-        {(job.status === "assigned_to_designer" || job.status === "client_changes") && (
+      <td className="border p-1 sm:p-2 text-center space-y-1.5 sticky right-0
+                     bg-white z-40 min-w-[120px] group-hover:bg-blue-500
+                     shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
+
+        {/* ── Primary job action ──────────────────────────────────── */}
+        {(job.status === "assigned_to_designer" ||
+          job.status === "client_changes") && (
           <button
             disabled={!job.assignment.estimated_completion_time}
             onClick={() => onStart(job.job_no)}
-            className={`px-4 py-1 rounded text-white text-xs font-semibold shadow ${
-              job.assignment.estimated_completion_time
-                ? "bg-blue-600 hover:bg-blue-700"
-                : "bg-gray-400 cursor-not-allowed"
-            }`}
+            className={`w-full px-3 py-1 rounded text-white text-xs font-semibold
+                        shadow ${
+                          job.assignment.estimated_completion_time
+                            ? "bg-blue-600 hover:bg-blue-700"
+                            : "bg-gray-400 cursor-not-allowed"
+                        }`}
           >
             Start
           </button>
@@ -400,7 +410,8 @@ const JobRow = memo(function JobRow({
         {isInProgress && !job.assignment.is_paused && (
           <button
             onClick={() => onPause(job.job_no)}
-            className="px-4 py-1 bg-yellow-500 text-white rounded text-xs font-semibold shadow hover:bg-yellow-600"
+            className="w-full px-3 py-1 bg-yellow-500 text-white rounded
+                       text-xs font-semibold shadow hover:bg-yellow-600"
           >
             Pause
           </button>
@@ -408,7 +419,8 @@ const JobRow = memo(function JobRow({
         {isInProgress && job.assignment.is_paused && (
           <button
             onClick={() => onResume(job.job_no)}
-            className="px-4 py-1 bg-green-600 text-white rounded text-xs font-semibold shadow hover:bg-green-700"
+            className="w-full px-3 py-1 bg-green-600 text-white rounded
+                       text-xs font-semibold shadow hover:bg-green-700"
           >
             Resume
           </button>
@@ -416,10 +428,51 @@ const JobRow = memo(function JobRow({
         {isInProgress && (
           <button
             onClick={() => onEnd(job.job_no)}
-            className="px-4 py-1 bg-red-600 text-white rounded text-xs font-semibold shadow hover:bg-red-700"
+            className="w-full px-3 py-1 bg-red-600 text-white rounded
+                       text-xs font-semibold shadow hover:bg-red-700"
           >
             End Task
           </button>
+        )}
+
+        {/* ── Transfer button (only when not yet started) ─────────── */}
+        {(job.status === "assigned_to_designer" ||
+          job.status === "client_changes") && (
+          <button
+            onClick={() => onTransfer(job)}
+            className="w-full px-3 py-1 bg-purple-600 text-white rounded
+                       text-xs font-semibold shadow hover:bg-purple-700"
+          >
+            Transfer
+          </button>
+        )}
+
+        {/* ── Inline transfer request status badges ───────────────── */}
+        {(job.transferRequests || []).length > 0 && (
+          <div className="space-y-0.5 pt-0.5">
+            {job.transferRequests.map((req) => (
+              <div
+                key={req.id}
+                className={`text-[10px] px-1.5 py-0.5 rounded leading-tight
+                            font-medium truncate max-w-full ${
+                              req.status === "pending"
+                                ? "bg-orange-50 text-orange-700 group-hover:bg-orange-100"
+                                : req.status === "accepted"
+                                ? "bg-green-50 text-green-700 group-hover:bg-green-100"
+                                : req.status === "rejected"
+                                ? "bg-red-50 text-red-700 group-hover:bg-red-100"
+                                : "bg-gray-100 text-gray-500"
+                            }`}
+              >
+                {req.status === "pending" &&
+                  `⏳ → ${req.toDesigner?.username}`}
+                {req.status === "accepted" &&
+                  `✅ ${req.toDesigner?.username}`}
+                {req.status === "rejected" &&
+                  `❌ ${req.toDesigner?.username}`}
+              </div>
+            ))}
+          </div>
         )}
       </td>
     </tr>
@@ -445,6 +498,14 @@ export default function DesignerTable({ refresh }) {
   // popup is modal (center screen). Toast auto-dismisses in 4s.
   const [autoPauseToast, setAutoPauseToast] = useState(null); // { jobNo, action }
 
+  // ── Transfer request state ───────────────────────────────────────────
+  const [badgeCount,        setBadgeCount]        = useState({ outgoing: 0, incoming: 0, total: 0 });
+  const [isPanelOpen,       setIsPanelOpen]       = useState(false);
+  const [availableDesigners, setAvailableDesigners] = useState([]);
+  const [transferModalJob,  setTransferModalJob]  = useState(null); // job object when modal open
+  const [cancelStartTarget, setCancelStartTarget] = useState(null); // { jobNo, pendingCount }
+  const [cancelStartLoading, setCancelStartLoading] = useState(false);
+
   // Stable ref so callbacks always see current jobs without being in deps
   const jobsRef              = useRef([]);
   const autoPauseTimerRef    = useRef(null);
@@ -455,6 +516,39 @@ export default function DesignerTable({ refresh }) {
     [jobs, page, limit],
   );
   const totalPages = Math.ceil(jobs.length / limit);
+
+
+
+  // ── Fetch badge count ─────────────────────────────────────────────────
+  // Kept stable so it can be called from any callback without stale deps.
+  const fetchBadgeCount = useCallback(async () => {
+    try {
+      const { data } = await api.get(
+        "/api/fms/designers/transfer-requests/badge-count"
+      );
+      setBadgeCount(data);
+    } catch (err) {
+      console.error("Badge count fetch failed:", err);
+    }
+  }, []);
+
+  // ── Fetch available designers ─────────────────────────────────────────
+  // Only needs to run once on mount — the designer pool rarely changes.
+  const fetchAvailableDesigners = useCallback(async () => {
+    try {
+      const { data } = await api.get("/api/fms/designers/available-designers");
+      setAvailableDesigners(data.data || []);
+    } catch (err) {
+      console.error("Failed to fetch available designers:", err);
+    }
+  }, []);
+
+  // Run both on mount alongside the existing fetchJobs effect
+  useEffect(() => {
+    fetchBadgeCount();
+    fetchAvailableDesigners();
+  }, [fetchBadgeCount, fetchAvailableDesigners]);
+
 
   // Cleanup on unmount
   useEffect(() => () => clearTimeout(autoPauseTimerRef.current), []);
@@ -487,6 +581,7 @@ export default function DesignerTable({ refresh }) {
             assignment,
             instructions: latestApproval?.client_feedback || "",
             isRework: latestApproval?.status === "changes_requested",
+            transferRequests: job.transferRequests || [],
           };
         })
         .filter(Boolean);
@@ -500,12 +595,18 @@ export default function DesignerTable({ refresh }) {
     }
   }, []);
 
+    // Called by TransferPanel after any action — refreshes both jobs
+  // (inline badges update) and the badge count in the header
+  const handleTransferActionComplete = useCallback(() => {
+    fetchJobs();
+    fetchBadgeCount();
+  }, [fetchJobs, fetchBadgeCount]);
+
   useEffect(() => { 
     fetchJobs();
   }, [refresh, fetchJobs]);
   
   // ── Action handlers — stable, read job via ref (no stale closures) ──
-
   const handleStart = useCallback(async (jobNo) => {
     const job = jobsRef.current.find((j) => j.job_no === jobNo);
     if (!job?.assignment?.estimated_completion_time) {
@@ -513,6 +614,17 @@ export default function DesignerTable({ refresh }) {
       return;
     }
 
+    // If pending transfer requests exist, show the cancel-and-start
+    // confirmation popup instead of starting directly.
+    const pendingRequests = (job.transferRequests || []).filter(
+      (r) => r.status === "pending"
+    );
+    if (pendingRequests.length > 0) {
+      setCancelStartTarget({ jobNo, pendingCount: pendingRequests.length });
+      return;
+    }
+
+    // No pending requests — start normally
     try {
       const res = await api.patch(`/api/fms/designers/${jobNo}/start`);
       const { auto_paused_job_no } = res.data;
@@ -521,12 +633,13 @@ export default function DesignerTable({ refresh }) {
         lastTick: Date.now(),
         isRunning: true,
       });
-      // Stop localStorage timer for the auto-paused job
-      if(auto_paused_job_no){
+      if (auto_paused_job_no) {
         const stored = getTimerFromLS(auto_paused_job_no);
-        if(stored?.isRunning){
+        if (stored?.isRunning) {
           saveTimerToLS(auto_paused_job_no, {
-            baseSeconds: stored.baseSeconds + Math.floor((Date.now() - stored.lastTick) / 1000),
+            baseSeconds:
+              stored.baseSeconds +
+              Math.floor((Date.now() - stored.lastTick) / 1000),
             lastTick: null,
             isRunning: false,
           });
@@ -534,10 +647,61 @@ export default function DesignerTable({ refresh }) {
         showAutoPauseToast(auto_paused_job_no, "started");
       }
       fetchJobs();
+      fetchBadgeCount();
     } catch (err) {
       console.error(err);
     }
-  }, [fetchJobs, showAutoPauseToast]);
+  }, [fetchJobs, showAutoPauseToast, fetchBadgeCount]);
+
+  const handleCancelRequestsAndStart = useCallback(async () => {
+    if (!cancelStartTarget) return;
+    const { jobNo } = cancelStartTarget;
+    const job = jobsRef.current.find((j) => j.job_no === jobNo);
+
+    setCancelStartLoading(true);
+    try {
+      const res = await api.patch(
+        `/api/fms/designers/${jobNo}/cancel-requests-and-start`
+      );
+      const { auto_paused_job_no } = res.data;
+
+      saveTimerToLS(jobNo, {
+        baseSeconds: job?.assignment?.designer_duration_seconds || 0,
+        lastTick: Date.now(),
+        isRunning: true,
+      });
+
+      if (auto_paused_job_no) {
+        const stored = getTimerFromLS(auto_paused_job_no);
+        if (stored?.isRunning) {
+          saveTimerToLS(auto_paused_job_no, {
+            baseSeconds:
+              stored.baseSeconds +
+              Math.floor((Date.now() - stored.lastTick) / 1000),
+            lastTick: null,
+            isRunning: false,
+          });
+        }
+        showAutoPauseToast(auto_paused_job_no, "started");
+      }
+
+      setCancelStartTarget(null);
+      fetchJobs();
+      fetchBadgeCount();
+    } catch (err) {
+      console.error("Cancel-and-start failed:", err);
+      alert(err.response?.data?.message || "Failed to start task.");
+    } finally {
+      setCancelStartLoading(false);
+    }
+  }, [cancelStartTarget, fetchJobs, showAutoPauseToast, fetchBadgeCount]);
+
+  const handleTransfer = useCallback((job) => {
+    setTransferModalJob(job);
+  }, []);
+
+
+
 
   const handlePause = useCallback(async (jobNo) => {
     try {
@@ -709,16 +873,36 @@ export default function DesignerTable({ refresh }) {
       )}
 
       {/* Header */}
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
         <h2 className="text-2xl font-bold text-blue-700">
           🎨 Designer Dashboard
         </h2>
-        {/* TOTAL JOBS TAG */}
-        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full">
-          <span className="text-xs text-blue-700 font-medium">
-            Total Pending Jobs:
-          </span>
-          <span className="text-sm font-bold text-blue-800">{totalJobs}</span>
+        <div className="flex items-center gap-2">
+          {/* Transfer requests badge button */}
+          <button
+            onClick={() => setIsPanelOpen(true)}
+            className="relative flex items-center gap-2 bg-white border border-gray-200
+                      px-3 py-1.5 rounded-full shadow-sm hover:bg-gray-50 transition"
+          >
+            <span className="text-sm">🔄</span>
+            <span className="text-xs text-gray-700 font-medium">Transfers</span>
+            {badgeCount.total > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white
+                              text-[10px] font-bold rounded-full min-w-[18px] h-[18px]
+                              flex items-center justify-center px-1 shadow">
+                {badgeCount.total}
+              </span>
+            )}
+          </button>
+
+          {/* Total jobs */}
+          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200
+                          px-3 py-1.5 rounded-full">
+            <span className="text-xs text-blue-700 font-medium">
+              Total Pending Jobs:
+            </span>
+            <span className="text-sm font-bold text-blue-800">{totalJobs}</span>
+          </div>
         </div>
       </div>
 
@@ -776,6 +960,7 @@ export default function DesignerTable({ refresh }) {
                   onTimeBlur={handleTimeBlur}
                   onTimeFocus={handleTimeFocus}
                   onViewItems={handleViewItems}
+                  onTransfer={handleTransfer}
                 />
               ))
             ) : (
@@ -909,6 +1094,39 @@ export default function DesignerTable({ refresh }) {
           </div>
         ))}
       </div>
+
+
+      {/* ── Transfer Panel ─────────────────────────────────────────── */}
+      <TransferPanel
+        isOpen={isPanelOpen}
+        onClose={() => setIsPanelOpen(false)}
+        onActionComplete={handleTransferActionComplete}
+      />
+
+      {/* ── Transfer Request Modal ─────────────────────────────────── */}
+      {transferModalJob && (
+        <TransferRequestModal
+          job={transferModalJob}
+          availableDesigners={availableDesigners}
+          onClose={() => setTransferModalJob(null)}
+          onSuccess={() => {
+            setTransferModalJob(null);
+            fetchJobs();
+            fetchBadgeCount();
+          }}
+        />
+      )}
+
+      {/* ── Cancel-and-Start Confirmation Popup ───────────────────── */}
+      {cancelStartTarget && (
+        <CancelAndStartModal
+          jobNo={cancelStartTarget.jobNo}
+          pendingCount={cancelStartTarget.pendingCount}
+          loading={cancelStartLoading}
+          onConfirm={handleCancelRequestsAndStart}
+          onClose={() => setCancelStartTarget(null)}
+        />
+      )}
 
       <JobItemsSidebar
         jobNo={selectedJobNo}
