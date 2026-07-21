@@ -78,7 +78,7 @@ export const listWideFormats = async (req, res) => {
         const searchTerm = typeof search === "string" ? search.trim() : "";
 
         if(searchTerm){
-            where[Op.ne] = [
+            where[Op.or] = [
                 { material_name: { [Op.like]: `%${searchTerm}%` } },
             ]
         }
