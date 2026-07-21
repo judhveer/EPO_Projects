@@ -8,6 +8,7 @@ const {
   User,
   JobDesignTime,
   ClientApproval,
+  DesignerTransferRequest,
 } = db;
 import { advanceStage } from "../../utils/jobFms/stageTracking.js";
 import path from "path";
@@ -74,6 +75,28 @@ export const getAllJobsForDesginer = async (req, res) => {
           order: [["instance", "DESC"]],
           required: false,
         },
+        // ── Transfer requests for this designer (undismissed only) ──────
+        // Returned per job so the row can show inline request status
+        // and the Start button knows whether to show the "cancel?" popup.
+        // separate: true prevents cartesian product with the assignments join.
+        {
+          model: DesignerTransferRequest,
+          as: "transferRequests",
+          where: {
+            from_designer_id: req.user.id,
+            dismissed_by_requester_at: null,
+          },
+          required: false,
+          separate: true,
+          include: [
+            {
+              model: User,
+              as: "toDesigner",
+              attributes: ["id", "username"],
+            },
+          ],
+          order: [["created_at", "DESC"]],
+        }
       ],
       order: [["createdAt", "DESC"]],
     });
@@ -266,7 +289,7 @@ export const setEstimatedTime = async (req, res) => {
 //   JobAssignment has no direct designer FK — the designer is tracked on
 //   JobCard.assigned_designer. We find all in-progress, unpaused assignments
 //   whose parent job belongs to this designer, excluding the current job.
-const autoPauseActiveJob = async (designerUsername, currentJobNo, t) => {
+export const autoPauseActiveJob = async (designerUsername, currentJobNo, t) => {
   // Find any in-progress, unpaused assignment for this designer (excluding current job)
   const activeAssignment = await JobAssignment.findOne({
     where: {
