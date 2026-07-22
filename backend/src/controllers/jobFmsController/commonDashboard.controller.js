@@ -24,9 +24,25 @@ const buildWhereClause = (query) => {
     search,
   } = query;
 
+  const productionStages = [
+    "printing",
+    "binding",
+    "quality_check",
+    "packaging",
+    "ready_to_dispatch",
+    "out_for_delivery",
+  ];
+
   const where = {};
 
-  if (status) where.status = status;
+  if (status) {
+    if (productionStages.includes(status)) {
+      where.status = "in_production";
+      where.production_stage = status;
+    } else {
+      where.status = status;
+    }
+  }
   if (order_type) where.order_type = order_type;
   if (order_handled_by) where.order_handled_by = order_handled_by;
   if (execution_location) where.execution_location = execution_location;
