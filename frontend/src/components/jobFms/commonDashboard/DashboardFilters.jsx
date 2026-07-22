@@ -100,7 +100,15 @@ export default function DashboardFilters({ filters, setFilters, resetPage, crmUs
         <option value="awaiting_client_response">Awaiting Client</option>
         <option value="client_changes">Client Changes</option>
         <option value="ready_for_production">Ready For Production</option>
-        <option value="in_production">Production</option>
+        {/* <option value="in_production">Production</option> */}
+        <optgroup label="Production">
+          <option value="printing">Printing</option>
+          <option value="binding">Binding</option>
+          <option value="quality_check">Quality Check</option>
+          <option value="packaging">Packaging</option>
+          <option value="ready_to_dispatch">Ready To Dispatch</option>
+          <option value="out_for_delivery">Out For Delivery</option>
+        </optgroup>
         <option value="delivered">Delivered</option>
         <option value="completed">Completed</option>
         <option value="cancelled">Cancelled</option>
