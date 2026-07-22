@@ -104,10 +104,10 @@ export default function OutboundOrders({ refresh }) {
               <th className="border p-1 sm:p-2 min-w-[150px]">Status</th>
               {/* Outbound-specific — sticky right group */}
               <th className="border p-1 sm:p-2 bg-blue-800 sticky right-[320px] min-w-[140px] z-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
-                Outbound Sent To
+                Paper Ordered From
               </th>
               <th className="border p-1 sm:p-2 bg-blue-800 sticky right-[160px] min-w-[160px] z-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
-                Paper Ordered From
+                Outbound Sent To
               </th>
               <th className="border p-1 sm:p-2 bg-blue-800 sticky right-0 min-w-[160px] z-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                 Receiving Date (MM)
@@ -199,13 +199,13 @@ export default function OutboundOrders({ refresh }) {
 
                   {/* Outbound-specific sticky right cells */}
                   <td className="border p-1 sm:p-2 sticky right-[320px] bg-white z-20 min-w-[140px] group-hover:bg-blue-500 group-hover:text-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
-                    {job.outbound_sent_to || (
+                    {job.paper_ordered_from || (
                       <span className="text-gray-400 italic">Not set</span>
                     )}
                   </td>
 
                   <td className="border p-1 sm:p-2 sticky right-[160px] bg-white z-20 min-w-[160px] group-hover:bg-blue-500 group-hover:text-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
-                    {job.paper_ordered_from || (
+                    {job.outbound_sent_to || (
                       <span className="text-gray-400 italic">Not set</span>
                     )}
                   </td>
