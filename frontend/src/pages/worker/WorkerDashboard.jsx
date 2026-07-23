@@ -152,7 +152,7 @@ export default function WorkerDashboard() {
     const hasActiveWork = assignments.some((a) => a.status === "in_progress");
     if (hasActiveWork) {
       const confirmed = window.confirm(
-        "You have a job in progress. Please PAUSE it before logging out.\n\nLog out anyway?"
+        "A job is in progress.\n\nIf you log out now, it will be PAUSED automatically.\n\nLog out anyway?"
       );
       if (!confirmed) return;
     }
