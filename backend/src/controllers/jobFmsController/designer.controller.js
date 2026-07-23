@@ -901,9 +901,9 @@ export const pauseOnLogout = async (req, res) => {
     // If req.user wasn't populated (sendBeacon path — no auth middleware hit)
     if (!designerUsername && req.body?.token) {
       try {
-        const decoded = jwt.verify(req.body.token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(req.body.token, process.env.JWT_SECRET, { ignoreExpiration: true });
         designerUsername = decoded.username;
-        userId = decoded.id;
+        userId = decoded.sub;
       } catch {
         console.warn("pause-on-logout: invalid token in body, ignoring.");
         return;
