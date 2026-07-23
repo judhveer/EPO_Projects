@@ -9,7 +9,7 @@ export const getOutboundJobs = async (req, res) => {
         execution_location: "Out-Bound",
         status: {
           // Exclude fully completed or cancelled — adjust to your workflow
-          [Op.notIn]: ["completed", "cancelled"],
+          [Op.notIn]: ["completed", "cancelled", "delivered"],
         },
       },
       attributes: [
