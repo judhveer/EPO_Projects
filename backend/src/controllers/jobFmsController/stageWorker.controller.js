@@ -1,6 +1,6 @@
 import db from "../../models/index.js";
 import { Op } from "sequelize";
-
+import jwt from "jsonwebtoken";
 import { sendPushToDepartment } from  "../../utils/pushNotification.js";
 
 const WORKER_DEPT = "Production Worker";
@@ -388,3 +388,101 @@ export const completeAssignment = async (req, res) => {
       .json({ message: err.message || "Failed to complete assignment." });
   }
 };
+
+
+
+/**
+ * POST /api/fms/worker/pause-on-logout
+ *
+ * Pauses ALL in_progress assignments for the worker when they log out
+ * or when their JWT expires mid-session.
+ *
+ * WHY this route is unprotected (no authenticate middleware):
+ *   sendBeacon (used for logout/tab-close) cannot attach Authorization headers.
+ *   The token is sent in the request body and verified manually here.
+ *   This is identical to the designer pause-on-logout pattern.
+ *
+ * WHY we always return 200 even on internal errors:
+ *   A non-2xx response causes the browser to retry sendBeacon unnecessarily.
+ *   This is a best-effort endpoint — we log errors but never fail loudly.
+ */
+export const pauseWorkerOnLogout = async (req, res) => {
+  try{
+
+    const { token } = req.body;
+
+    if(!token){
+      // Return 200 so sendBeacon does not retry
+      return res.status(200).json({ message: "No token provided." });
+    }
+
+    // Manually verify the JWT — same secret used by authenticate middleware
+    let payload;
+    try{
+      payload = jwt.verify(token, process.env.JWT_SECRET, { ignoreExpiration: true });
+      
+    }
+    catch(error){
+      // Only reaches here if signature is invalid — genuinely forged token.
+      // Expired but real tokens now pass through above instead of hitting this.
+      console.log("[pause-worker-on-logout] Invalid token signature:", error);
+      return res.status(200).json({ message: "Token invalid." });
+    }
+
+    const userId = payload.sub;
+    if (!userId) {
+      return res.status(200).json({ message: "Invalid token payload." });
+    }
+
+    const now = new Date();
+
+    // Find all actively running assignments for this worker
+    const activeAssignments = await db.JobProductionStageWorker.findAll({
+      where: {
+        worker_id: userId,
+        status: "in_progress",
+      },
+    });
+
+    if (activeAssignments.length === 0) {
+      return res.status(200).json({ message: "No active assignments to pause.", paused: 0 });
+    }
+
+    // Pause each one — same logic as pauseAssignment:
+    // set status → paused, record paused_at so resume can calculate
+    // the pause duration correctly when the worker comes back.
+    const t = await db.sequelize.transaction();
+    try{
+      for (const assignment of activeAssignments) {
+        await assignment.update(
+          {
+            status: "paused",
+            paused_at: now,
+          },
+          { transaction: t }
+        );
+      }
+
+      await t.commit();
+    }
+    catch (dbErr) {
+      await t.rollback().catch(() => {});
+      console.error("[pause-worker-on-logout] DB error:", dbErr.message);
+      return res.status(200).json({ message: "Handled." });
+    }
+
+    console.log(
+      `[pause-worker-on-logout] Paused ${activeAssignments.length} assignment(s) for worker ${userId}`
+    );
+
+    return res.status(200).json({
+      message: `${activeAssignments.length} assignment(s) paused on logout.`,
+      paused: activeAssignments.length,
+    });
+
+  }
+  catch(error){
+    console.error("[pause-worker-on-logout] Unexpected error:", err.message);
+    return res.status(200).json({ message: "Handled." });
+  }
+}
