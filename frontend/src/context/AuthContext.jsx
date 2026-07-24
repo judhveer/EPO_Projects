@@ -33,7 +33,7 @@ const firePauseOnLogout = (token) => {
   // Fallback: regular fetch (works when tab stays open after logout)
   // keepalive: true makes it survive page unload in browsers without sendBeacon
   fetch(url, {
-    method: "GET",
+    method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
@@ -45,6 +45,34 @@ const firePauseOnLogout = (token) => {
     // Silent — pause-on-logout is best-effort
   });
 };
+
+// Mirror of firePauseOnLogout for Production Workers.
+// Pauses any in_progress worker assignments on logout or JWT expiry.
+// sendBeacon cannot send headers — token goes in the body, verified manually server-side.
+const fireWorkerPauseOnLogout = (token) => {
+  console.log("fireWorkerPauseOnLogout called");
+  if (!token) return;
+
+  const url = `${import.meta.env.VITE_API_BASE_URL ?? ""}/api/fms/worker/pause-on-logout`;
+
+  if (navigator.sendBeacon) {
+    const blob = new Blob(
+      [JSON.stringify({ token })],
+      { type: "application/json" }
+    );
+    navigator.sendBeacon(url, blob);
+    return;
+  }
+
+  // Fallback for browsers without sendBeacon
+  fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+    keepalive: true,
+  }).catch(() => {});
+};
+
 
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
@@ -76,9 +104,14 @@ export function AuthProvider({ children }) {
 
     // Inside AuthProvider, add this useEffect after your existing ones:
     useEffect(() => {
-      // Register so the 401 interceptor can call firePauseOnLogout
-      // when JWT expires mid-session without an explicit logout click.
-      registerPauseOnLogout(firePauseOnLogout);
+      // Register both beacons for the 401 interceptor (JWT expiry mid-session).
+      // Each endpoint is a no-op if the user has no active work there —
+      // firing both for all roles is safe and avoids a department check
+      // in a closure that may not have a fresh user reference.
+      registerPauseOnLogout((token) => {
+        firePauseOnLogout(token);
+        fireWorkerPauseOnLogout(token);
+      });
     }, []); // runs once on mount — firePauseOnLogout is module-level, stable
 
 
@@ -107,6 +140,7 @@ export function AuthProvider({ children }) {
         unregisterPushNotifications(token).catch(() => {});
 
         firePauseOnLogout(token);
+        fireWorkerPauseOnLogout(token);
         setAuthToken(null);
         setUser(null);
     }, []);
