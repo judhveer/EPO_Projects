@@ -6,6 +6,7 @@ import {
   pauseAssignment,
   resumeAssignment,
   completeAssignment,
+  pauseWorkerOnLogout
 } from "../../controllers/jobFmsController/stageWorker.controller.js";
 
 const router = Router();
@@ -29,4 +30,10 @@ router.post("/assignments/:id/resume", resumeAssignment);
 // POST /api/fms/worker/assignments/:id/done
 router.post("/assignments/:id/done", completeAssignment);
 
+// Note: pause-on-logout is NOT registered here.
+// It is registered in app.js before the authenticate middleware
+// because sendBeacon cannot send Authorization headers.
+
 export default router;
+
+export { pauseWorkerOnLogout };

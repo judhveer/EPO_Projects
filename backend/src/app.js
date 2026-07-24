@@ -90,6 +90,7 @@ import errorHandler from './middlewares/salesPipeline/error.js';
 
 // direct controller import for pause-on-logout (see discussion in AuthContext.jsx)
 import { pauseOnLogout } from "./controllers/jobFmsController/designer.controller.js";
+import { pauseWorkerOnLogout } from "./controllers/jobFmsController/stageWorker.controller.js"; 
 import { closeBrowser } from "./controllers/jobFmsController/quotation.controller.js";
 
 
@@ -217,6 +218,7 @@ app.use("/api/fms/process-coordinator",
 // sendBeacon cannot send Authorization headers, so this route must be
 // outside the auth middleware. Token is verified manually inside the controller.
 app.post("/api/fms/designers/pause-on-logout", pauseOnLogout);
+app.post("/api/fms/worker/pause-on-logout", pauseWorkerOnLogout); 
 
 
 app.use("/api/fms/designers",
