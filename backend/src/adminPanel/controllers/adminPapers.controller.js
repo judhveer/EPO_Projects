@@ -161,8 +161,6 @@ export const createPaper = async (req, res) => {
         // matching the format already used throughout the paper master table.
         const size_name = `${parseFloat(widthNum)}x${parseFloat(heightNum)}`;
 
-        console.log("size_name", size_name);
-
         // ── Duplicate check ───────────────────────────────────────────────
         // A row is considered a duplicate when paper_name + gsm + size_name
         // all match — that's the same combination the quotation/job form uses when looking up a paper, so a duplicate would silently return the wrong row to pricers.
