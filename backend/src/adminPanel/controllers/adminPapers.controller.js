@@ -214,7 +214,6 @@ export const updatePaper = async (req, res) => {
     const t = await db.sequelize.transaction();
     try{
         const { id } = req.params;
-        console.log("id", id);
         const { paper_name, size_category, rate_per_sheet } = req.body || {};
 
         const paper = await PaperMaster.findByPk(id, {
