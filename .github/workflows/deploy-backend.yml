@@ -1,43 +1,30 @@
-# File: .github/workflows/deploy-backend.yml
-
 name: Deploy Backend to VPS
 
-# Kab trigger hoga ye pipeline?
 on:
   push:
     branches:
-      - main          # jab bhi main branch pe push ho
+      - main
     paths:
-      - 'backend/**'  # aur sirf backend folder mein kuch change ho
+      - 'backend/**'
 
 jobs:
   deploy:
-    name: SSH into VPS and Deploy
-    runs-on: ubuntu-latest   # GitHub ka ek temporary machine use hoga
+    name: Deploy on VPS Runner
+    runs-on: self-hosted
 
     steps:
-      # Step 1: VPS mein SSH karo aur commands chalao
-      - name: Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}      # tera VPS IP
-          username: ${{ secrets.VPS_USER }}  # root
-          key: ${{ secrets.VPS_SSH_KEY }}    # private key
-          script: |
-            # Project folder mein jao
-            cd /root/EPO_Projects
-            
-            # Latest code pull karo GitHub se
-            git pull origin main
-            
-            # Backend folder mein jao
-            cd backend
-            
-            # Agar koi naya package aaya ho toh install karo
-            npm install --omit=dev
-            
-            # PM2 se backend restart karo
-            pm2 restart backend-api
-            
-            # Confirm karo ki sab theek hai
-            pm2 status backend-api
+      - name: Pull latest code
+        run: |
+          cd /root/EPO_Projects
+          git pull origin main
+
+      - name: Install dependencies
+        run: |
+          cd /root/EPO_Projects
+          npm install --omit=dev
+
+      - name: Restart PM2
+        run: |
+          export PATH=$PATH:/usr/local/bin
+          pm2 restart backend-api
+          pm2 status backend-api
