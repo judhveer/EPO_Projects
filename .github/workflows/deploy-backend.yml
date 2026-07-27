@@ -20,7 +20,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd /root/EPO_Projects
+          cd /root/EPO_Projects/backend
           npm install --omit=dev
 
       - name: Restart PM2
