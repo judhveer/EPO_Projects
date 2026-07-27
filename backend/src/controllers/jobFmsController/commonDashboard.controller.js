@@ -95,8 +95,6 @@ const buildWhereClause = (query) => {
  * GET ALL JOB CARDS (with pagination & filters)
  */
 export const getDashboardJobs = async (req, res) => {
-  console.log("getDashboardJobs called...");
-
   try {
     const { page = 1, limit = 50 } = req.query;
 
