@@ -27,7 +27,6 @@ export const getItemsByCategory = async (req, res) => {
 };
 
 export const getAllPaperTypes = async (req, res) => {
-  console.log("getAllPaperTypes called: ");
   try {
     const papers = await PaperMaster.findAll({
       where: {},
