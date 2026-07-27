@@ -25,6 +25,7 @@ jobs:
 
       - name: Restart PM2
         run: |
+          export HOME=/root
           export PATH=$PATH:/usr/local/bin
           pm2 restart backend-api
           pm2 status backend-api
