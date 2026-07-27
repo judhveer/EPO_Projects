@@ -3,7 +3,6 @@ import models from "../../models/index.js";
 const { ItemMaster, PaperMaster, BindingMaster, SizeMaster, WideFormatMaterial, PrintingRateMaster } = models;
 
 export const getItemsByCategory = async (req, res) => {
-  console.log("getItemsByCategory called:");
   try {
     const { category } = req.query;
 
