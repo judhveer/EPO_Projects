@@ -25,7 +25,6 @@ import { sendPushToUser } from "../../utils/pushNotification.js";
 
 // Get all jobs for Designers
 export const getAllJobsForDesginer = async (req, res) => {
-  console.log("getAllJobsForDesginer called:");
   try {
     const total = await JobCard.count({
       where: {
