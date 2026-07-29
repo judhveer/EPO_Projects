@@ -62,8 +62,6 @@ export const getJobsForProduction = async (req, res) => {
     const limitNum = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
     const offset = (pageNum - 1) * limitNum;
 
-    console.log("req.query: ", req.query);
-
     const where = {
       status: { [Op.in]: ["ready_for_production", "in_production"] },
     };
