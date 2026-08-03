@@ -68,8 +68,13 @@ export default function DashboardTable({
                     index % 2 === 0 ? "bg-white" : "bg-slate-300"
                   } hover:bg-blue-500 hover:text-white`}
                 >
-                  <td className="border p-2 sticky left-0 bg-white z-20 text-center font-bold text-blue-700 cursor-pointer hover:underline"
-                  onClick={() => onSelectJob(job.job_no)} >
+                  <td className={`border p-2 sticky left-0 z-20 text-center font-bold cursor-pointer hover:underline ${
+                      job.execution_location === "Out-Bound"
+                        ? "bg-blue-900 text-yellow-300"
+                        : "bg-white text-blue-700"
+                    }`}
+                    onClick={() => onSelectJob(job.job_no)}
+                  >
                     {job.job_no}
                     {job.clientApprovals?.[0]?.instance > 1 && (
                       <div className="text-[11px] text-red-800 italic mt-1">
