@@ -249,9 +249,9 @@ export const confirmDeliveryByToken = async (req, res) => {
             icon: "/favicon.png",
             vibrate: [1000, 200, 1000, 200, 1000],
             requireInteraction: true,
-            data: { url: "/job-fms/accounts", tag: `job-${job_no}` },
+            data: { url: "/job-fms/accounts", tag: `job-${assignment.job_no}`, },
           }).catch((err) => {
-            console.warn(`Failed to send push to Accounts dept for job ${job_no}:`, err);
+            console.warn(`Failed to send push to Accounts dept for job ${assignment.job_no}:`, err);
           });
           
         } catch (pushErr) {
