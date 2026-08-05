@@ -115,7 +115,6 @@ export default (sequelize) => {
 
   // Instance helpers
   User.prototype.checkPassword = async function (plain) {
-    console.log("plain:", plain); 
     if (!this.passwordHash) return false;
     return bcrypt.compare(plain, this.passwordHash);
   };
