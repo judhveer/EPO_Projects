@@ -1,0 +1,15 @@
+# EPO_Projects/docker-compose.yml
+
+services:
+  redis:
+    image: redis:8-alpine        # version 8 — same local aur production
+    container_name: redis-local
+    ports:
+      - "6379:6379"              # localhost:6379 accessible
+    command: [ "redis-server", "--appendonly", "yes" ]  # data persist karne ke liye
+    volumes:
+      - redis_data:/data         # data persist rahega container restart pe bhi
+    restart: always              # Docker restart hone pe auto start
+
+volumes:
+  redis_data:
