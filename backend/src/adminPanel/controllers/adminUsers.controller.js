@@ -9,8 +9,6 @@
 //  Access: BOSS or ADMIN only (enforced by requireBossOrAdmin in the router).
 // ══════════════════════════════════════════════════════════════════════
 
-
-
 import { Op } from "sequelize";
 import { validationResult } from "express-validator";
 import db from "../../models/index.js";
@@ -19,6 +17,7 @@ import {
     ASSIGNABLE_ROLES,
 } from "../../models/salesPipelineModels/User.model.js";
 import { getDeletionBlockers } from "../utils/userDeletionGuard.js";
+import { deleteCache, delCachePattern, CACHE_KEYS, CACHE_PATTERNS } from "../../utils/cache.js";
 
 const { User } = db;
 
@@ -250,6 +249,16 @@ export const updateUser = async (req, res) => {
         await target.save({ transaction: t });
 
         await t.commit();
+
+        // Invalidate auth cache for this user — their role/dept/username may have changed.
+        // Invalidate workers cache — department might have changed.
+        await deleteCache(
+            CACHE_KEYS.user(id),
+            CACHE_KEYS.nonBossUsers,
+            CACHE_KEYS.crmUsers,
+        );
+        await delCachePattern(CACHE_PATTERNS.allWorkersDept);
+
         return res.json({
             message: "User updated successfully.",
             data: {
@@ -305,6 +314,15 @@ export const toggleUserStatus = async (req, res) => {
 
         await t.commit();
 
+        // Deactivated users must not be served from cache on next request.
+        // Workers list changes when a worker is activated/deactivated.
+        await deleteCache(
+            CACHE_KEYS.user(id),
+            CACHE_KEYS.nonBossUsers,
+            CACHE_KEYS.crmUsers,
+        );
+        await delCachePattern(CACHE_PATTERNS.allWorkersDept);
+
         return res.json({
             message: isActive ? "User reactivated." : "User deactivated.",
             id: target.id,
@@ -349,6 +367,14 @@ export const deleteUser = async (req, res) => {
 
         await target.destroy({ transaction: t });
         await t.commit();
+
+        // Remove all traces of this user from cache.
+        await deleteCache(
+            CACHE_KEYS.user(id),
+            CACHE_KEYS.nonBossUsers,
+            CACHE_KEYS.crmUsers,
+        );
+        await delCachePattern(CACHE_PATTERNS.allWorkersDept);
 
         return res.json({ 
             message: "User deleted permanently.", 
