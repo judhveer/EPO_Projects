@@ -1,11 +1,21 @@
 import express from "express";
 import models from "../../models/index.js";
 import { Op } from "sequelize";
+import { getCache, setCache, TTL, CACHE_KEYS } from "../../utils/cache.js";
 const { User } = models;
 
 // All users except Boss
 export const getNonBossUsers = async (req, res) => {
   try {
+
+    const cacheKey = CACHE_KEYS.nonBossUsers;
+    const cached = await getCache(cacheKey);
+
+    if(cached){
+      console.log("[getNonBossUsers] Cache hit");
+      return res.json(cached);
+    }
+
     const users = await User.findAll({
       where: { 
         role: { [Op.ne]: "Boss" },
@@ -13,6 +23,9 @@ export const getNonBossUsers = async (req, res) => {
       },
       attributes: ["id", "username", "department"],
     });
+
+    await setCache(cacheKey, users, TTL.MASTER_DATA);
+
     res.json(users);
   } catch (error) {
     console.error("[getNonBossUsers error]", error);
@@ -22,6 +35,15 @@ export const getNonBossUsers = async (req, res) => {
 
 export const getAllCrms = async (req, res) => {
   try {
+
+    const cacheKey = CACHE_KEYS.crmUsers;
+    const cached = await getCache(cacheKey);
+
+    if(cached){
+      console.log("[getAllCrms] Cache hit");
+      return res.json(cached);
+    }
+
     const crms = await User.findAll({
       where: {
         department: {
@@ -35,6 +57,7 @@ export const getAllCrms = async (req, res) => {
       attributes: ["id", "username", "department", "role"], // add role for clarity
     });
 
+    await setCache(cacheKey, crms, TTL.MASTER_DATA);
 
     res.json(crms);
   } catch (error) {
@@ -69,6 +92,14 @@ export const getWorkersByDepartment = async (req, res) => {
       });
     }
 
+    const cacheKey = CACHE_KEYS.workersByDept(department);
+    const cached = await getCache(cacheKey);
+
+    if(cached){
+      console.log(`[getWorkersByDepartment] Cache hit for department: ${department}`);
+      return res.json(cached);
+    }
+
     const workers = await User.findAll({
       where: {
         department,
@@ -77,6 +108,8 @@ export const getWorkersByDepartment = async (req, res) => {
       attributes: ["id", "username", "department"],
       order: [["username", "ASC"]],
     });
+
+    await setCache(cacheKey, workers, TTL.WORKERS);
 
     return res.json(workers);
   } catch (error) {
