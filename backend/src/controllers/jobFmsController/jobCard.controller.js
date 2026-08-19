@@ -84,6 +84,25 @@ function computeGST(totalAmount, discount, gstPct) {
   return { afterDiscount, gst_amount, final_amount };
 }
 
+// Strips any numbering/perforation paper _id from binding_targets that no
+// longer exists in the item's current inside_papers[]. Runs on EVERY save
+// (create + update), so even if the frontend ever fails to prune (category
+// reset, paper removal, race condition, stale localStorage draft, etc.),
+// the DB never persists an orphaned reference. Harmless no-op for
+// categories that don't use inside_papers (targets are empty arrays there).
+function sanitizeBindingTargets(item) {
+  if (!item.binding_targets) return item.binding_targets;
+  const validIds = new Set((item.inside_papers || []).map((p) => p._id));
+  return {
+    numbering_paper_ids: (item.binding_targets.numbering_paper_ids || [])
+      .filter((id) => validIds.has(id)),
+    perforation_paper_ids: (item.binding_targets.perforation_paper_ids || [])
+      .filter((id) => validIds.has(id)),
+  };
+}
+
+
+
 /**
  * CREATE JOB CARD + JOB ITEMS (in a single transaction)
  */
@@ -353,6 +372,9 @@ export const createJobCard = async (req, res) => {
           item.inside_pages = Number(item.inside_pages);
           item.cover_pages = Number(item.cover_pages);
         }
+
+        // ── NEW: sanitize binding_targets against current inside_papers ──
+        item.binding_targets = sanitizeBindingTargets(item);
 
         // ── STEP 3: Strip ALL fields that must never be sent to JobItem.create ──
         // Doing this by explicit delete is safest — it mutates the loop variable
@@ -1688,6 +1710,9 @@ export const updateJobCard = async (req, res) => {
         ? item.binding_types
         : [];
 
+      // ── NEW: sanitize binding_targets against current inside_papers ──
+      item.binding_targets = sanitizeBindingTargets(item);
+
       await JobItem.update(sanitizeItemEnums(toSafeItem(item)), {
         where: { id: item.id },
         transaction: t,
@@ -1715,6 +1740,9 @@ export const updateJobCard = async (req, res) => {
       item.binding_types = Array.isArray(item.binding_types)
         ? item.binding_types
         : [];
+      
+      // ── NEW: sanitize binding_targets against current inside_papers ──
+      item.binding_targets = sanitizeBindingTargets(item);
       item.inside_pages = item.inside_pages ? Number(item.inside_pages) : null;
       item.cover_pages = item.cover_pages ? Number(item.cover_pages) : null;
 

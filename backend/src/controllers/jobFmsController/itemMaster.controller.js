@@ -1,5 +1,6 @@
 import { Op, where } from "sequelize";
 import models from "../../models/index.js";
+import { getCache, setCache, TTL, CACHE_KEYS } from "../../utils/cache.js";
 const { ItemMaster, PaperMaster, BindingMaster, SizeMaster, WideFormatMaterial, PrintingRateMaster } = models;
 
 export const getItemsByCategory = async (req, res) => {
@@ -10,11 +11,20 @@ export const getItemsByCategory = async (req, res) => {
       return res.status(400).json({ message: "Category is required" });
     }
 
+    const cacheKey = CACHE_KEYS.itemsByCategory(category);
+    const cached = await getCache(cacheKey);
+
+    if (cached) {
+      return res.json(cached);
+    }
+
     const items = await ItemMaster.findAll({
       where: { category },
       attributes: ["id", "item_name"],
       order: [["item_name", "ASC"]],
     });
+
+    await setCache(cacheKey, items, TTL.MASTER_DATA);
 
     return res.json(items);
   } catch (err) {
@@ -28,6 +38,14 @@ export const getItemsByCategory = async (req, res) => {
 
 export const getAllPaperTypes = async (req, res) => {
   try {
+    const cacheKey = CACHE_KEYS.paperTypes;
+    const cached = await getCache(cacheKey);
+
+    if(cached){
+      console.log("Returning cached paper types");
+      return res.json(cached);
+    }
+
     const papers = await PaperMaster.findAll({
       where: {},
       attributes: [
@@ -38,6 +56,9 @@ export const getAllPaperTypes = async (req, res) => {
         "paper_name",
       ],
     });
+
+    await setCache(cacheKey, papers, TTL.MASTER_DATA);
+
     return res.json(papers);
   } catch (err) {
     console.error("Error fetching paper types:", err);
@@ -52,6 +73,15 @@ export const getGsmByPaperType = async (req, res) => {
   console.log("getPaperTypeGsm called: ");
   try {
     const { paperName } = req.query;
+
+    const cacheKey = CACHE_KEYS.paperGsm(paperName);
+    const cached = await getCache(cacheKey);
+
+    if(cached){
+      console.log("Returning cached gsm for paper type:", paperName);
+      return res.json(cached);
+    }
+
     const gsm = await PaperMaster.findAll({
       where: { paper_name: paperName },
       attributes: [
@@ -67,6 +97,8 @@ export const getGsmByPaperType = async (req, res) => {
       raw: true,
     });
 
+    await setCache(cacheKey, gsm, TTL.MASTER_DATA);
+
     return res.json(gsm);
   } catch (err) {
     console.error("Error fetching gsm by paper type:", err);
@@ -77,11 +109,18 @@ export const getGsmByPaperType = async (req, res) => {
   }
 };
 
-
 // controller
 export const getWideMaterialTypes = async (req, res) => {
   console.log("getWideMaterialTypes called: ");
   try{
+    const cacheKey = CACHE_KEYS.wideTypes;
+    const cached = await getCache(cacheKey);
+
+    if(cached){
+      console.log("Returning cached wide material types.");
+      return res.json(cached);
+    }
+
     const materials = await WideFormatMaterial.findAll({
       attributes: [
         WideFormatMaterial.sequelize.fn(
@@ -93,6 +132,8 @@ export const getWideMaterialTypes = async (req, res) => {
       group: ["material_name"],
       order: [["material_name", "ASC"]],
     });
+
+    await setCache(cacheKey, materials, TTL.MASTER_DATA);
 
     return res.json(materials);
 
@@ -110,6 +151,14 @@ export const getGsmByWideMaterialTypes = async (req, res) => {
   console.log("getGsmByWideMaterialTypes called: ");
   try{
     const { materialName } = req.query;
+
+    const cacheKey = CACHE_KEYS.wideGsm(materialName);
+    const cached = await getCache(cacheKey);
+    
+    if(cached){
+      console.log("Returning cached gsm for wide material type:", materialName);
+      return res.json(cached);
+    }
 
     const gsm = await WideFormatMaterial.findAll({
       where: { 
@@ -130,6 +179,9 @@ export const getGsmByWideMaterialTypes = async (req, res) => {
       group: ["gsm", "thickness_mm"],
       raw: true,
     });
+
+    await setCache(cacheKey, gsm, TTL.MASTER_DATA);
+
     return res.json(gsm);
   }
   catch (err) {
@@ -142,12 +194,19 @@ export const getGsmByWideMaterialTypes = async (req, res) => {
 };
 
 
-
-
 export const getBindingsByCategory = async (req, res) => {
   console.log("getBindingsByCategory called: ");
   try {
     const { category } = req.query;
+
+    const cacheKey = CACHE_KEYS.bindingsByCategory(category);
+    const cached = await getCache(cacheKey);
+
+    if(cached){
+      console.log("Returning cached bindings for category:", category);
+      return res.json(cached);
+    }
+
     const bindings = await BindingMaster.findAll({
       where: {
         category,
@@ -160,6 +219,8 @@ export const getBindingsByCategory = async (req, res) => {
         "binding_name",
       ],
     });
+
+    await setCache(cacheKey, bindings, TTL.MASTER_DATA);
     return res.json(bindings);
   } catch (err) {
     console.error("Error fetching bindings by category:", err);
@@ -174,20 +235,27 @@ export const getBindingsByCategory = async (req, res) => {
 // GET /api/fms/sizes?search=a
 export const getSizes = async (req, res) => {
   try {
-    const search = req.query.search || "";
+    // Cache the FULL list once — filter in JS.
+    // This way every search term is served from the same cache key
+    // instead of creating a new DB query per unique search string.
+    const cacheKey = CACHE_KEYS.sizesAll;
+    let allSizes = await getCache(cacheKey);
 
-    const sizes = await SizeMaster.findAll({
-      where: {
-        name: SizeMaster.sequelize.where(
-          SizeMaster.sequelize.fn("LOWER", SizeMaster.sequelize.col("name")),
-          "LIKE",
-          `%${search.toLowerCase()}%`
-        )
-      },
-      order: [["name", "ASC"]],
-    });
+    if(!allSizes){
+      allSizes = await SizeMaster.findAll({
+        order: [["name", "ASC"]],
+      });
 
-    res.json(sizes);
+      await setCache(cacheKey, allSizes, TTL.MASTER_DATA);
+    }
+
+    const search = (req.query.search || "").toLowerCase();
+
+    const result = search
+      ? allSizes.filter((s) => s.name.toLowerCase().includes(search))
+      : allSizes;
+
+    res.json(result);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load sizes" });
@@ -1931,9 +1999,6 @@ const calculatePrintingCost = async (pressType, colorScheme, sides, sheetCount, 
 
   return 0;
 };
-
-
-
 
 
 

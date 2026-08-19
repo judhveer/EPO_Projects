@@ -21,6 +21,7 @@
 import { Op } from "sequelize";
 import db from "../../models/index.js";
 import { getWideFormatDeletionBlockers } from "../utils/wideFormatDeletionGuard.js";
+import { delCachePattern, CACHE_PATTERNS } from "../../utils/cache.js";
 
 const { WideFormatMaterial } = db;
 
@@ -322,6 +323,9 @@ export const createWideFormat = async (req, res) => {
         const material = await WideFormatMaterial.create(createPayload, { transaction: t} );
         await t.commit();
 
+        // Wide format material changed — invalidate all wide format caches.
+        await delCachePattern(CACHE_PATTERNS.allWide);
+
         return res.json({
             message: "Material Added Successfully.",
             data: { 
@@ -397,6 +401,9 @@ export const updateWideFormat = async (req, res) => {
         await material.update(updateData, { transaction: t });
         await t.commit();
 
+        // Wide format material changed — invalidate all wide format caches.
+        await delCachePattern(CACHE_PATTERNS.allWide);
+
         return res.json({
             message: "Material Updated",
             data: { 
@@ -435,6 +442,9 @@ export const deleteWideFormat = async (req, res) => {
 
         await material.destroy({ transaction: t });
         await t.commit();
+
+        // Wide format material changed — invalidate all wide format caches.
+        await delCachePattern(CACHE_PATTERNS.allWide);
 
         return res.json({
             message: "Material deleted.", 

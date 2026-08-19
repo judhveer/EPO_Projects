@@ -799,6 +799,7 @@ export default function JobCardForm({
           paper_type: "",
           paper_gsm: "",
           binding_types: [],
+          binding_targets: { numbering_paper_ids: [], perforation_paper_ids: [] },
           available_gsm: [],
           available_gsm_cover: [],
           available_wide_materials: [],
@@ -1673,6 +1674,13 @@ export default function JobCardForm({
         item.inside_papers = item.inside_papers.filter(
           (p) => p._id !== paperId,
         );
+        // ── NEW: strip the removed paper's _id from binding targets too ──
+        item.binding_targets = {
+          numbering_paper_ids: (item.binding_targets?.numbering_paper_ids || [])
+            .filter((id) => id !== paperId),
+          perforation_paper_ids: (item.binding_targets?.perforation_paper_ids || [])
+            .filter((id) => id !== paperId),
+        };
         items[index] = item;
         return { ...prev, job_items: items };
       });

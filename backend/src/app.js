@@ -93,6 +93,9 @@ import { pauseOnLogout } from "./controllers/jobFmsController/designer.controlle
 import { pauseWorkerOnLogout } from "./controllers/jobFmsController/stageWorker.controller.js"; 
 import { closeBrowser } from "./controllers/jobFmsController/quotation.controller.js";
 
+// import redis configuration
+import { connectRedis } from "./config/redis.js";
+
 
 dotenv.config();
 
@@ -203,7 +206,7 @@ app.use("/api/users",
   userRoutes);
 
 app.use("/api/fms/items", 
-  // authenticate,
+  authenticate,
   itemMasterRoutes
 );
 
@@ -279,6 +282,9 @@ export async function init() {
   try {
     // assertEnv();
     await models.sequelize.authenticate();
+
+    // Connect Redis — non-fatal if unavailable, app runs without cache
+    await connectRedis();
 
     await models.sequelize.sync({ alter: false }); // dev only
     console.log("DB sync successful");

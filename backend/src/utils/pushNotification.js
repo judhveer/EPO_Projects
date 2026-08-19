@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import db from '../models/index.js';
+import { getCache, setCache, deleteCache , TTL, CACHE_KEYS } from "./cache.js";
 
 // Configure web-push once with your VAPID keys.
 // This must happen before any sendNotification calls.
@@ -23,9 +24,26 @@ webpush.setVapidDetails(
  */
 
 export async function sendPushToUser(userId, payload) {
-    const subscriptions = await db.PushSubscription.findAll({
-        where: { user_id: userId },
-    });
+
+    // Cache push subscriptions — they are stable per browser/device
+    // and queried on every notification send.
+    const cacheKey = CACHE_KEYS.pushSubs(userId);
+    let subscriptions = await getCache(cacheKey);
+
+    if(!subscriptions){
+        const rows = await db.PushSubscription.findAll({
+            where: { user_id: userId },
+        });
+
+        subscriptions = rows.map((r) => ({
+            id: r.id,
+            endpoint: r.endpoint,
+            p256dh: r.p256dh,
+            auth: r.auth,
+        }));
+
+        await setCache(cacheKey, subscriptions, TTL.PUSH_SUBS);
+    }
 
     if(subscriptions.length === 0) {
         console.log(`No push subscriptions found for user ${userId}`);
@@ -56,7 +74,8 @@ export async function sendPushToUser(userId, payload) {
                 // Remove stale ones immediately to keep the table clean.
                 if(err.statusCode === 410 || err.statusCode === 404){
                     console.log(`[push] Removing stale subscription for user ${userId}`);
-                    await sub.destroy();
+                    await db.PushSubscription.destroy({ where: { endpoint: sub.endpoint } });
+                    await deleteCache(cacheKey); // force fresh fetch on next send
                 }
                 else{
                     console.error(`[push] Failed to send to user ${userId}:`, err.message);

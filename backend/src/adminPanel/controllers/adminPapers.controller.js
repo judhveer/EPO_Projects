@@ -13,6 +13,7 @@
 import { Op } from "sequelize";
 import db from "../../models/index.js";
 import { getPaperDeletionBlockers } from "../utils/paperDeletionGuard.js";
+import { delCachePattern, CACHE_PATTERNS } from "../../utils/cache.js";
 
 const { PaperMaster } = db;
 
@@ -192,6 +193,11 @@ export const createPaper = async (req, res) => {
         }, { transaction: t });
 
         await t.commit();
+
+        // Paper master changed — invalidate all paper-related caches.
+        // Next request to any paper endpoint will re-fetch from DB and re-cache.
+        await delCachePattern(CACHE_PATTERNS.allPaper);
+
         return res.status(201).json({
             message: "Paper Added Successfully.",
             data: paper,
@@ -266,6 +272,10 @@ export const updatePaper = async (req, res) => {
         await paper.update(updateData, { transaction: t });
         await t.commit();
 
+        // Paper master changed — invalidate all paper-related caches.
+        // Next request to any paper endpoint will re-fetch from DB and re-cache.
+        await delCachePattern(CACHE_PATTERNS.allPaper);
+
         return res.json({
             message: "Paper updated successfully.",
             data: paper,
@@ -308,6 +318,11 @@ export const deletePaper = async (req, res) => {
 
         await paper.destroy({ transaction: t });
         await t.commit();
+
+        // Paper master changed — invalidate all paper-related caches.
+        // Next request to any paper endpoint will re-fetch from DB and re-cache.
+        await delCachePattern(CACHE_PATTERNS.allPaper);
+        
         return res.json({
             message: "Paper deleted successfully.",
             id: Number(id),

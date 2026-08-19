@@ -1,4 +1,5 @@
 import db from "../models/index.js";
+import { deleteCache, CACHE_KEYS } from "../utils/cache.js";
 /**
  * GET /api/notifications/vapid-public-key
  *
@@ -60,6 +61,8 @@ export const saveSubscription = async (req, res) => {
                 p256dh: keys.p256dh,
                 auth: keys.auth,
             });
+            // Invalidate subscription cache — new device registered
+            await deleteCache(CACHE_KEYS.pushSubs(req.user.id));
         }
 
         return res.json({
@@ -100,6 +103,9 @@ export const removeSubscription = async (req, res) => {
                 endpoint,
             }
         });
+
+        // Invalidate subscription cache — device unregistered
+        await deleteCache(CACHE_KEYS.pushSubs(req.user.id));
 
         return res.json({
             message: "Subscription removed successfully.",
