@@ -3,10 +3,15 @@ import { body } from 'express-validator';
 import authenticate from '../middlewares/authenticate.js';
 import { requireBossOrAdmin } from '../middlewares/authorize.js';
 import { login, createUser, me, getTelecallers, getExecutives } from '../controllers/authController.js';
+import { loginByIpLimiter } from "../middlewares/rateLimiter.js";
 
 const router = Router();
 
-router.post('/login', login);
+// IP limiter = broad safety net only.
+// Identifier-based limiting is handled inside the login controller
+// so it can distinguish success from failure and reset on success.
+router.post('/login', loginByIpLimiter, login);
+
 router.get('/me', authenticate, me);
 
 
