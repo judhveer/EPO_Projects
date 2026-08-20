@@ -6,6 +6,13 @@ import { sendMailForCreateUser } from "../email/sendMail.js";
 import { userCreatedEmail } from "../email/templates/emailTemplates.js";
 import path from "path";
 import { deleteCache, delCachePattern, CACHE_KEYS, CACHE_PATTERNS } from "../utils/cache.js";
+import {
+  getLoginAttemptInfo,
+  incrementLoginFailure,
+  resetLoginAttempts,
+  formatRetryAfter,
+  LOGIN_LIMIT,
+} from "../middlewares/rateLimiter.js";
 
 const { User } = models;
 
@@ -42,6 +49,20 @@ export async function login(req, res) {
       });
     }
 
+    // ── Step 1: Check if this account is already locked ───────────────────
+    // Do this BEFORE hitting the database so a locked account never causes unnecessary DB queries from an attacker running automated scripts.
+    const { count, ttl } = await getLoginAttemptInfo(identifier);
+    if(count >= LOGIN_LIMIT){
+      return res.status(429).json({
+        message: `Too many failed login attempts. Please try again later.`,
+        retryAfter: ttl,
+        attemptsRemaining: 0,
+        status: false,
+        data: null,
+      });
+    }
+
+    // ── Step 2: Find the user ─────────────────────────────────────────────
     const where = identifier.includes("@")
       ? { email: identifier }
       : { username: identifier };
@@ -49,6 +70,8 @@ export async function login(req, res) {
     const user = await User.scope("withSecret").findOne({ where });
 
     if (!user || !user.isActive) {
+      // Do NOT increment the counter for non-existent users —
+      // it would let attackers enumerate valid usernames by watching which identifiers get locked and which do not.
       return res.status(400).json({
         message: "Invalid credentials or User is InActive",
         status: false,
@@ -56,15 +79,37 @@ export async function login(req, res) {
       });
     }
 
+    // ── Step 3: Check the password ────────────────────────────────────────
     const ok = await user.checkPassword(password);
     console.log(ok);
     if (!ok) {
+      // Wrong password — increment failure counter for this account
+      const { remaining, locked, ttl: newTtl } = await incrementLoginFailure(identifier);
+
+      if (locked) {
+        // This attempt pushed them over the limit — account now locked
+        return res.status(429).json({
+          message: `Too many failed login attempts. Please try again later.`,
+          retryAfter: newTtl,
+          attemptsRemaining: 0,
+          status: false,
+          data: null,
+        });
+      }
+
+      // Still have attempts left — tell them how many
       return res.status(400).json({
         message: "Invalid credentials",
+        attemptsRemaining: remaining,
         status: false,
         data: null,
       });
     }
+
+    // ── Step 4: Successful login — reset failure counter ─────────────────
+    // Critical: always reset on success so a legitimate user who eventually
+    // gets their password right is never left with a stale failure counter.
+    await resetLoginAttempts(identifier);
 
     user.lastLoginAt = new Date();
     await user.save();

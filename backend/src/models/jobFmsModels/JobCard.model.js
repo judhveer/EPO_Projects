@@ -280,26 +280,32 @@ export default (sequelize) => {
       tableName: "jobfms_job_cards",
       underscored: true,
       indexes: [
-        // 🔍 SEARCH
-        { fields: ["job_no"] },
+        // 🔍 SEARCH Fields
         { fields: ["client_name"] },
         { fields: ["order_handled_by"] },
         { fields: ["contact_number"] },
         { fields: ["email_id"] },
 
-        // 🎛 FILTERS
+        // 🎛 FILTERS Fields
         { fields: ["order_type"] },
         { fields: ["execution_location"] },
         { fields: ["payment_status"] },
-        { fields: ["status"] },
         { fields: ["is_direct_to_production"] },
-
-        { fields: ["production_stage"] },
         { fields: ["bill_created"] },
         { fields: ["bill_type"] },
 
-        // 📄 SORTING / PAGINATION
-        { fields: ["created_at"] },
+        // ── Date range filter ──────────────────────────────────────────────
+        { fields: ["delivery_date"] },
+
+        // ── Main composite index ───────────────────────────────────────────
+        // Covers: WHERE status = ? AND production_stage = ? ORDER BY created_at DESC
+        // Leftmost prefix also covers: WHERE status = ? alone
+        // and: WHERE status = ? AND production_stage = ? alone
+        // Replaces the three separate indexes that caused index_merge + filesort.
+        {
+          name: "idx_status_stage_created",
+          fields: ["status", "production_stage", "created_at"],
+        },
       ],
     }
   );
