@@ -103,6 +103,7 @@ dotenv.config();
 
 
 const app = express();
+app.set('trust proxy', 1);      // ←  trust Nginx's X-Forwarded-For header
 app.use(helmet());
 
 
