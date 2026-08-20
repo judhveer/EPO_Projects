@@ -1,6 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+
+// Formats raw seconds into MM:SS countdown string
+// Used in the locked-out timer displayed on the button
+function formatCountdown(secs) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
 
 export default function Login() {
     const [identifier, setIdentifier] = useState('');
@@ -9,23 +17,86 @@ export default function Login() {
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
+    // null  = no warning shown yet
+    // >= 1  = show "X attempts remaining" warning  
+    // 0     = show "account locked" inside warning
+    const [attemptsRemaining, setAttemptsRemaining] = useState(null);
+
+    // Countdown timer in seconds — when > 0 the form is locked
+    const [secondsLeft, setSecondsLeft] = useState(0);
+
     const { login } = useAuth();
     const nav = useNavigate();
 
+    // Live countdown — ticks every second when secondsLeft > 0.
+    // Automatically unlocks the form when it reaches zero.
+    useEffect(() => {
+        if(secondsLeft <= 0){
+            return;
+        }
+        
+        const timer = setInterval(() => {
+            setSecondsLeft((prev) => {
+                if(prev <= 1){
+                    clearInterval(timer);
+                    // Unlock — clear the rate limit UI so they can try again
+                    setErr('');
+                    setAttemptsRemaining(null);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [secondsLeft]);
+
+    // When the user types a different identifier, clear the attempts warning
+    // because the counter is per-account — a new identifier has its own limit.
+    const handleIdentifierChange = (e) => {
+        setIdentifier(e.target.value);
+        if (attemptsRemaining !== null && secondsLeft === 0) {
+            setAttemptsRemaining(null);
+            setErr('');
+        }
+    }
+
     async function onSubmit(e) {
         e.preventDefault();
+
+        // Prevent submission while countdown is running
+        if (secondsLeft > 0) return;
+
         setErr('');
         setLoading(true);
         try {
             await login(identifier, password);
             nav('/home', { replace: true });
         } catch (e) {
-            setErr(e?.response?.data?.message || 'Login failed');
+            const data    = e?.response?.data;
+            const status  = e?.response?.status;
+            const message = data?.message || 'Login failed';
+
+            if (status === 429) {
+                // Account locked — start the countdown
+                const retryAfter = data?.retryAfter || 900;
+                setErr(message);
+                setAttemptsRemaining(0);
+                setSecondsLeft(retryAfter);
+            } else {
+                // Wrong password — show attempts remaining if provided
+                setErr(message);
+                if (typeof data?.attemptsRemaining === 'number') {
+                    setAttemptsRemaining(data.attemptsRemaining);
+                }
+            }
         }
         finally {
             setLoading(false);
         }
     }
+
+    const isLocked = secondsLeft > 0;
 
 
     return (
@@ -48,7 +119,37 @@ export default function Login() {
                     </div>
 
 
-                    {err && <div className="mb-2 text-center text-lg text-red-600">{err}</div>}
+                    {/* {err && <div className="mb-2 text-center text-lg text-red-600">{err}</div>} */}
+                    {/* Error message */}
+                    {err && (
+                        <div className="text-center text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                        {err}
+                        </div>
+                    )}
+
+                    {/* Attempts remaining warning — only shown after at least one failure */}
+                    {attemptsRemaining !== null && !isLocked && (
+                        <div className={`text-center text-sm rounded-md px-3 py-2 border ${
+                        attemptsRemaining <= 1
+                            ? 'bg-red-50 border-red-300 text-red-700'
+                            : 'bg-amber-50 border-amber-300 text-amber-700'
+                        }`}>
+                        {attemptsRemaining === 0
+                            ? 'No attempts remaining.'
+                            : attemptsRemaining === 1
+                            ? '⚠️ Last attempt — your account will be locked after this.'
+                            : `⚠️ ${attemptsRemaining} attempt${attemptsRemaining !== 1 ? 's' : ''} remaining before your account is temporarily locked.`
+                        }
+                        </div>
+                    )}
+
+                    {/* Locked countdown banner */}
+                    {isLocked && (
+                        <div className="text-center text-sm rounded-md px-3 py-2 bg-red-50 border border-red-300 text-red-700">
+                        🔒 Account temporarily locked. Try again in{' '}
+                        <span className="font-black tabular-nums">{formatCountdown(secondsLeft)}</span>
+                        </div>
+                    )}
 
                     {/* Form */}
                     <form onSubmit={onSubmit} className="mt-6 space-y-4">
@@ -57,9 +158,16 @@ export default function Login() {
                             <label htmlFor="email" className='block text-sm font-medium text-gray-700' required>
                                 Email address or Username
                             </label>
-                            <input id='email' value={identifier} onChange={e => setIdentifier(e.target.value)}
-                                placeholder='Enter your email address or username' className='mt-1 w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-[#4F1C51]'
-                                autoComplete='username' required />
+                            <input 
+                                id='email' 
+                                value={identifier} 
+                                onChange={handleIdentifierChange}
+                                placeholder='Enter your email address or username' 
+                                className='mt-1 w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-[#4F1C51] disabled:bg-gray-50 disabled:text-gray-400'
+                                autoComplete='username' 
+                                disabled={isLocked}
+                                required 
+                            />
                         </div>
 
                         <div>
@@ -76,8 +184,9 @@ export default function Login() {
                                     value={password}
                                     onChange={e => setPassword(e.target.value)}
                                     placeholder="••••••••"
-                                    className="w-full border border-gray-300 rounded-md p-2 pr-10 focus:outline-none focus:ring-2 focus:ring-[#4F1C51]"
+                                    className="w-full border border-gray-300 rounded-md p-2 pr-10 focus:outline-none focus:ring-2 focus:ring-[#4F1C51] disabled:bg-gray-50 disabled:text-gray-400"
                                     autoComplete="current-password"
+                                    disabled={isLocked}
                                     required
                                 />
 
@@ -88,6 +197,7 @@ export default function Login() {
                                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                                     title={showPassword ? 'Hide password' : 'Show password'}
                                     className="absolute inset-y-0 right-0 flex items-center px-3"
+                                    disabled={isLocked}
                                 >
                                     {showPassword ? (
                                         // Eye-off icon
@@ -109,16 +219,18 @@ export default function Login() {
 
                         <button
                             type='submit'
-                            disabled={loading}
-                            className='w-full font-medium border border-gray-300 py-2 rounded-md text-white  bg-[#0B4A8A] hover:opacity-90 disabled:opacity-60'>
-                            {loading ? 'Logging in…' : 'Log in'}
+                            disabled={loading || isLocked}
+                            className='w-full font-medium border border-gray-300 py-2 rounded-md text-white  bg-[#0B4A8A] hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed'
+                        >
+                            {isLocked
+                                ? `Locked — ${formatCountdown(secondsLeft)}`
+                                : loading
+                                ? 'Logging in…'
+                                : 'Log in'
+                            }
                         </button>
-
                     </form>
-
-
                 </div>
-
             </div>
 
             <div className="hidden w-1/2 md:block">
