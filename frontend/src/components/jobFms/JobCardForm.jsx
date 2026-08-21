@@ -1496,6 +1496,15 @@ export default function JobCardForm({
             available_wide_gsm: [],
           };
         }
+
+        // Reset enquiry immediately when category changes
+        if (field === "category") {
+          updatedItem = {
+            ...updatedItem,
+            enquiry_for: "",
+          };
+        }
+
         // ── NEW: When cover is marked "not printed", clear related fields ──────
         if (field === "cover_to_print" && !value) {
           updatedItem = {
@@ -1531,11 +1540,13 @@ export default function JobCardForm({
 
       // 2. Trigger dropdown loading (pass id, not index)
       if (field === "category") {
-        loadCategoryItems(id, value);
+        loadCategoryItems(id, value).then(() => {
+          if (value === "Wide Format") {
+            loadWideMaterials(id);
+          }
+        });
+
         loadCategoryBindings(id, value);
-        if (value === "Wide Format") {
-          loadWideMaterials(id);
-        }
       }
 
       if (field === "wide_material_name") {
