@@ -441,7 +441,7 @@ const JobItem = React.memo(function JobItem({
 
         {/* ================= WIDE FORMAT ================= */}
 
-        {category === "Wide Format" && (
+        {category === "Wide Format" && item.enquiry_for && (
           <>
             {/* MATERIAL NAME */}
             <Field label="Material Name" required>
