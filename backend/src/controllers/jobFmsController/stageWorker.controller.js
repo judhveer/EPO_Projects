@@ -482,7 +482,7 @@ export const pauseWorkerOnLogout = async (req, res) => {
 
   }
   catch(error){
-    console.error("[pause-worker-on-logout] Unexpected error:", err.message);
+    console.error("[pause-worker-on-logout] Unexpected error:", error.message);
     return res.status(200).json({ message: "Handled." });
   }
 }
