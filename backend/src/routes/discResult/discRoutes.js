@@ -46,19 +46,85 @@ router.post("/submit", async (req, res) => {
       });
     }
 
-    // ✅ Calculate DISC scores
-    const scores = { D: 0, I: 0, S: 0, C: 0 };
+    // ✅ Calculate DISC scores securely on the server
+    // Do NOT trust ans.type from the frontend.
+    // The server determines the DISC type from the official question/options.
+
+    const scores = {
+      D: 0,
+      I: 0,
+      S: 0,
+      C: 0,
+    };
+
+    const answeredQuestionIds = new Set();
+
     for (const ans of answers) {
-      if (scores.hasOwnProperty(ans.type)) {
-        scores[ans.type]++;
+      const questionId = Number(ans.id);
+      const optionIndex = Number(ans.optionIndex);
+
+      // Find the official question
+      const question = DISC_QUESTIONS.find((q) => q.id === questionId);
+
+      if (!question) {
+        return res.status(400).json({
+          error: `Invalid question ID: ${ans.id}`,
+        });
       }
+
+      // Prevent duplicate answers for the same question
+      if (answeredQuestionIds.has(questionId)) {
+        return res.status(400).json({
+          error: `Question ${questionId} was answered more than once.`,
+        });
+      }
+
+      answeredQuestionIds.add(questionId);
+
+      // Validate option index
+      if (
+        !Number.isInteger(optionIndex) ||
+        optionIndex < 0 ||
+        optionIndex >= question.options.length
+      ) {
+        return res.status(400).json({
+          error: `Invalid option for question ${questionId}.`,
+        });
+      }
+
+      // Get the official option from the server's question data
+      const selectedOption = question.options[optionIndex];
+
+      // Get DISC type from the trusted server-side question data
+      const trait = selectedOption.type;
+
+      if (!["D", "I", "S", "C"].includes(trait)) {
+        return res.status(400).json({
+          error: `Invalid DISC trait for question ${questionId}.`,
+        });
+      }
+
+      scores[trait]++;
     }
 
-    const total = scores.D + scores.I + scores.S + scores.C;
-    if (total === 0) {
-      return res
-        .status(400)
-        .json({ error: "No valid answers received. Please try again." });
+    // Make sure every question was answered exactly once
+    if (answeredQuestionIds.size !== DISC_QUESTIONS.length) {
+      return res.status(400).json({
+        error: "Please answer every question exactly once.",
+      });
+    }
+
+    // Total valid answers
+    const total =
+      scores.D +
+      scores.I +
+      scores.S +
+      scores.C;
+
+    if (total !== DISC_QUESTIONS.length) {
+      return res.status(400).json({
+        error: "Invalid DISC answers received. Please try again.",
+      });
     }
 
     const percentages = {
@@ -68,27 +134,86 @@ router.post("/submit", async (req, res) => {
       C: Number(((scores.C / total) * 100).toFixed(1)),
     };
 
-    // ✅ Generate a brief summary text
-    const summary = `Dominance: ${percentages.D}% | Influence: ${percentages.I}% | Steadiness: ${percentages.S}% | Conscientiousness: ${percentages.C}%`;
 
-    // ✅ Identify the highest trait
-    const highestTrait = Object.entries(percentages).reduce((a, b) =>
-      parseFloat(a[1]) > parseFloat(b[1]) ? a : b
-    )[0];
+    // ✅ Rank DISC traits from highest to lowest
+    const rankedTraits = Object.entries(percentages).sort(
+      (a, b) => b[1] - a[1]
+    );
+
+    const primaryTrait = rankedTraits[0][0];
+    const primaryScore = rankedTraits[0][1];
+
+    const secondaryTrait = rankedTraits[1][0];
+    const secondaryScore = rankedTraits[1][1];
+
+    // Difference between primary and secondary
+    const scoreDifference = Number(
+      (primaryScore - secondaryScore).toFixed(1)
+    );
+    // Determine profile type
+    let profileType;
+
+    if (scoreDifference <= 5) {
+      profileType = `${primaryTrait}/${secondaryTrait}`;
+    } else {
+      profileType = primaryTrait;
+    }
+
+    // ✅ Determine profile strength
+    let profileStrength;
+
+    if (scoreDifference >= 15) {
+      profileStrength = "Very Strong";
+    } else if (scoreDifference >= 10) {
+      profileStrength = "Strong";
+    } else if (scoreDifference >= 5) {
+      profileStrength = "Moderate";
+    } else {
+      profileStrength = "Balanced";
+    }
+
+    // ✅ Generate a brief summary text
+    const summary = `
+      Primary Style: ${primaryTrait}
+      Secondary Style: ${secondaryTrait}
+      Profile: ${profileType}
+      Profile Strength: ${profileStrength}
+      Primary-Secondary Gap: ${scoreDifference} percentage points
+
+      Dominance: ${percentages.D}%
+      Influence: ${percentages.I}%
+      Steadiness: ${percentages.S}%
+      Conscientiousness: ${percentages.C}%
+    `.trim();
 
     // ✅ Generate the PDF report
     // const pdfPath = await generateDiscPDF({ name, percentages, summary });
 
     // ✅ Send the email report to HR
-    await sendReportMail(name, percentages, highestTrait);
+    await sendReportMail( name, percentages, primaryTrait, secondaryTrait, profileType, profileStrength, scoreDifference );
 
     // ✅ Save result in database
-    await db.Disc.create({ name, mobile, dob, ...percentages, summary });
+    await db.Disc.create({
+      name,
+      mobile,
+      dob,
+      ...percentages,
+      primaryTrait,
+      secondaryTrait,
+      profileType,
+      profileStrength,
+      summary,
+    });
 
     // ✅ Send response to frontend
     return res.status(200).json({
       message: "Report generated and emailed successfully!",
       percentages,
+      primaryTrait,
+      secondaryTrait,
+      profileType,
+      profileStrength,
+      scoreDifference,
     });
   } catch (error) {
     console.error("DISC Test Submission Error:", error);
