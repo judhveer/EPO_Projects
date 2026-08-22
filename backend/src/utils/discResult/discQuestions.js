@@ -2,310 +2,333 @@ export const DISC_QUESTIONS = [
   {
     id: 1,
     question:
-      "When providing feedback to others, how do you prefer to deliver it?",
+      "When providing feedback to a colleague, which approach is most natural for you?",
     options: [
-      { text: "Directly and honestly", type: "D" },
-      { text: "Constructively, with suggestions for improvement", type: "C" },
-      { text: "Positively, highlighting strengths first", type: "I" },
-      { text: "Carefully, to avoid offending", type: "S" },
+      { text: "I get straight to the main issue and say what needs to change.", type: "D" },
+      { text: "I explain the facts carefully and suggest specific improvements.", type: "C" },
+      { text: "I focus first on encouragement and what the person is doing well.", type: "I" },
+      { text: "I choose my words carefully so the person feels respected and supported.", type: "S" },
     ],
   },
+
   {
     id: 2,
     question:
-      "When working on a project, how do you prefer to communicate progress updates?",
+      "When giving progress updates on a project, what is most natural for you?",
     options: [
-      { text: "Regular, detailed reports", type: "C" },
-      { text: "As needed, when significant progress is made", type: "D" },
-      { text: "During scheduled team meetings", type: "S" },
-      { text: "Informally, as I encounter team members", type: "I" },
+      { text: "I provide a clear, detailed update with the relevant facts and status.", type: "C" },
+      { text: "I report mainly when an important result, decision, or problem needs attention.", type: "D" },
+      { text: "I prefer discussing progress during regular team check-ins.", type: "S" },
+      { text: "I naturally keep people informed through informal conversations.", type: "I" },
     ],
   },
+
   {
     id: 3,
-    question: "What motivates you to take on new challenges or projects?",
+    question: "What most strongly motivates you to take on a new challenge?",
     options: [
-      { text: "The opportunity to learn and grow", type: "C" },
-      { text: "The potential for recognition or reward", type: "I" },
-      { text: "The chance to collaborate with others", type: "S" },
-      { text: "The satisfaction of achieving goals", type: "D" },
+      { text: "The opportunity to develop my knowledge and expertise.", type: "C" },
+      { text: "The opportunity to be recognized and positively noticed by others.", type: "I" },
+      { text: "The opportunity to work closely with and support other people.", type: "S" },
+      { text: "The opportunity to achieve a difficult goal and produce a strong result.", type: "D" },
     ],
   },
+
   {
     id: 4,
-    question: "How do you handle conflicts or disagreements in a team setting?",
+    question: "When disagreement occurs within a team, what do you naturally do?",
     options: [
-      { text: "Address them directly and seek resolution", type: "D" },
-      { text: "Listen to all sides before responding", type: "C" },
-      { text: "Mediate and find common ground", type: "S" },
-      { text: "Use persuasion to find a mutually agreeable solution", type: "I" },
+      { text: "Address the disagreement directly and push toward a decision.", type: "D" },
+      { text: "Examine the facts and listen carefully before reaching a conclusion.", type: "C" },
+      { text: "Help the people involved find common ground and maintain cooperation.", type: "S" },
+      { text: "Use communication and persuasion to bring people toward an agreement.", type: "I" },
     ],
   },
+
   {
     id: 5,
-    question:
-      "When faced with uncertainty or change, how do you typically respond?",
+    question: "When faced with an unexpected change at work, what is your natural reaction?",
     options: [
-      { text: "Embrace it as an opportunity", type: "D" },
-      { text: "Analyze the implications carefully", type: "C" },
-      { text: "Seek guidance from others", type: "S" },
-      { text: "Stay optimistic and adapt with enthusiasm", type: "I" },
+      { text: "I see it as a challenge and quickly look for a way forward.", type: "D" },
+      { text: "I want to understand the impact and implications before changing course.", type: "C" },
+      { text: "I prefer to understand how the change will affect people and seek stability.", type: "S" },
+      { text: "I adapt with energy and encourage others to remain positive.", type: "I" },
     ],
   },
+
   {
     id: 6,
-    question: "How did you handle key responsibilities in your previous role?",
+    question: "When you were responsible for an important task in a previous role, what was most natural for you?",
     options: [
-      { text: "Took full ownership and led initiatives", type: "D" },
-      {
-        text: "Ensured thorough completion with attention to detail",
-        type: "C",
-      },
-      { text: "Collaborated with team members for optimal results", type: "I" },
-      { text: "Adapted to changing priorities and requirements", type: "S" },
+      { text: "Taking ownership and driving the work toward completion.", type: "D" },
+      { text: "Making sure the work was complete, accurate, and properly checked.", type: "C" },
+      { text: "Working closely with colleagues so everyone could contribute effectively.", type: "S" },
+      { text: "Keeping people engaged and adapting my approach as circumstances changed.", type: "I" },
     ],
   },
+
   {
     id: 7,
-    question: "What was your primary role in your previous position?",
+    question: "Which description best matches the role you naturally tend to play at work?",
     options: [
-      { text: "Leadership/Management", type: "D" },
-      { text: "Technical/Specialized", type: "C" },
-      { text: "Support/Coordination", type: "S" },
-      { text: "Creative/Innovative", type: "I" },
+      { text: "Taking charge and moving people toward results.", type: "D" },
+      { text: "Using specialist knowledge and maintaining high standards.", type: "C" },
+      { text: "Supporting people and helping the team work smoothly.", type: "S" },
+      { text: "Energizing people, sharing ideas, and building enthusiasm.", type: "I" },
     ],
   },
+
   {
     id: 8,
-    question: "When faced with a challenge, how do you typically respond?",
+    question: "When you face a difficult work problem, what do you naturally do first?",
     options: [
-      { text: "Proactively seek solutions", type: "D" },
-      { text: "Analyze the situation thoroughly", type: "C" },
-      { text: "Collaborate with others for input", type: "I" },
-      { text: "Follow established protocols", type: "S" },
+      { text: "Take initiative and start working toward a solution immediately.", type: "D" },
+      { text: "Break the problem down and analyze the available information.", type: "C" },
+      { text: "Talk with the people involved and gather their perspectives.", type: "S" },
+      { text: "Generate different ideas and get others involved in finding a solution.", type: "I" },
     ],
   },
+
   {
     id: 9,
-    question: "How do you handle high-pressure situations or tight deadlines?",
+    question: "How do you naturally respond when you have a tight deadline?",
     options: [
-      { text: "Stay focused and prioritize tasks", type: "D" },
-      { text: "Work methodically to avoid errors", type: "C" },
-      { text: "Seek support from colleagues", type: "S" },
-      { text: "Thrive and perform at my best", type: "I" },
+      { text: "I focus on the most important outcomes and move quickly.", type: "D" },
+      { text: "I work methodically so that speed does not create avoidable errors.", type: "C" },
+      { text: "I stay calm and coordinate with others where support is needed.", type: "S" },
+      { text: "I become energized by the urgency and keep the atmosphere positive.", type: "I" },
     ],
   },
+
   {
     id: 10,
-    question: "When working in a team, what role do you usually take on?",
+    question: "When working as part of a team, which role feels most natural to you?",
     options: [
-      { text: "Leader/Coordinator", type: "D" },
-      { text: "Supporter/Team player", type: "S" },
-      { text: "Innovator/Idea generator", type: "I" },
-      { text: "Organizer/Planner", type: "C" },
+      { text: "Taking the lead, coordinating action, and keeping everyone focused on the goal.", type: "D" },
+      { text: "Supporting teammates and helping maintain cooperation and stability.", type: "S" },
+      { text: "Generating ideas, encouraging participation, and keeping the team energized.", type: "I" },
+      { text: "Organizing information, planning carefully, and making sure details are covered.", type: "C" },
     ],
   },
+
   {
     id: 11,
-    question: "In social situations, how do you typically behave?",
+    question: "In a social or group setting, what behavior feels most natural to you?",
     options: [
-      { text: "Outgoing and sociable", type: "I" },
-      { text: "Reserved but approachable", type: "S" },
-      { text: "Observant and thoughtful", type: "C" },
-      { text: "Energetic and enthusiastic", type: "D" },
+      { text: "I start conversations easily and enjoy meeting new people.", type: "I" },
+      { text: "I am friendly and approachable but usually prefer a smaller circle.", type: "S" },
+      { text: "I observe the situation carefully before becoming involved.", type: "C" },
+      { text: "I am comfortable taking the lead and speaking my mind.", type: "D" },
     ],
   },
+
   {
     id: 12,
-    question: "How do you approach decision-making?",
+    question: "When you need to make an important decision, what is most natural for you?",
     options: [
-      { text: "Make quick, decisive choices", type: "D" },
-      { text: "Gather all available information first", type: "C" },
-      { text: "Consult with team members or peers", type: "I" },
-      { text: "Follow standard procedures", type: "S" },
+      { text: "I make the decision quickly once I know the desired outcome.", type: "D" },
+      { text: "I gather and evaluate the relevant information before deciding.", type: "C" },
+      { text: "I discuss the decision with people I trust before committing.", type: "S" },
+      { text: "I talk through possibilities with others and build enthusiasm around the choice.", type: "I" },
     ],
   },
+
   {
     id: 13,
-    question: "How do you approach tasks that require attention to detail?",
+    question: "When a task requires a high level of accuracy, what do you naturally do?",
     options: [
-      { text: "Thoroughly check every aspect", type: "C" },
-      { text: "Focus on the most critical details", type: "S" },
-      { text: "Seek help if unsure about specifics", type: "I" },
-      { text: "Trust my intuition and experience", type: "D" },
+      { text: "I check the important details and make sure the final result is correct.", type: "C" },
+      { text: "I focus on the details that have the greatest impact on the outcome.", type: "D" },
+      { text: "I stay patient and work through the task carefully without rushing.", type: "S" },
+      { text: "I ask for input from others when I am unsure about an important detail.", type: "I" },
     ],
   },
+
   {
     id: 14,
-    question:
-      "When assigned a task with unclear instructions, what do you do first?",
+    question: "When you receive a task with unclear instructions, what do you usually do first?",
     options: [
-      { text: "Take initiative and decide the best approach", type: "D" },
-      { text: "Ask questions to fully understand the requirements", type: "C" },
-      { text: "Discuss with teammates to align expectations", type: "S" },
-      { text: "Start working and adjust along the way", type: "I" },
+      { text: "I make a practical decision and get started rather than waiting.", type: "D" },
+      { text: "I ask questions until I understand the requirements precisely.", type: "C" },
+      { text: "I discuss the task with the people involved so we have a shared understanding.", type: "S" },
+      { text: "I begin exploring possibilities and adjust my approach as I learn more.", type: "I" },
     ],
   },
+
   {
     id: 15,
-    question: "How do you usually react to strict rules or procedures at work?",
+    question: "How do you typically respond to rules and procedures at work?",
     options: [
-      { text: "Follow them carefully and precisely", type: "C" },
-      { text: "Follow them if they make sense", type: "D" },
-      { text: "Prefer flexibility within the rules", type: "I" },
-      { text: "Accept them as part of maintaining stability", type: "S" },
+      { text: "I follow them carefully, especially when they protect quality or reduce risk.", type: "C" },
+      { text: "I follow them when they help achieve the intended result, but I question unnecessary restrictions.", type: "D" },
+      { text: "I prefer reasonable flexibility while keeping the team aligned.", type: "I" },
+      { text: "I appreciate clear procedures because they create consistency and stability.", type: "S" },
     ],
   },
+
   {
     id: 16,
-    question: "When managing multiple tasks at the same time, how do you cope?",
+    question: "When you have several tasks to handle at once, what approach is most natural for you?",
     options: [
-      { text: "Prioritize and delegate where possible", type: "D" },
-      { text: "Create a structured plan and timeline", type: "C" },
-      { text: "Stay calm and handle tasks one by one", type: "S" },
-      { text: "Switch between tasks as energy allows", type: "I" },
+      { text: "I prioritize the most important outcomes and delegate when possible.", type: "D" },
+      { text: "I organize the work into a structured plan with clear priorities and timelines.", type: "C" },
+      { text: "I stay steady and work through tasks in a manageable order.", type: "S" },
+      { text: "I move between tasks easily and respond to whatever needs attention or energy.", type: "I" },
     ],
   },
+
   {
     id: 17,
-    question: "How do you usually respond to feedback or criticism?",
+    question: "When someone gives you criticism or corrective feedback, what is your natural response?",
     options: [
-      { text: "Use it to improve performance quickly", type: "D" },
-      { text: "Analyze it carefully before responding", type: "C" },
-      { text: "Appreciate it if delivered respectfully", type: "S" },
-      { text: "Take it positively and move on", type: "I" },
+      { text: "I focus on what I need to change and apply it quickly.", type: "D" },
+      { text: "I examine the feedback carefully to determine whether it is accurate.", type: "C" },
+      { text: "I appreciate feedback most when it is respectful and constructive.", type: "S" },
+      { text: "I take the feedback positively and use it to keep moving forward.", type: "I" },
     ],
   },
+
   {
     id: 18,
-    question: "What role do you prefer during problem-solving discussions?",
+    question: "During a problem-solving discussion, which contribution is most natural for you?",
     options: [
-      { text: "Driving decisions and actions", type: "D" },
-      { text: "Providing data and logical analysis", type: "C" },
-      { text: "Ensuring everyone is heard", type: "S" },
-      { text: "Generating creative ideas", type: "I" },
+      { text: "I push the group toward a decision and clear next actions.", type: "D" },
+      { text: "I provide facts, evidence, and logical analysis.", type: "C" },
+      { text: "I make sure different perspectives are heard and considered.", type: "S" },
+      { text: "I generate possibilities and encourage people to think creatively.", type: "I" },
     ],
   },
+
   {
     id: 19,
-    question: "How do you typically handle repetitive or routine work?",
+    question: "When you are given repetitive or routine work, what are you most likely to do?",
     options: [
-      { text: "Look for ways to improve or optimize it", type: "D" },
-      { text: "Perform it consistently and accurately", type: "C" },
-      { text: "Accept it as necessary for stability", type: "S" },
-      { text: "Find ways to make it more interesting", type: "I" },
+      { text: "I look for a faster or more effective way to get the job done.", type: "D" },
+      { text: "I complete it consistently and make sure it is accurate.", type: "C" },
+      { text: "I accept it as part of maintaining a dependable process.", type: "S" },
+      { text: "I look for ways to make the work more engaging or interesting.", type: "I" },
     ],
   },
+
   {
     id: 20,
-    question: "When working with a new team, what do you focus on first?",
+    question: "When joining a new team, what do you naturally focus on first?",
     options: [
-      { text: "Understanding goals and expectations", type: "D" },
-      { text: "Understanding roles and processes", type: "C" },
-      { text: "Building trust and relationships", type: "S" },
-      { text: "Creating a positive and energetic environment", type: "I" },
+      { text: "I want to understand the goals, priorities, and expected results.", type: "D" },
+      { text: "I want to understand the roles, processes, standards, and responsibilities.", type: "C" },
+      { text: "I want to build trust and understand how people prefer to work together.", type: "S" },
+      { text: "I want to create positive connections and bring energy to the team.", type: "I" },
     ],
   },
+
   {
     id: 21,
-    question: "How do you prefer to handle unexpected problems at work?",
+    question: "When an unexpected problem appears at work, what do you naturally do first?",
     options: [
-      { text: "Act immediately to resolve them", type: "D" },
-      { text: "Assess the situation before taking action", type: "C" },
-      { text: "Seek support and consensus", type: "S" },
-      { text: "Stay optimistic and adapt quickly", type: "I" },
+      { text: "I act quickly and take responsibility for getting it resolved.", type: "D" },
+      { text: "I assess the facts and possible consequences before acting.", type: "C" },
+      { text: "I involve the right people and work toward a solution together.", type: "S" },
+      { text: "I stay positive, adapt quickly, and look for new possibilities.", type: "I" },
     ],
   },
+
   {
     id: 22,
-    question:
-      "When instructions change suddenly during a task, how do you respond?",
+    question: "When instructions suddenly change while you are working, how do you usually respond?",
     options: [
-      { text: "Quickly adjust and move forward", type: "D" },
-      { text: "Pause to understand the impact before proceeding", type: "C" },
-      { text: "Seek clarification and reassurance", type: "S" },
-      { text: "Adapt flexibly and keep a positive attitude", type: "I" },
+      { text: "I adjust quickly and focus on what needs to happen next.", type: "D" },
+      { text: "I first determine exactly what has changed and how it affects the work.", type: "C" },
+      { text: "I clarify expectations and make sure everyone is comfortable with the new direction.", type: "S" },
+      { text: "I adapt easily and help keep the situation positive.", type: "I" },
     ],
   },
+
   {
     id: 23,
-    question: "How do you usually contribute in team discussions?",
+    question: "When participating in a team discussion, what contribution comes most naturally to you?",
     options: [
-      { text: "Push the discussion toward decisions", type: "D" },
-      { text: "Share facts, data, or logical points", type: "C" },
-      { text: "Support others and maintain harmony", type: "S" },
-      { text: "Share ideas and energize the group", type: "I" },
+      { text: "I help the group make decisions and move toward action.", type: "D" },
+      { text: "I contribute facts, evidence, and careful reasoning.", type: "C" },
+      { text: "I support others and help keep the discussion cooperative.", type: "S" },
+      { text: "I share ideas, build enthusiasm, and encourage participation.", type: "I" },
     ],
   },
+
   {
     id: 24,
-    question: "When learning a new skill or process, what helps you most?",
+    question: "When learning a new skill or process, what works best for you?",
     options: [
-      { text: "Trying it hands-on immediately", type: "D" },
-      { text: "Understanding the theory and steps first", type: "C" },
-      { text: "Guidance from a colleague or mentor", type: "S" },
-      { text: "Interactive or engaging explanations", type: "I" },
+      { text: "I prefer to try it myself and learn through direct experience.", type: "D" },
+      { text: "I prefer to understand the steps, logic, and requirements first.", type: "C" },
+      { text: "I learn well when someone experienced guides and supports me.", type: "S" },
+      { text: "I learn best through interactive, engaging, and energetic experiences.", type: "I" },
     ],
   },
+
   {
     id: 25,
-    question: "What best describes your work pace?",
+    question: "Which description best matches your natural work pace?",
     options: [
-      { text: "Fast and goal-driven", type: "D" },
-      { text: "Careful and accuracy-focused", type: "C" },
-      { text: "Steady and consistent", type: "S" },
-      { text: "Flexible and energetic", type: "I" },
+      { text: "Fast, competitive, and focused on achieving results.", type: "D" },
+      { text: "Careful, deliberate, and focused on getting things right.", type: "C" },
+      { text: "Steady, consistent, and dependable.", type: "S" },
+      { text: "Energetic, flexible, and responsive to changing priorities.", type: "I" },
     ],
   },
-  // New questions added (26-30)
+
   {
     id: 26,
-    question: "When starting a new project, what is your first priority?",
+    question: "When starting a new project, what do you naturally focus on first?",
     options: [
-      { text: "Establishing clear goals and timelines", type: "D" },
-      { text: "Getting the team excited and engaged", type: "I" },
-      { text: "Understanding the team dynamics and roles", type: "S" },
-      { text: "Reviewing all requirements and data", type: "C" },
+      { text: "Defining the main goals, outcomes, and deadlines.", type: "D" },
+      { text: "Creating energy and getting people excited about the project.", type: "I" },
+      { text: "Understanding the people, responsibilities, and team dynamics.", type: "S" },
+      { text: "Reviewing the requirements, information, and potential risks.", type: "C" },
     ],
   },
+
   {
     id: 27,
-    question: "How do you prefer to receive recognition for your work?",
+    question: "What type of recognition is most meaningful to you?",
     options: [
-      { text: "Public acknowledgment of my achievements", type: "D" },
-      { text: "Celebratory events or team praise", type: "I" },
-      { text: "Personal, private thank you from a manager", type: "S" },
-      { text: "Written feedback or performance metrics", type: "C" },
+      { text: "Recognition that clearly highlights my achievements and results.", type: "D" },
+      { text: "Public appreciation, celebration, or enthusiastic praise.", type: "I" },
+      { text: "A sincere and personal thank-you from someone I work with or report to.", type: "S" },
+      { text: "Specific written feedback that explains the quality or impact of my work.", type: "C" },
     ],
   },
+
   {
     id: 28,
-    question: "When you encounter a problem you can't solve alone, what do you do?",
+    question: "When you encounter a problem that you cannot solve alone, what do you naturally do?",
     options: [
-      { text: "Seek out an expert or take charge to find a solution", type: "D" },
-      { text: "Brainstorm with a group for ideas", type: "I" },
-      { text: "Ask a trusted colleague for help", type: "S" },
-      { text: "Research thoroughly before asking", type: "C" },
+      { text: "Take ownership and find someone who can help me move toward a solution.", type: "D" },
+      { text: "Discuss it with several people and generate different ideas.", type: "I" },
+      { text: "Ask a trusted colleague for guidance and support.", type: "S" },
+      { text: "Research the problem thoroughly before seeking assistance.", type: "C" },
     ],
   },
+
   {
     id: 29,
-    question: "In meetings, how do you typically participate?",
+    question: "During meetings, which behavior is most natural for you?",
     options: [
-      { text: "Drive the conversation toward decisions and actions", type: "D" },
-      { text: "Share ideas and encourage others to contribute", type: "I" },
-      { text: "Listen attentively and support others' points", type: "S" },
-      { text: "Ask clarifying questions and note details", type: "C" },
+      { text: "I drive the conversation toward decisions, commitments, and action.", type: "D" },
+      { text: "I share ideas, build enthusiasm, and encourage others to participate.", type: "I" },
+      { text: "I listen carefully, support others, and help maintain a constructive atmosphere.", type: "S" },
+      { text: "I ask precise questions, clarify details, and record important information.", type: "C" },
     ],
   },
+
   {
     id: 30,
-    question: "When organizing your workspace or tasks, you prefer:",
+    question: "When organizing your work environment, what do you naturally prefer?",
     options: [
-      { text: "A system that maximizes efficiency and results", type: "D" },
-      { text: "An open, vibrant environment that fosters interaction", type: "I" },
-      { text: "A stable, organized setup with minimal surprises", type: "S" },
-      { text: "Everything labeled, categorized, and in order", type: "C" },
+      { text: "A setup that helps me work efficiently and achieve results quickly.", type: "D" },
+      { text: "An energetic and interactive environment where people can exchange ideas.", type: "I" },
+      { text: "A stable and comfortable setup with predictable routines.", type: "S" },
+      { text: "A highly organized setup where information is clearly categorized and easy to find.", type: "C" },
     ],
   },
+
 ];
