@@ -1,5 +1,6 @@
 import express from "express";
 import { body } from "express-validator";
+import { OFFICES } from "../../models/salesPipelineModels/User.model.js"; 
 
 import {
     listUsers,
@@ -19,6 +20,8 @@ router.patch(
     body("password").optional({ checkFalsy: true }).isStrongPassword({ minLength: 8, minSymbols: 0 }),
     body("department").optional().isString(),
     body("role").optional().isString(),
+    body("office").optional({ checkFalsy: true }).isIn(OFFICES),
+    body("join_date").optional({ checkFalsy: true }).isISO8601(),
     updateUser
 );
 
