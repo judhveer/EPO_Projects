@@ -15,6 +15,7 @@ import db from "../../models/index.js";
 import {
     ASSIGNABLE_DEPARTMENTS,
     ASSIGNABLE_ROLES,
+    OFFICES,
 } from "../../models/salesPipelineModels/User.model.js";
 import { getDeletionBlockers } from "../utils/userDeletionGuard.js";
 import { deleteCache, delCachePattern, CACHE_KEYS, CACHE_PATTERNS } from "../../utils/cache.js";
@@ -105,7 +106,7 @@ export const listUsers = async (req, res) => {
 
         const { rows, count } = await User.findAndCountAll({
             where,
-            attributes: ["id", "username", "email", "role", "department", "isActive", "lastLoginAt", "createdAt"],
+            attributes: ["id", "username", "email", "role", "department", "isActive", "lastLoginAt", "createdAt", "office", "join_date"],
             order: [["createdAt", "DESC"]],
             limit: limitNum,
             offset,
@@ -144,7 +145,7 @@ export const updateUser = async (req, res) => {
         }
 
         const { id } = req.params;
-        const { username, email, department, role, password } = req.body || {};
+        const { username, email, department, role, password, office, join_date } = req.body || {};
 
         const target = await User.findByPk(id, {
             transaction: t,
@@ -213,6 +214,34 @@ export const updateUser = async (req, res) => {
             }
         }
 
+        // ── NEW: office/join_date validation ────────────────────────────
+        // Resolve final office/join_date the same way finalRole/finalDepartment already are above — post-update state, not a half-applied one.
+        const finalOffice = office !== undefined ? office : target.office;
+        const finalJoinDate = join_date !== undefined ? join_date : target.join_date;
+
+        if(finalRole !== "BOSS"){
+            if(!finalOffice){
+                throw Object.assign(new Error("Office is required for all roles except BOSS."), { statusCode: 400 });
+            }
+            if(!OFFICES.includes(finalOffice)){
+                throw Object.assign(new Error(`Office must be one of: ${OFFICES.join(", ")}`), { statusCode: 400 });
+            }
+
+            if(!finalJoinDate){
+                throw Object.assign(new Error("Join date is required for all roles except BOSS."), { statusCode: 400 });
+            }
+            if(isNaN(new Date(finalJoinDate).getTime())){
+                throw Object.assign(new Error("Join date is not a valid date."), { statusCode: 400 });
+            }
+        }
+
+        if(office !== undefined){
+            updateData.office = office;
+        }
+
+        if(join_date !== undefined){
+            updateData.join_date = join_date;
+        }
 
         // Email required for everyone except Production Worker — mirrors createUser.
         const finalEmail = email !== undefined ? email : target.email;
