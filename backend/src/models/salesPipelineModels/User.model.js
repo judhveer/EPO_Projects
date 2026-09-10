@@ -10,6 +10,17 @@ export const ROLES = [
 ];
 
 
+// ── NEW: Attendance offices ─────────────────────────────────────────
+// Every user except BOSS must be assigned to exactly one office.
+// Kept as a plain validated STRING (same pattern as ROLES/DEPARTMENTS
+// above) rather than a separate lookup table — both offices share
+// identical shift timing today, so there's no relational data that
+// would justify a foreign key. Extending this list later (e.g. if
+// Dariln Tang or Hill Publication ever need attendance tracking) is
+// a one-line change here, same as adding a new department already is.
+export const OFFICES = ["EPO", "MM"];
+
+
 // ── Admin Panel dropdown sources ──────────────────────────────────────
 // "OWNER" and "BOSS" stay in the full lists above so the bootstrap BOSS
 // account (created once by scripts/seedAdmin.mjs) keeps validating on
@@ -35,7 +46,20 @@ function enforceRoleDeptConsistency(instance) {
   }
 }
 
+// ── NEW: Attendance-eligibility fields must be present for everyone except BOSS. BOSS is the one role explicitly excluded from attendance tracking per business requirement — everyone else (Admin, HR, Sales, EA, Production, etc.) needs an office and a join date, since join_date drives the 6-month leave-eligibility gate and office drives which attendance/leave records a person shows up under.
+function enforceAttendanceFieldsPresent(instance) {
+  if (instance.role === 'BOSS') return; // BOSS is exempt — not tracked
 
+  if (!instance.office) {
+    throw new Error('office is required for all users except BOSS');
+  }
+  if (!OFFICES.includes(instance.office)) {
+    throw new Error(`office must be one of: ${OFFICES.join(', ')}`);
+  }
+  if (!instance.join_date) {
+    throw new Error('join_date is required for all users except BOSS');
+  }
+}
 
 
 export default (sequelize) => {
@@ -92,6 +116,23 @@ export default (sequelize) => {
       type: DataTypes.UUID, 
       allowNull: true 
     },
+
+    // ── NEW: Attendance system fields ─────────────────────────────
+    // Nullable at the DB level (so BOSS accounts, and any pre-existing
+    // users during the transition window, don't break) but enforced
+    // as required-unless-BOSS via the beforeCreate/beforeUpdate hooks
+    // below — same pattern this file already uses for role/department
+    // consistency, just extended to cover two more fields.
+    office: {
+      type: DataTypes.STRING(8),
+      allowNull: true,
+      validate: { isIn: [OFFICES] },
+    },
+    join_date: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+    }
+
   }, {
     tableName: 'users',
     underscored: true,
@@ -109,6 +150,7 @@ export default (sequelize) => {
       { unique: true, fields: ['username'] },
       { fields: ['role'] },
       { fields: ['department'] },
+      { fields: ['office'] },
     ]
   });
 
@@ -125,6 +167,7 @@ export default (sequelize) => {
       user.passwordHash = await bcrypt.hash(user._password, 10);
     }
     enforceRoleDeptConsistency(user);
+    enforceAttendanceFieldsPresent(user);
   });
 
   User.addHook('beforeUpdate', async (user) => {
@@ -132,6 +175,7 @@ export default (sequelize) => {
       user.passwordHash = await bcrypt.hash(user._password, 10);
     }
     enforceRoleDeptConsistency(user);
+    enforceAttendanceFieldsPresent(user);
   });
 
   return User;
