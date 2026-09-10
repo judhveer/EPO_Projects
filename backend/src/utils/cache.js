@@ -118,6 +118,7 @@ export const TTL = {
   MASTER_DATA: 7200,   // 2 hours
   PUSH_SUBS:   1800,   // 30 minutes
   CLIENTS:     900,    // 15 minutes
+  ATTENDANCE_SETTINGS: 7200,    // ← 2h, same class as MASTER_DATA: rarely changes, explicitly invalidated on write
 };
 
 
@@ -154,6 +155,7 @@ export const CACHE_KEYS = {
 
   // Client autocomplete
   clientNames:                      "epo:clients:names",
+  attendanceSettings:               "epo:attendance:settings",
 };
 
 
