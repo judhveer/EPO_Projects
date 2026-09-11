@@ -1,6 +1,6 @@
 import { DataTypes } from 'sequelize';
 
-export const AUDIT_ENTITY_TYPES = ['ATTENDANCE', 'LEAVE_REQUEST', 'LEAVE_LEDGER', 'LEAVE_ALLOCATION', 'HOLIDAY', 'USER'];
+export const AUDIT_ENTITY_TYPES = ['ATTENDANCE', 'LEAVE_REQUEST', 'LEAVE_LEDGER', 'LEAVE_ALLOCATION', 'LEAVE_TYPE', 'LEAVE_POLICY', 'HOLIDAY', 'USER'];
 
 export default (sequelize) => {
     const AuditLog = sequelize.define('AuditLog', {
