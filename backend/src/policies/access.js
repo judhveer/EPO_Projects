@@ -15,6 +15,15 @@ export function can(user, perm) {
     case 'attendance.view':
       return true;
 
+    case 'leave.approve':
+      return isActive && (user.role === 'BOSS' || user.role === 'ADMIN' || user.department === 'HR');
+
+    case 'holiday.manage':
+      return isActive && (user.role === 'BOSS' || user.role === 'ADMIN' || user.department === 'HR');
+
+    case 'leave.config':
+      return isActive && (user.role === 'BOSS' || user.role === 'ADMIN' || user.department === 'HR'); // now matches holiday.manage/leave.approve
+
     case 'ea.dashboard.view':
       return (dept === 'EA');
 
