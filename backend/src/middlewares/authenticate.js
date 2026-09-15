@@ -49,6 +49,7 @@ export default async function authenticate(req, res, next) {
             id: user.id,
             email: user.email,
             username: user.username,
+            office: user.office,
             role: user.role,
             department: user.department,
             isActive: user.isActive
