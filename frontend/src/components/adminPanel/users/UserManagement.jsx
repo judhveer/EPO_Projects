@@ -208,6 +208,7 @@ export default function UserManagement() {
               <th className="border p-2 text-left">Email</th>
               <th className="border p-2 text-left">Role</th>
               <th className="border p-2 text-left">Department</th>
+              <th className="border p-2 text-left">Office</th> 
               <th className="border p-2 text-center">Status</th>
               <th className="border p-2 text-left">Last Login</th>
               <th className="border p-2 text-center w-[220px]">Actions</th>
@@ -215,7 +216,7 @@ export default function UserManagement() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="text-center py-6">
+              <tr><td colSpan={8} className="text-center py-6">
                 <div className="flex justify-center">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-700" />
                 </div>
@@ -257,6 +258,13 @@ export default function UserManagement() {
 
                     {/* Department */}
                     <td className="border p-2">{u.department}</td>
+
+                    {/* Office */}
+                    <td className="border p-2">
+                      {u.office
+                        ? <span className="px-2 py-0.5 text-xs font-medium rounded bg-slate-100 text-slate-700">{u.office}</span>
+                        : <span className="text-xs text-amber-600 italic">Not set</span>}
+                    </td>
 
                     {/* Status — badge + toggle */}
                     <td className="border p-2 text-center">
@@ -319,7 +327,7 @@ export default function UserManagement() {
               })
             ) : (
               <tr>
-                <td colSpan={7} className="text-center py-6 text-gray-500">
+                <td colSpan={8} className="text-center py-6 text-gray-500">
                   No users found
                 </td>
               </tr>
