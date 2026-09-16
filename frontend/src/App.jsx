@@ -18,7 +18,19 @@ import ExportLeads from "./components/salesPipeline/ExportLeads.jsx";
 import CoordinatorDashboard from "./components/salesPipeline/CoordinatorDashboard.jsx";
 
 // Attendance
-import AttendanceDashboard from "./components/attendance/AttendanceDashboard";
+// import AttendanceDashboard from "./components/attendance/AttendanceDashboard";
+// Replace the existing AttendanceDashboard import usage in the /attendance route with the hub:
+import AttendanceAdminHub from "./pages/attendance/AttendanceAdminHub.jsx";
+import MyAttendance from "./pages/attendance/MyAttendance.jsx";
+
+
+// Leaves
+import MyLeave from "./pages/attendance/MyLeave.jsx";
+import LeaveApprovals from "./pages/attendance/LeaveApprovals.jsx";
+import HolidayManagement from "./pages/attendance/HolidayManagement.jsx";
+import AttendanceLeaveConfig from "./pages/attendance/AttendanceLeaveConfig.jsx";
+
+
 // TaskBot
 import TaskDashboard from "./components/taskBot/TaskDashboard";
 
@@ -138,7 +150,55 @@ export default function App() {
         }>
           <Route path="/home" element={<Home />} />
           {/* Attendance: everyone authenticated */}
-          <Route path="/attendance" element={<AttendanceDashboard />} />
+          {/* <Route path="/attendance" element={<AttendanceDashboard />} /> */}
+          {/* Attendance: role-aware — BOSS/ADMIN/HR see the company-wide dashboard, everyone else sees their own check-in/check-out page. Same approver group already established for leave (BOSS, ADMIN, HR). */}
+          {/* <Route
+            path="/attendance"
+            element={
+              (user?.role === 'BOSS' || user?.role === 'ADMIN' || user?.department === 'HR')
+                ? <AttendanceDashboard />
+                : <MyAttendance />
+            }
+          /> */}
+
+          <Route
+            path="/attendance"
+            element={
+              (user?.role === 'BOSS' || user?.role === 'ADMIN' || user?.department === 'HR')
+                ? <AttendanceAdminHub />
+                : <MyAttendance />
+            }
+          />
+
+          {/* ── NEW: Leave — insert here ─────────────────────────────── */}
+          <Route path="/leave" element={<MyLeave />} />
+          <Route
+            path="/leave/approvals"
+            element={
+              <Gate perm="leave.approve" fallback={<div className="p-6">Not Authorized</div>}>
+                <LeaveApprovals />
+              </Gate>
+            }
+          />
+
+          <Route
+            path="/holidays"
+            element={
+              <Gate perm="holiday.manage" fallback={<div className="p-6">Not Authorized</div>}>
+                <HolidayManagement />
+              </Gate>
+            }
+          />
+
+          <Route
+            path="/attendance-config"
+            element={
+              <Gate perm="leave.config" fallback={<div className="p-6">Not Authorized</div>}>
+                <AttendanceLeaveConfig />
+              </Gate>
+            }
+          />
+          
 
           {/* EA dashboard guarded */}
           <Route
