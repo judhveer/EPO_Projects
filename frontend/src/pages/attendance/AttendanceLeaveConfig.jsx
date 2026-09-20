@@ -461,6 +461,13 @@ function SystemJobsSection() {
                   type="neutral"
                 />
 
+                <StatCard 
+                  label="Already Allocated" 
+                  value={result.alreadyAllocated || 0} 
+                  icon="✓" 
+                  type="neutral" 
+                />
+
                 <StatCard
                   label="Errors"
                   value={result.errors?.length || 0}
