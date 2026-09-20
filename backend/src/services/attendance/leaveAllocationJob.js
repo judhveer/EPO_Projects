@@ -31,7 +31,7 @@ export async function runLeaveAllocationJob(){
     const todayStr = todayISTDateOnly();
     const currentYear = Number(todayStr.slice(0, 4));
 
-    const results = { allocated: [], skippedIneligible: 0, errors: [] };
+    const results = { allocated: [], alreadyAllocated: 0, skippedIneligible: 0, errors: [] };
 
     // ── Active leave types with an active policy. No policy = no defined entitlement amount = nothing to auto-allocate for it (a type with no active policy is expected to be manual-grant-only).
     const activeTypesWithPolicy = await LeaveType.findAll({
@@ -84,7 +84,7 @@ export async function runLeaveAllocationJob(){
 
             const t = await sequelize.transaction();
             try{
-                const allocation = await allocateLeave({
+                const { allocation, created } = await allocateLeave({
                     employeeId: employee.id,
                     leaveTypeId: leaveType.id,
                     leaveYear: currentYear,
@@ -94,16 +94,21 @@ export async function runLeaveAllocationJob(){
                     transaction: t,
                 });
                 await t.commit();
+                if (created){
+                    results.allocated.push({
+                        employeeId: employee.id,
+                        employeeName: employee.username,
+                        leaveTypeId: leaveType.id,
+                        leaveTypeName: leaveType.name,
+                        amount: calc.allocatedAmount,
+                        isProRated: calc.isProRated,
+                        allocationId: allocation.id,
+                    });
+                }
+                else{
+                    results.alreadyAllocated++;
+                }
 
-                results.allocated.push({
-                    employeeId: employee.id,
-                    employeeName: employee.username,
-                    leaveTypeId: leaveType.id,
-                    leaveTypeName: leaveType.name,
-                    amount: calc.allocatedAmount,
-                    isProRated: calc.isProRated,
-                    allocationId: allocation.id,
-                });
             }
             catch(err){
                 await t.rollback();
