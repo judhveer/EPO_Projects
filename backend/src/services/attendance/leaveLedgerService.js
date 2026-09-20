@@ -104,7 +104,10 @@ export async function allocateLeave( {employeeId, leaveTypeId, leaveYear, amount
     });
 
     if(existing){
-        return existing;
+        return { 
+            allocation: existing, 
+            created: false 
+        };
     }
     
     const allocation = await LeaveAllocation.create({
@@ -129,7 +132,10 @@ export async function allocateLeave( {employeeId, leaveTypeId, leaveYear, amount
         reason: source === 'MANUAL_ADMIN_GRANT' ? 'Manual admin allocation' : 'Annual policy allocation',
     }, { transaction });
 
-    return allocation;
+    return { 
+        allocation, 
+        created: true 
+    };
 }
 
 // ── CONSUMPTION ──────────────────────────────────────────────────────
