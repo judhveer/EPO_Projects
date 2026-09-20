@@ -525,7 +525,12 @@ export const generateQuotationPDF = async (req, res) => {
   // — Generate PDF -----------------------------------------------------------
   let page;
   try {
+    const t0 = Date.now();
+    const wasCold = !_browser?.isConnected();
+
     const browser = await getBrowser();
+    const t1 = Date.now();
+
     page = await browser.newPage();
     await page.setContent(finalHtml, { waitUntil: "domcontentloaded", timeout: 30000 });
 
@@ -536,6 +541,9 @@ export const generateQuotationPDF = async (req, res) => {
     });
 
     await page.close();
+    const t2 = Date.now();
+
+     console.log(`[PDF] kind=quotation cold=${wasCold} acquire=${t1-t0}ms render=${t2-t1}ms total=${t2-t0}ms bytes=${pdfBuffer.length}`);
 
     const safeClient = clientName.replace(/[^a-z0-9]/gi, "_").toUpperCase();
     const filename   = `Quotation_${firm.refPrefix}_${safeClient}_${dateStr.replace(/ /g, "")}.pdf`;

@@ -480,18 +480,31 @@ export const downloadJobCard = async (req, res) => {
     const finalHtml = tpl.replace("{{PAGES}}", pages);
 
     // ── Puppeteer render ─────────────────────────────────────────────────────
+    const t0 = Date.now();
+    const wasCold = !_browser?.isConnected();
+
     const browser = await getBrowser();
+    const t1 = Date.now();
+
     const page    = await browser.newPage();
 
-    await page.setContent(finalHtml, { waitUntil: "domcontentloaded", timeout: 30000 });
+    let pdfBuffer;
 
-    const pdfBuffer = await page.pdf({
-      format:          "A4",
-      printBackground: true,
-      margin:          { top: "4mm", right: "4mm", bottom: "4mm", left: "4mm" },
-    });
+    try{
 
-    await page.close();
+      await page.setContent(finalHtml, { waitUntil: "domcontentloaded", timeout: 30000 });
+      pdfBuffer = await page.pdf({
+        format:          "A4",
+        printBackground: true,
+        margin:          { top: "4mm", right: "4mm", bottom: "4mm", left: "4mm" },
+      });
+    }
+    finally {
+      await page.close().catch(() => {});      // fail hone pe bhi page band hoga
+    }
+
+    const t2 = Date.now();
+    console.log(`[PDF] kind=jobcard cold=${wasCold} acquire=${t1-t0}ms render=${t2-t1}ms total=${t2-t0}ms bytes=${pdfBuffer.length}`);
 
     // ── Stream response ───────────────────────────────────────────────────────
     const filename = `JobCard_${job_no}_${job.client_name.replace(/[^a-z0-9]/gi, "_").toUpperCase()}.pdf`;
