@@ -1,258 +1,17 @@
-import dotenv from 'dotenv';
-dotenv.config();
-import db from '../../models/index.js';
-import  {getSheetData}  from '../../utils/attendance/sheets.js';
+// import dotenv from 'dotenv';
+// dotenv.config();
+// import db from '../../models/index.js';
+// import  {getSheetData}  from '../../utils/attendance/sheets.js';
+// import { Op } from 'sequelize';
+// import { DateTime } from 'luxon';
+
+// import EMPLOYEE from '../../config/attendance/employees.js'
+
+import models from '../../models/index.js';
 import { Op } from 'sequelize';
-import { DateTime } from 'luxon';
+import { todayISTDateOnly, monthRangeIST } from '../../utils/attendance/istTime.js';
 
-
-import EMPLOYEE from '../../config/attendance/employees.js'
-
-
-// Utility
-function parseCustomTimestamp(ts) {
-  if (!ts) return null;
-  const [datePart, timePart] = ts.split(' ');
-  if (!datePart || !timePart) return null;
-  const [day, month, year] = datePart.split('/').map(Number);
-  const [hour, minute, second] = timePart.split(':').map(Number);
-  return DateTime.fromObject(
-    { year, month, day, hour, minute, second },
-    { zone: 'Asia/Kolkata' }
-  );
-}
-
-
-function getDateStringFromDate(dt) {
-  // dt is a Luxon DateTime
-  return dt.toFormat('yyyy-LL-dd'); // for Sequelize DATEONLY
-}
-
-function msToHMS(ms) {
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  return `${hours} hrs ${minutes} min ${seconds} sec`;
-}
-
-
-let isSyncing = false;
-
-
-async function syncAttendance(req, res) {
-  // check execution time
-  const start = Date.now();
-
-  console.log('Syncing attendance data...');
-  if (isSyncing) {
-    return res.status(429).json({
-      error: "Sync in progress"
-    });
-  }
-  isSyncing = true;
-
-  try {
-    const rows = await getSheetData();
-
-    const [header, ...dataRows] = rows;
-  
-
-    // Identify columns
-    const COLS = {
-      timestamp: header.findIndex(h => h.toLowerCase().includes('timestamp')),
-      name: header.findIndex(h => h.toLowerCase() === 'name'),
-      action: header.findIndex(h => h.toLowerCase() === 'action'),
-      location: header.findIndex(h => h.toLowerCase() === 'location'),
-      photo: header.findIndex(h => h.toLowerCase().includes('photo')),
-    };
-
-
-    // Map for each employee's attendance (per day)
-    const attendanceMap = {};
-    // Current IST date/time
-    let nowIST = DateTime.now().setZone('Asia/Kolkata');
-
-
-    const todayStr = getDateStringFromDate(nowIST);
-
-
-    // 1. Process existing IN/OUT rows (today only, for valid EMPLOYEE)
-    for (const row of dataRows) {
-      const timestampRaw = row[COLS.timestamp];
-      if (!timestampRaw) continue;
-
-      const timestamp = parseCustomTimestamp(timestampRaw);
-      if (!timestamp) continue;
-
-
-      const dateStr = getDateStringFromDate(timestamp);
-
-      if (dateStr !== todayStr) continue; // Process ONLY today's records
-
-      let name = row[COLS.name]?.trim().toUpperCase();
-      
-      let action = row[COLS.action]?.toUpperCase();
-      const location = row[COLS.location]?.toUpperCase();
-      if (!name || !action || !location) {
-        // skip
-        continue;
-      }
-
-      if (!EMPLOYEE.includes(name)) {   // Only valid employees
-        // skip
-        continue;
-      }
-
-
-      const photo_url = row[COLS.photo] ?? "";
-
-      // Initialize map entry if needed
-      if (!attendanceMap[name]) attendanceMap[name] = {};
-
-
-      if (action === 'IN') {
-        // Only keep earliest IN
-        if (!attendanceMap[name].check_in_time || parseCustomTimestamp(attendanceMap[name].check_in_time) > timestamp) {
-          attendanceMap[name].check_in_time = timestampRaw;
-          attendanceMap[name].photo_url = photo_url;
-          attendanceMap[name].location = location;
-        }
-      }
-      if (action === 'OUT') {
-        // Only keep latest OUT
-        if (!attendanceMap[name].check_out_time || parseCustomTimestamp(attendanceMap[name].check_out_time) < timestamp) {
-          attendanceMap[name].check_out_time = timestampRaw;
-        }
-      }
-    }
-
-    // 2. AUTO-MARK ABSENT, LATE, AND SHIFT CALCULATION
-    // 2. Fill/Upsert Attendance Table per employee for today (IST)
-    // Define office timings in IST
-    const officeStart = nowIST.set({ hour: 10, minute: 15, second: 0, millisecond: 0 }); // 10:00 AM
-    const absentCutoff = nowIST.set({ hour: 12, minute: 0, second: 0, millisecond: 0 }); // 12:00 PM
-
-    for (const name of EMPLOYEE) {
-      const empData = attendanceMap[name] || {};
-      let check_in_time = empData.check_in_time || null;
-      let check_out_time = empData.check_out_time || null;
-      let photo_url = empData.photo_url || null;
-      let location = empData.location || null;
-      let status = 'ABSENT';
-      let late_minutes = "0";
-      let shift_time = null;
-
-      const where = { name, date: todayStr, action: 'IN' };
-      const existing = await db.Attendance.findOne({ where });
-
-      if (!check_in_time) {
-        if (nowIST >= absentCutoff) {
-          // Already marked absent for today? Skip
-          if (existing && existing.status === 'ABSENT') {
-            continue;
-          }
-          const absentStr = nowIST.toFormat('dd/LL/yyyy') + ' 00:00:00';
-          if (existing) {
-            await existing.update({
-              location: null,
-              check_in_time: absentStr,
-              check_out_time: absentStr,
-              shift_time: '00:00:00',
-              photo_url: null,
-              status: 'ABSENT',
-              date: (typeof todayStr === 'string') ? todayStr : toString(todayStr),
-              late_minutes: null
-            });
-          } else {
-            await db.Attendance.create({
-              name,
-              action: 'IN',
-              location: null,
-              check_in_time: absentStr,
-              check_out_time: absentStr,
-              shift_time: '00:00:00',
-              photo_url: null,
-              date: (typeof todayStr === 'string') ? todayStr : toString(todayStr),
-              status: 'ABSENT',
-              late_minutes: '00:00:00'
-            });
-          }
-        }
-        continue;
-      }
-
-      // PRESENT/LATE
-      const checkInDate = parseCustomTimestamp(check_in_time);
-      if (checkInDate > officeStart) {
-        const late_time_calculation = Math.round(checkInDate.diff(officeStart, 'minutes').minutes);
-        // Convert minutes to hours and remaining minutes
-        const hours = Math.floor(late_time_calculation / 60);  // Full hours
-        const minutes = late_time_calculation % 60;
-        late_minutes = `${hours}h ${minutes}min`;
-        status = 'LATE';
-      } else {
-        status = 'PRESENT';
-        late_minutes = "00:00:00";
-      }
-
-      // Auto check-out at 6 PM if not out and now is after 10 PM   
-      if (!check_out_time && nowIST.hour >= 22) {
-        check_out_time = nowIST.toFormat('dd/LL/yyyy') + ' 18:00:00';
-      }
-
-      // Calculate shift time if check-out exists
-      if (check_in_time && check_out_time) {
-        const checkOutDate = parseCustomTimestamp(check_out_time);
-        shift_time = msToHMS(checkOutDate.toMillis() - checkInDate.toMillis());
-      }
-
-      if (existing) {
-        if (check_out_time) {
-          await existing.update({
-            check_out_time: check_out_time,
-            shift_time,
-            photo_url,
-            status,
-            late_minutes,
-            date: (typeof todayStr === 'string') ? todayStr : toString(todayStr),
-          });
-        }
-      } else {
-        await db.Attendance.create({
-          name,
-          action: 'IN',
-          location,
-          check_in_time,
-          check_out_time: check_out_time || null,
-          shift_time,
-          photo_url,
-          date: (typeof todayStr === 'string') ? todayStr : toString(todayStr),
-          status,
-          late_minutes
-        });
-      }
-    }
-
-    console.log('Attendance synced & processed for today.',);
-    // execution time tracking
-    console.log('Sync completed in', Date.now() - start, 'ms');
-
-    res.status(200).json({ 
-      message: "Attendance synced & processed for today.",
-      syncedAt: new Date(),
-      data: null
-    });
-
-  } catch (error) {
-    console.error('Sync failed:', error);
-    res.status(500).json({ error: 'Sync failed' });
-  } finally {
-    isSyncing = false;
-  }
-};
-
-
+const { Attendance, User } = models;
 
 
 // ------------- LIST ATTENDANCE (with filters/pagination) -------------
@@ -264,20 +23,26 @@ async function listAttendance(req, res) {
 
     const where = {};
     if (date) {
-      where.date = (typeof date === 'string') ? date : toString(date);
+      // where.date = (typeof date === 'string') ? date : toString(date);
+      where.shift_date = date;
     }
     else if (month) {
-      where.date = { [Op.like]: `${month}-%` }; // always use -%!
+      const { start, end } = monthRangeIST(month);
+      where.shift_date = { [Op.between]: [start, end] }; // ← was Op.like
     }
     else {
       // Default: fetch today (IST)
-      const nowIST = DateTime.now().setZone('Asia/Kolkata');
-      const todayStr = getDateStringFromDate(nowIST);
-      where.date = todayStr;
+      // const nowIST = DateTime.now().setZone('Asia/Kolkata');
+      // const todayStr = getDateStringFromDate(nowIST);
+      // where.date = todayStr;
+
+      where.shift_date = todayISTDateOnly();
     }
-    if (name) {
-      where.name = { [Op.like]: `%${name.trim().toUpperCase()}%` };
-    }
+
+
+    // if (name) {
+    //   where.name = { [Op.like]: `%${name.trim().toUpperCase()}%` };
+    // }
 
     if (showLate === 'true') {
       where.status = 'LATE';
@@ -287,14 +52,28 @@ async function listAttendance(req, res) {
     }
 
     // Only show action: 'IN' (one row per emp/date)
-    where.action = 'IN';
+    // where.action = 'IN';
 
+    // Name search now filters on the joined User record, not a raw string column — this is the actual point of the whole rebuild: attendance is tied to a real account, not free text.
+    const employeeWhere = name 
+      ? { username: { [Op.like]: `%${name.trim()}%` } }
+      : undefined;
 
-    const { rows, count } = await db.Attendance.findAndCountAll({
+    const { rows, count } = await Attendance.findAndCountAll({
       where,
+      include: [{
+        model: User,
+        as: "employee",
+        attributes: ['id', 'username', 'office', 'department'],
+        where: employeeWhere,
+        required: !!employeeWhere, // INNER JOIN only when actually filtering by name
+      }],
       offset: (page - 1) * limit,
       limit,
-      order: [['check_in_time', 'DESC'], ['name', 'ASC']]
+      order: [
+        ['check_in_time', 'DESC'],
+        [{ model: User, as: 'employee' }, 'username', 'ASC'],
+      ],
     });
 
     res.json({
@@ -312,26 +91,53 @@ async function listAttendance(req, res) {
 // ------------- SUMMARY (for StatsSummary) -------------
 async function attendanceSummary(req, res) {
   try {
-    const nowIST = DateTime.now().setZone('Asia/Kolkata');
-    const date = req.query.date || getDateStringFromDate(nowIST);
+    // const nowIST = DateTime.now().setZone('Asia/Kolkata');
+    // const date = req.query.date || getDateStringFromDate(nowIST);
 
-    const totalEmployees = EMPLOYEE.length;
+    // const totalEmployees = EMPLOYEE.length;
 
-    // Get all attendance for date
-    const records = await db.Attendance.findAll({
-      where: { date }
+    const shiftDate = req.query.date || todayISTDateOnly();
+
+    // Replaces the hardcoded EMPLOYEE array with a live count of trackable users — the exact duplication this rebuild exists to eliminate. "Trackable" = active, not BOSS, has an office assigned.
+    const totalEmployees = await User.count({
+      where: {
+        role: { [Op.ne]: 'BOSS' },
+        office: { [Op.ne]: null },
+        isActive: true,
+      },
     });
 
-    let onTimeCount = 0, lateCount = 0, absentCount = 0;
-    for (const rec of records) {
-      if (rec.status === 'PRESENT') onTimeCount++;
-      if (rec.status === 'LATE') lateCount++;
-      if (rec.status === 'ABSENT') absentCount++;
-    }
+    // Get all attendance for date
+    const records = await Attendance.findAll({
+      where: { 
+        shift_date: shiftDate,
+       }
+    });
+
+    let onTimeCount = 0, lateCount = 0, absentCount = 0,
+        holidayCount = 0, weekOffCount = 0, leaveCount = 0;
+
+    // for (const rec of records) {
+    //   if (rec.status === 'PRESENT') onTimeCount++;
+    //   if (rec.status === 'LATE') lateCount++;
+    //   if (rec.status === 'ABSENT') absentCount++;
+    // }
     // absentCount = totalEmployees - records.length;
 
+    for(const rec of records){
+      switch(rec.status){
+        case 'PRESENT':  onTimeCount++;   break;
+        case 'LATE':     lateCount++;     break;
+        case 'ABSENT':   absentCount++;   break;
+        case 'HOLIDAY':  holidayCount++;  break;
+        case 'WEEK_OFF': weekOffCount++;  break;
+        case 'LEAVE':    leaveCount++;    break;
+        // UNRESOLVED intentionally not counted — it means "not yet decided," not a real outcome to report on.
+      }
+    }
+
     res.json({
-      totalEmployees, onTimeCount, lateCount, absentCount
+      totalEmployees, onTimeCount, lateCount, absentCount, holidayCount, weekOffCount, leaveCount,
     });
   } catch (error) {
     console.error('Summary error:', error);
@@ -344,38 +150,53 @@ async function attendanceSummary(req, res) {
 async function absentList(req, res) {
   try {
 
-    const nowIST = DateTime.now().setZone('Asia/Kolkata');
-    const date = req.query.date || getDateStringFromDate(nowIST);
+    const shiftDate = req.query.date || todayISTDateOnly();
     const month = req.query.month || null;
     const name = req.query.name || null;
 
+
+    // const nowIST = DateTime.now().setZone('Asia/Kolkata');
+    // const date = req.query.date || getDateStringFromDate(nowIST);
+    // const month = req.query.month || null;
+    // const name = req.query.name || null;
+
     let where = { status: 'ABSENT' };
 
-    if (name) {
-      where.name = { [Op.like]: `%${name.trim().toUpperCase()}%` };
-    }
+    // if (name) {
+    //   where.name = { [Op.like]: `%${name.trim().toUpperCase()}%` };
+    // }
 
     if (month) {
-      where.date = { [Op.like]: `${month}-%` }; // always use -%!
+      const { start, end } = monthRangeIST(month);
+      where.shift_date = { [Op.between]: [start, end] }; // ← was Op.like
     }
     else {
-      where.date = date;
+      where.shift_date = shiftDate;
     }
 
+    const employeeWhere = name
+      ? { username: { [Op.like]: `%${name.trim()}%` } }
+      : undefined;
+
     // Get attendance for this date
-    const records = await db.Attendance.findAll({
-      where
+    const records = await Attendance.findAll({
+      where,
+      include: [{
+        model: User,
+        as: 'employee',
+        attributes: ['id', 'username', 'office'],
+        where: employeeWhere,
+        required: !!employeeWhere,
+      }],
     });
-    // const absentNames = records.map(r => r.name);
-    // res.json(absentNames.map(name => ({ name, status: 'ABSENT' })));
+
     res.json(records.map(r => ({
-      name: r.name,
-      date: r.date,     // <-- gets the correct date for each record
+      name: r.employee?.username,
+      office: r.employee?.office,
+      date: r.shift_date,     // <-- gets the correct date for each record
       status: 'ABSENT'
     })));
 
-    // const absent = EMPLOYEE.filter(e => !presentNames.includes(e));
-    // Send as array of { name, status }
   } catch (error) {
     console.error('Absent error:', error);
     res.status(500).json({ error: 'Failed to fetch absent list' });
@@ -384,38 +205,33 @@ async function absentList(req, res) {
 
 
 // ------------- EMPLOYEE LIST (for search/dropdown) -------------
+// Replaces config/attendance/employees.js entirely — this is the live User table now, not a hardcoded array that can drift out of sync with who's actually employed.
 async function getEmployees(req, res) {
-  res.json(EMPLOYEE);
-};
+  // res.json(EMPLOYEE);
+  try{  
+      const employees = await User.findAll({
+        where: {
+          role: { [Op.ne]: 'BOSS' },
+          office: { [Op.ne]: null },
+          isActive: true,
+        },
+        attributes: ['id', 'username', 'office', 'department'],
+        order: [['username', 'ASC' ]],
+      });
 
-
-
-// bulkInsertAttendance
-async function bulkInsertAttendance(req, res) {
-  try {
-    const data = req.body.data || bulkData;
-    if (!Array.isArray(data) || !data.length) {
-      return res.status(400).json({ error: 'Invalid data format' });
-    }
-
-    // You may add validations/format conversion here as needed
-    await db.Attendance.bulkCreate(data, { ignoreDuplicates: true });   // or updateOnDuplicate: [...fields]
-    res.json({
-      message: 'Bulk insert successful',
-      count: data.length
-    });
-  } catch (error) {
-    console.error('Bulk insert error:', error);
-    res.status(500).json({ error: 'Bulk insert failed' });
+      return res.json(employees);
   }
+  catch(error){
+    console.error('Employees list error:', error);
+    return res.status(500).json({ error: 'Failed to fetch employee list' });
+  }
+
 };
+
 
 export default {
-  isSyncing,
-  syncAttendance,
   listAttendance,
   attendanceSummary,
   absentList,
   getEmployees,
-  bulkInsertAttendance
 };
