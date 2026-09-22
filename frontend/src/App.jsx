@@ -22,6 +22,8 @@ import CoordinatorDashboard from "./components/salesPipeline/CoordinatorDashboar
 // Replace the existing AttendanceDashboard import usage in the /attendance route with the hub:
 import AttendanceAdminHub from "./pages/attendance/AttendanceAdminHub.jsx";
 import MyAttendance from "./pages/attendance/MyAttendance.jsx";
+import WorkerAttendancePage from "./pages/worker/WorkerAttendancePage.jsx";
+import WorkerLeavePage from "./pages/worker/WorkerLeavePage.jsx"; 
 
 
 // Leaves
@@ -139,6 +141,24 @@ export default function App() {
           element={
             user?.department === "Delivery"
               ? <DeliveryWorkerDashboard />
+              : <Navigate to={getHomeRoute(user)} replace />
+          }
+        />
+
+        <Route
+          path="/worker-attendance"
+          element={
+            (user?.department === "Production Worker" || user?.department === "Delivery")
+              ? <WorkerAttendancePage />
+              : <Navigate to={getHomeRoute(user)} replace />
+          }
+        />
+
+        <Route
+          path="/worker-leave"
+          element={
+            (user?.department === "Production Worker" || user?.department === "Delivery")
+              ? <WorkerLeavePage />
               : <Navigate to={getHomeRoute(user)} replace />
           }
         />
