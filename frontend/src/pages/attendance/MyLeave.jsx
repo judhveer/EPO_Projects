@@ -12,7 +12,7 @@ const STATUS_STYLES = {
   CANCELLED: 'bg-slate-200 text-slate-600',
 };
 
-export default function MyLeave() {
+export default function MyLeave({ compact = false }) {
   const [balances, setBalances] = useState([]);
   const [types, setTypes] = useState([]);
   const [requests, setRequests] = useState([]);
@@ -75,8 +75,8 @@ export default function MyLeave() {
   if (loading) return <div className="p-8 text-center text-gray-500">Loading…</div>;
 
   return (
-    <div className="max-w-3xl mx-auto mt-6 px-4 space-y-6">
-      <h1 className="text-2xl font-bold text-gray-800">My Leave</h1>
+    <div className={compact ? "max-w-3xl mx-auto mt-4 px-4 space-y-6" : "max-w-3xl mx-auto mt-6 px-4 space-y-6"}>
+      {!compact && <h1 className="text-2xl font-bold text-gray-800">My Leave</h1>}
 
       {message && <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">{message}</div>}
       {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
