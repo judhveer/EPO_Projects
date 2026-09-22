@@ -43,7 +43,7 @@ const LiveElapsed = memo(function LiveElapsed({ checkInTime }) {
   return <span className="font-mono text-3xl text-gray-800">{h}:{m}:{s}</span>;
 });
 
-export default function MyAttendance() {
+export default function MyAttendance({ compact = false }) {
   const { user } = useAuth();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -125,15 +125,19 @@ export default function MyAttendance() {
   const todayLabel = DateTime.now().setZone(ZONE).toFormat('EEEE, dd LLLL yyyy');
 
   return (
-    <div className="max-w-xl mx-auto mt-8 px-4">
+    <div className={compact ? "max-w-xl mx-auto mt-4 px-4" : "max-w-xl mx-auto mt-8 px-4"}>
       <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
-        <p className="text-sm text-gray-500">{todayLabel}</p>
-        <h1 className="text-xl font-bold text-gray-800 mt-1">
-          {user?.username}
-          <span className="ml-2 px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-xs font-medium align-middle">
-            {user?.office}
-          </span>
-        </h1>
+        {!compact && (
+          <>
+            <p className="text-sm text-gray-500">{todayLabel}</p>
+            <h1 className="text-xl font-bold text-gray-800 mt-1">
+              {user?.username}
+              <span className="ml-2 px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-xs font-medium align-middle">
+                {user?.office}
+              </span>
+            </h1>
+          </>
+        )}
 
         {summary && (
           <div className="grid grid-cols-3 gap-3 mt-5 mb-2">
