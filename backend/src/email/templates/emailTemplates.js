@@ -1075,3 +1075,101 @@ export const productionDirectJobTemplate = ({
     </div>
   `;
 }
+
+
+// ── Leave request submitted — sent to HR + Admin-dept/ADMIN-role ────
+export const leaveRequestSubmittedTemplate = ({
+  employeeName, employeeOffice, leaveTypeName, dateFrom, dateTo, reason, dashboardUrl,
+}) => `
+<div style="font-family: Arial, Helvetica, sans-serif; color:#333; line-height:1.6">
+  <img src="cid:epo-logo" height="50" style="margin-bottom:20px" />
+
+  <h2 style="color:#0a4da2;">🌴 New Leave Request — Review Required</h2>
+
+  <p>Hello <strong>HR / Admin Team</strong>,</p>
+  <p><strong>${employeeName}</strong> has submitted a new leave request that needs your review.</p>
+
+  <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; width:100%; font-size:14px;">
+    <tr><th align="left" style="width:30%;">Employee</th><td>${employeeName} (${employeeOffice || '—'})</td></tr>
+    <tr><th align="left">Leave Type</th><td>${leaveTypeName}</td></tr>
+    <tr><th align="left">Dates</th><td>${dateFrom} to ${dateTo}</td></tr>
+    <tr><th align="left">Reason</th><td>${reason || '—'}</td></tr>
+  </table>
+
+  <a href="${dashboardUrl}"
+     style="display:inline-block;margin-top:16px;background:#0a4da2;color:#fff;padding:10px 16px;text-decoration:none;border-radius:4px">
+     Review Request
+  </a>
+
+  <hr style="border:none; border-top:1px solid #e5e7eb; margin:25px 0;" />
+  <p style="font-size:12px; color:#888;">This is an automated system notification.<br/>Eastern Panorama Offset - FMS</p>
+</div>
+`;
+
+// ── Leave request cancelled — sent to HR + Admin-dept/ADMIN-role,
+// every cancellation regardless of prior status ─────────────────────
+export const leaveRequestCancelledTemplate = ({
+  employeeName, employeeOffice, leaveTypeName, dateFrom, dateTo, wasApproved, dashboardUrl,
+}) => `
+<div style="font-family: Arial, Helvetica, sans-serif; color:#333; line-height:1.6">
+  <img src="cid:epo-logo" height="50" style="margin-bottom:20px" />
+
+  <h2 style="color:#b45309;">↩️ Leave Request Cancelled</h2>
+
+  <p>Hello <strong>HR / Admin Team</strong>,</p>
+  <p>
+    <strong>${employeeName}</strong> has cancelled a leave request${
+      wasApproved ? ', which had already been <strong>approved</strong> — their leave balance has been restored.' : '.'
+    }
+  </p>
+
+  <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; width:100%; font-size:14px;">
+    <tr><th align="left" style="width:30%;">Employee</th><td>${employeeName} (${employeeOffice || '—'})</td></tr>
+    <tr><th align="left">Leave Type</th><td>${leaveTypeName}</td></tr>
+    <tr><th align="left">Dates</th><td>${dateFrom} to ${dateTo}</td></tr>
+    <tr><th align="left">Prior Status</th><td>${wasApproved ? 'Approved' : 'Pending'}</td></tr>
+  </table>
+
+  <a href="${dashboardUrl}"
+     style="display:inline-block;margin-top:16px;background:#b45309;color:#fff;padding:10px 16px;text-decoration:none;border-radius:4px">
+     View Details
+  </a>
+
+  <hr style="border:none; border-top:1px solid #e5e7eb; margin:25px 0;" />
+  <p style="font-size:12px; color:#888;">This is an automated system notification.<br/>Eastern Panorama Offset - FMS</p>
+</div>
+`;
+
+// ── Approve/Reject decision — sent to the SPECIFIC employee only ────
+export const leaveDecisionTemplate = ({
+  employeeName, leaveTypeName, dateFrom, dateTo, decision, decidedByName, decisionReason, dashboardUrl,
+}) => {
+  const isApproved = decision === 'APPROVED';
+  return `
+<div style="font-family: Arial, Helvetica, sans-serif; color:#333; line-height:1.6">
+  <img src="cid:epo-logo" height="50" style="margin-bottom:20px" />
+
+  <h2 style="color:${isApproved ? '#16a34a' : '#dc2626'};">
+    ${isApproved ? '✅ Leave Request Approved' : '❌ Leave Request Rejected'}
+  </h2>
+
+  <p>Hello <strong>${employeeName}</strong>,</p>
+  <p>Your leave request has been <strong>${isApproved ? 'approved' : 'rejected'}</strong> by ${decidedByName}.</p>
+
+  <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; width:100%; font-size:14px;">
+    <tr><th align="left" style="width:30%;">Leave Type</th><td>${leaveTypeName}</td></tr>
+    <tr><th align="left">Dates</th><td>${dateFrom} to ${dateTo}</td></tr>
+    <tr><th align="left">Status</th><td>${decision}</td></tr>
+    ${decisionReason ? `<tr><th align="left">Note</th><td>${decisionReason}</td></tr>` : ''}
+  </table>
+
+  <a href="${dashboardUrl}"
+     style="display:inline-block;margin-top:16px;background:${isApproved ? '#16a34a' : '#dc2626'};color:#fff;padding:10px 16px;text-decoration:none;border-radius:4px">
+     View My Leave
+  </a>
+
+  <hr style="border:none; border-top:1px solid #e5e7eb; margin:25px 0;" />
+  <p style="font-size:12px; color:#888;">This is an automated system notification.<br/>Eastern Panorama Offset - FMS</p>
+</div>
+`;
+};
