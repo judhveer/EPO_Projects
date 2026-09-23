@@ -6,6 +6,7 @@ import { isEligibleToday } from './leaveEligibility.js';
 import { consumeLeaveForDay, reverseLeaveForDay, InsufficientLeaveBalanceError } from './leaveLedgerService.js';
 import { isHolidayForEmployee } from './holidayCheck.js';
 import { writeAuditLog } from './auditLogService.js';
+import { notifyRecipientsOfSubmission, notifyRecipientsOfCancellation, notifyEmployeeOfDecision } from './leaveNotificationService.js';
 
 const { LeaveRequest, LeaveType, Attendance, User, LeaveLedger, sequelize } = models;
 
@@ -88,6 +89,13 @@ export async function submitLeaveRequest({ employeeId, leaveTypeId, dateFrom, da
     for (const day of eachDateInRange(dateFrom, dateTo)) {
         if (!isSundayIST(day)) estimatedDays++;
     }
+
+    const leaveTypeObj = await LeaveType.findByPk(leaveTypeId, 
+        { attributes: ['name'] }
+    );
+    notifyRecipientsOfSubmission(request, employee, leaveTypeObj?.name || 'Leave').catch((err) =>
+        console.error('[leaveNotificationService] submission notification failed:', err.message)
+    ).finally(() => console.log("notifyRecipientsOfSubmission successful."));
 
     return { request, estimatedWorkingDays: estimatedDays };
 }
@@ -197,6 +205,18 @@ export async function approveLeaveRequest({ requestId, approver, decisionReason 
         });
 
         await t.commit();
+
+        const leaveTypeObj = await LeaveType.findByPk(request.leave_type_id, 
+            { attributes: ['name'] }
+        );
+
+        notifyEmployeeOfDecision({
+            request, employee, leaveTypeName: leaveTypeObj?.name || 'Leave',
+            decision: 'APPROVED', decidedByName: approver.username, decisionReason,
+        }).catch((err) => console.error('[leaveNotificationService] approval notification failed:', err.message))
+        .finally( () => console.log("notifyEmployeeOfDecision successful for approve Leave Request."));
+
+
         return { request, consumedDays, skippedDays };
     }
     catch(err){
@@ -255,6 +275,16 @@ export async function rejectLeaveRequest({ requestId, approver, decisionReason }
         });
 
         await t.commit();
+
+        const rejectedEmployee = await User.findByPk(request.employee_id);
+
+        const leaveTypeObj = await LeaveType.findByPk(request.leave_type_id, { attributes: ['name'] });
+        notifyEmployeeOfDecision({
+            request, employee: rejectedEmployee, leaveTypeName: leaveTypeObj?.name || 'Leave',
+            decision: 'REJECTED', decidedByName: approver.username, decisionReason,
+        }).catch((err) => console.error('[leaveNotificationService] rejection notification failed:', err.message))
+        .finally( () => console.log("notifyEmployeeOfDecision successful reject leave request."));
+
         return { request, revertedDays };
     }
     catch(err){
@@ -353,6 +383,14 @@ export async function cancelLeaveRequest({ requestId, actor, reason }){
         });
         
         await t.commit();
+
+        const cancelledByEmployee = await User.findByPk(request.employee_id);
+        const leaveTypeObj = await LeaveType.findByPk(request.leave_type_id, { attributes: ['name'] });
+        notifyRecipientsOfCancellation(
+            request, cancelledByEmployee, leaveTypeObj?.name || 'Leave', oldStatus === 'APPROVED',
+        ).catch((err) => console.error('[leaveNotificationService] cancellation notification failed:', err.message))
+        .finally( () => console.log("notifyRecipientsOfCancellation successful."));;
+
         return { request, revertedDays };
     }
     catch(err){
