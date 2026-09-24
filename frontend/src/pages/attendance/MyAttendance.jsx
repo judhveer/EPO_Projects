@@ -214,6 +214,16 @@ export default function MyAttendance({ compact = false }) {
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-100 text-green-800 font-medium">
               ✔ Day complete
             </div>
+
+            <div className="mt-4">
+              <p className="text-xs text-gray-400 mb-1">Total Shift Time</p>
+              <span className="font-mono text-3xl text-gray-800">
+                {formatMinutes(
+                  Math.max(0, Math.round((new Date(record.check_out_time) - new Date(record.check_in_time)) / 60000))
+                )}
+              </span>
+            </div>
+
             <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-gray-400 text-xs">Check-in</p>
