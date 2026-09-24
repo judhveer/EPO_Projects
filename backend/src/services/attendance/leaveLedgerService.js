@@ -37,7 +37,7 @@ function leaveYearOf(dateOnlyString){
 
 // ── Locks the one LeaveAllocation row for this employee/type/year.
 // This is the concurrency guard described above — every function that writes to LeaveLedger for a given (employee, type, year) calls this FIRST, so concurrent writers for the same trio serialize against each other rather than racing on the balance SUM.
-async function lockAllocationRow(employeeId, leaveTypeId, leaveYear, transaction){
+export async function lockAllocationRow(employeeId, leaveTypeId, leaveYear, transaction){
     const allocation = await LeaveAllocation.findOne({
         where: {
             employee_id: employeeId,
