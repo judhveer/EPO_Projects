@@ -2,6 +2,8 @@ import models from '../../models/index.js';
 import { submitLeaveRequest, approveLeaveRequest, rejectLeaveRequest, cancelLeaveRequest } from '../../services/attendance/leaveRequestService.js';
 import { getAllBalances } from '../../services/attendance/leaveLedgerService.js';
 import { todayISTDateOnly } from '../../utils/attendance/istTime.js';
+import { estimateLeaveRequest } from '../../services/attendance/leaveRequestService.js';
+
 
 const { LeaveType, LeaveRequest, User } = models;
 
@@ -159,4 +161,22 @@ export async function cancelRequest(req, res) {
     });
     res.json(result);
   } catch (err) { sendError(res, err); }
+}
+
+
+// ── GET /api/leave/estimate — live preview, no side effects ────────
+export async function getLeaveEstimate(req, res) {
+  try {
+    const { leave_type_id, date_from, date_to } = req.query;
+    if (!leave_type_id || !date_from || !date_to) {
+      return res.status(400).json({ error: 'leave_type_id, date_from, and date_to are required.' });
+    }
+    const result = await estimateLeaveRequest({
+      employeeId: req.user.id, leaveTypeId: leave_type_id, dateFrom: date_from, dateTo: date_to,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('[getLeaveEstimate]', err);
+    res.status(500).json({ error: 'Failed to estimate leave request.' });
+  }
 }
