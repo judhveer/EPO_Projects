@@ -3,7 +3,7 @@ import { Op } from 'sequelize';
 import models from '../../models/index.js';
 import { ZONE, todayISTDateOnly } from '../../utils/attendance/istTime.js';
 import { isEligibleToday } from './leaveEligibility.js';
-import { consumeLeaveForDay, reverseLeaveForDay, InsufficientLeaveBalanceError } from './leaveLedgerService.js';
+import { consumeLeaveForDay, reverseLeaveForDay, InsufficientLeaveBalanceError, getLeaveBalance, lockAllocationRow } from './leaveLedgerService.js';
 import { isHolidayForEmployee } from './holidayCheck.js';
 import { writeAuditLog } from './auditLogService.js';
 import { notifyRecipientsOfSubmission, notifyRecipientsOfCancellation, notifyEmployeeOfDecision } from './leaveNotificationService.js';
@@ -28,6 +28,59 @@ function* eachDateInRange(fromStr, toStr){
         cursor = cursor.plus({ days: 1 });
     }
 }
+
+
+export async function estimateLeaveRequest({ employeeId, leaveTypeId, dateFrom, dateTo, excludeRequestId = null, transaction = null }) {
+  let workingDays = 0;
+  for (const day of eachDateInRange(dateFrom, dateTo)) {
+    if (isSundayIST(day)) continue;
+    if (await isHolidayForEmployee(employeeId, day)) continue;
+    workingDays++;
+  }
+
+  const leaveYear = Number(dateFrom.slice(0, 4));
+  const ledgerBalance = await getLeaveBalance(employeeId, leaveTypeId, leaveYear, transaction);
+
+  // ── Subtract every OTHER pending request's own day-count ───────────
+  // A PENDING request hasn't consumed the ledger yet — consumption only
+  // happens at approval — but it's a real future claim on the same
+  // balance. Without this, two separate pending requests could each
+  // individually look affordable against the same untouched balance,
+  // even though approving both together would exceed it.
+  const otherPending = await LeaveRequest.findAll({
+    where: {
+      employee_id: employeeId,
+      leave_type_id: leaveTypeId,
+      status: 'PENDING',
+      ...(excludeRequestId && { id: { [Op.ne]: excludeRequestId } }),
+    },
+    attributes: ['id', 'date_from', 'date_to'],
+    transaction,
+  });
+
+  let pendingCommitted = 0;
+  for (const req of otherPending) {
+    for (const day of eachDateInRange(req.date_from, req.date_to)) {
+      // Only counts the portion in the SAME leave year as this
+      // estimate — a pending request that itself crosses years is the
+      // separately-flagged, deliberately-ignored-for-now limitation,
+      // not something being solved here.
+      if (Number(day.slice(0, 4)) !== leaveYear) continue;
+      if (isSundayIST(day)) continue;
+      if (await isHolidayForEmployee(employeeId, day)) continue;
+      pendingCommitted++;
+    }
+  }
+
+  const effectiveAvailable = ledgerBalance - pendingCommitted;
+  const sufficient = workingDays <= effectiveAvailable;
+
+  return { workingDays, balance: ledgerBalance, pendingCommitted, effectiveAvailable, sufficient };
+}
+
+
+
+
 
 // ── SUBMIT ───────────────────────────────────────────────────────────
 export async function submitLeaveRequest({ employeeId, leaveTypeId, dateFrom, dateTo, reason }){
@@ -58,46 +111,83 @@ export async function submitLeaveRequest({ employeeId, leaveTypeId, dateFrom, da
         throw Object.assign(new Error('Leave cannot be requested for a past date.'), { statusCode: 400 });
     }
 
-    // Prevent two PENDING/APPROVED requests from the same employee covering the same day, even across different leave types.
-    const overlapping = await LeaveRequest.findOne({
-        where: {
+    // ── From here on: one transaction, holding a lock on this
+    // employee's LeaveAllocation row for this type/year — the same
+    // mutex already used by consumeLeaveForDay/reverseLeaveForDay. A
+    // second concurrent submission for the same employee+type+year now
+    // genuinely blocks until this one fully commits or rolls back,
+    // rather than both racing against a stale read.
+    const leaveYear = Number(dateFrom.slice(0, 4));
+    const t = await sequelize.transaction();
+
+    try {
+        let allocation;
+        try {
+            allocation = await lockAllocationRow(employeeId, leaveTypeId, leaveYear, t);
+        } catch (err) {
+            // No LeaveAllocation row exists yet — real, legitimate state
+            // (eligible employee, allocation job just hasn't run for them
+            // yet). Translated into the same clean 400 as "insufficient
+            // balance" rather than surfacing lockAllocationRow's raw error.
+            throw Object.assign(
+                new Error(`No ${leaveType.name} balance has been allocated to you yet for ${leaveYear}. Contact an admin if this seems wrong.`),
+                { statusCode: 400 },
+            );
+        }
+
+        // Overlap check — now inside the same lock, can't race a
+        // concurrent submission for the same dates either.
+        const overlapping = await LeaveRequest.findOne({
+            where: {
+                employee_id: employeeId,
+                status: { [Op.in]: ['PENDING', 'APPROVED'] },
+                date_from: { [Op.lte]: dateTo },
+                date_to: { [Op.gte]: dateFrom },
+            },
+            transaction: t,
+        });
+
+        if (overlapping) {
+            throw Object.assign(
+                new Error(`You already have a ${overlapping.status.toLowerCase()} request overlapping these dates.`),
+                { statusCode: 409 },
+            );
+        }
+        
+        // ── NEW: real balance check, before the request is ever created ────
+        // Covers both cases: a type already at 0, and a range that exceeds whatever partial balance remains — same check, since a 0-balance type is just the special case where any range fails it.
+        const { workingDays: estimatedDays, effectiveAvailable, sufficient } = await estimateLeaveRequest({
+            employeeId, leaveTypeId, dateFrom, dateTo, transaction: t,
+        });
+
+        if (!sufficient) {
+            throw Object.assign(
+                new Error(`This request needs ${estimatedDays} working day(s), but you only have ${effectiveAvailable} ${leaveType.name} day(s) actually available (some may already be committed to another pending request).`),
+                { statusCode: 400 },
+            );
+        }
+
+        const request = await LeaveRequest.create({
             employee_id: employeeId,
-            status: { [Op.in]: ['PENDING', 'APPROVED'] },
-            date_from: { [Op.lte]: dateTo },
-            date_to: { [Op.gte]: dateFrom },
-        },
-    });
+            leave_type_id: leaveTypeId,
+            date_from: dateFrom,
+            date_to: dateTo,
+            reason: reason || null,
+            status: 'PENDING',
+        }, { transaction: t });
 
-    if (overlapping) {
-        throw Object.assign(
-        new Error(`You already have a ${overlapping.status.toLowerCase()} request overlapping these dates.`),
-        { statusCode: 409 },
+        await t.commit();
+
+        const leaveTypeObj = await LeaveType.findByPk(leaveTypeId, { attributes: ['name'] });
+        notifyRecipientsOfSubmission(request, employee, leaveTypeObj?.name || 'Leave').catch((err) =>
+            console.error('[leaveNotificationService] submission notification failed:', err.message)
         );
+
+        return { request, estimatedWorkingDays: estimatedDays };
+    } catch (err) {
+        await t.rollback();
+        throw err;
     }
-
-    const request = await LeaveRequest.create({
-        employee_id: employeeId,
-        leave_type_id: leaveTypeId,
-        date_from: dateFrom,
-        date_to: dateTo,
-        reason: reason || null,
-        status: 'PENDING',
-    });
-
-    // Informational estimate only (Sundays excluded; holidays not yet excludable — see the stub above). NOT a guarantee of what actually gets consumed — the real, authoritative check happens per-day inside approveLeaveRequest below.
-    let estimatedDays = 0;
-    for (const day of eachDateInRange(dateFrom, dateTo)) {
-        if (!isSundayIST(day)) estimatedDays++;
-    }
-
-    const leaveTypeObj = await LeaveType.findByPk(leaveTypeId, 
-        { attributes: ['name'] }
-    );
-    notifyRecipientsOfSubmission(request, employee, leaveTypeObj?.name || 'Leave').catch((err) =>
-        console.error('[leaveNotificationService] submission notification failed:', err.message)
-    ).finally(() => console.log("notifyRecipientsOfSubmission successful."));
-
-    return { request, estimatedWorkingDays: estimatedDays };
 }
 
 // ── APPROVE ──────────────────────────────────────────────────────────
@@ -356,6 +446,16 @@ export async function cancelLeaveRequest({ requestId, actor, reason }){
         if (!['PENDING', 'APPROVED'].includes(request.status)) {
             throw Object.assign(new Error(`Cannot cancel — request is already ${request.status}.`), { statusCode: 409 });
         }
+
+        // NEW: an approved leave whose entire range has already elapsed can't be cancelled — the days already happened. A no-op check for PENDING requests, since those can never have a past date_from in the first place (blocked at submission).
+        if (request.status === 'APPROVED' && request.date_to < todayISTDateOnly()) {
+            throw Object.assign(
+                new Error('Cannot cancel — this leave period has already ended.'),
+                { statusCode: 409 },
+            );
+        }
+
+
 
         const oldStatus = request.status; // captured BEFORE mutation, for an accurate audit record
 
