@@ -11,6 +11,7 @@ router.get('/requests/pending', leaveController.getPendingApprovals); // approve
 router.patch('/requests/:id/approve', leaveController.approveRequest);
 router.patch('/requests/:id/reject', leaveController.rejectRequest);
 router.patch('/requests/:id/cancel', leaveController.cancelRequest);
+router.get('/estimate', leaveController.getLeaveEstimate);
 
 
 export default router;
