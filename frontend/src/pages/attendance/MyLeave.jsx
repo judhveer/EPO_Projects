@@ -21,6 +21,8 @@ export default function MyLeave({ compact = false }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [estimate, setEstimate] = useState(null); // { workingDays, balance, sufficient } | null
+  const [estimateLoading, setEstimateLoading] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -41,6 +43,26 @@ export default function MyLeave({ compact = false }) {
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  // ── Live, debounced range check — fires once type + both dates are picked. Separate from the dropdown's static balance display below: this one is range-aware (Sunday/holiday-aware day count vs. balance), the dropdown check is a simple "is this type at 0."
+  useEffect(() => {
+    if (!form.leave_type_id || !form.date_from || !form.date_to) {
+      setEstimate(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setEstimateLoading(true);
+      try {
+        const { data } = await api.get('/api/leave/estimate', { params: form });
+        setEstimate(data);
+      } catch {
+        setEstimate(null);
+      } finally {
+        setEstimateLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [form.leave_type_id, form.date_from, form.date_to]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -72,6 +94,12 @@ export default function MyLeave({ compact = false }) {
     }
   };
 
+  const isCancellable = (r) => {
+    if (!['PENDING', 'APPROVED'].includes(r.status)) return false;
+    if (r.status === 'APPROVED' && r.date_to < DateTime.now().setZone(ZONE).toISODate()) return false;
+    return true;
+  };
+
   if (loading) return <div className="p-8 text-center text-gray-500">Loading…</div>;
 
   return (
@@ -100,14 +128,26 @@ export default function MyLeave({ compact = false }) {
       <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow p-5 space-y-3">
         <h2 className="font-semibold text-gray-700">Request Leave</h2>
         <div className="grid sm:grid-cols-2 gap-3">
+
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Leave Type</label>
             <select value={form.leave_type_id} onChange={(e) => setForm((f) => ({ ...f, leave_type_id: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm" required>
               <option value="">Select…</option>
-              {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {types.map((t) => {
+                const b = balances.find((bal) => bal.leave_type_id === t.id);
+                const bal = b?.balance ?? 0;
+                const insufficient = bal < 1;
+                return (
+                  <option key={t.id} value={t.id} disabled={insufficient}>
+                    {t.name} {b ? `(${bal} remaining)` : '(not allocated)'}
+                    {insufficient ? ' — unavailable' : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
+
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
@@ -120,13 +160,33 @@ export default function MyLeave({ compact = false }) {
                 className="w-full border rounded-lg px-3 py-2 text-sm" required />
             </div>
           </div>
+
+        {estimateLoading && (
+          <p className="text-xs text-gray-400">Checking balance…</p>
+        )}
+        {estimate && !estimateLoading && (
+          <div className={`text-xs px-3 py-2 rounded-lg border ${
+            estimate.sufficient
+              ? 'bg-green-50 border-green-200 text-green-700'
+              : 'bg-red-50 border-red-200 text-red-700'
+          }`}>
+            This request needs <strong>{estimate.workingDays}</strong> working day(s) (Sundays and holidays excluded).
+            {estimate.pendingCommitted > 0 ? (
+              <> You have <strong>{estimate.balance}</strong> total, but <strong>{estimate.pendingCommitted}</strong> day(s) are already committed to another pending request — <strong>{estimate.effectiveAvailable}</strong> actually available.</>
+            ) : (
+              <> You have <strong>{estimate.effectiveAvailable}</strong> available.</>
+            )}
+            {!estimate.sufficient && ' Not enough balance for this range.'}
+          </div>
+        )}
+
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Reason</label>
           <textarea value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
             rows={2} className="w-full border rounded-lg px-3 py-2 text-sm" />
         </div>
-        <button type="submit" disabled={submitting}
+        <button type="submit" disabled={submitting || (estimate && !estimate.sufficient)}
           className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50">
           {submitting ? 'Submitting…' : 'Submit Request'}
         </button>
@@ -150,9 +210,16 @@ export default function MyLeave({ compact = false }) {
               </div>
               <div className="flex items-center gap-2">
                 <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_STYLES[r.status]}`}>{r.status}</span>
-                {['PENDING', 'APPROVED'].includes(r.status) && (
+                {isCancellable(r) ? (
                   <button onClick={() => handleCancel(r.id)} className="text-xs text-red-600 hover:underline">Cancel</button>
+                ) : (
+                  r.status === 'APPROVED' && r.date_to < DateTime.now().setZone(ZONE).toISODate() && (
+                    <span className="text-xs text-gray-400 cursor-not-allowed" title="This leave period has already ended">
+                      Cancel
+                    </span>
+                  )
                 )}
+
               </div>
             </div>
           ))}
