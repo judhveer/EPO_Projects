@@ -45,10 +45,12 @@ import taskRoutes from './routes/taskBot/taskRoutes.js';
 import taskBot from './controllers/taskbotController/bot.js';
 
 
-// Add to imports, near the other job imports:
+// JOB IMPORTS:
 import { startLeaveAllocationJob } from './jobs/attendance/scheduleLeaveAllocationJob.js';
 import { startAttendanceResolutionJob } from './jobs/attendance/scheduleAttendanceResolutionJob.js';
 import { startAttendanceReminderJob } from "./jobs/attendance/scheduleAttendanceReminderJob.js"
+import { startCheckoutReminderJob } from './jobs/attendance/scheduleCheckoutReminderJob.js';
+
 
 
 //Taskbot jobs
@@ -317,6 +319,7 @@ export async function init() {
     startLeaveAllocationJob();
     startAttendanceResolutionJob(); 
     startAttendanceReminderJob();
+    startCheckoutReminderJob();
   }
   catch (err) {
     console.error("Failed to initialize application:", err);
