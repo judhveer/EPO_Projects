@@ -23,6 +23,7 @@ import HolidayModel from "./attendanceModels/holiday.model.js";
 import HolidayApplicabilityModel from "./attendanceModels/holidayApplicability.model.js";
 import AuditLogModel from "./attendanceModels/auditLog.model.js";
 import AttendanceReminderLogModel from "./attendanceModels/attendanceReminderLog.model.js";
+import CheckoutReminderLogModel from "./attendanceModels/checkoutReminderLog.model.js";
 
 // TaskBot
 import DoerModel from "./telegramTaskbotModels/Doer.model.js";
@@ -78,6 +79,7 @@ const Holiday = HolidayModel(sequelize);
 const HolidayApplicability = HolidayApplicabilityModel(sequelize);
 const AuditLog = AuditLogModel(sequelize);
 const AttendanceReminderLog = AttendanceReminderLogModel(sequelize);
+const CheckoutReminderLog = CheckoutReminderLogModel(sequelize);
 
 // TaskBot Models
 const Doer = DoerModel(sequelize);
@@ -256,6 +258,7 @@ export default {
   HolidayApplicability,
   AuditLog,
   AttendanceReminderLog,
+  CheckoutReminderLog,
 
   TelegramUser,
   Doer,
