@@ -80,50 +80,53 @@ export default (sequelize) => {
     },
 
 
-    // name: {
-    //   type: DataTypes.STRING,
-    //   allowNull: false
-    // },
-    // action: {
-    //   type: DataTypes.STRING,
-    //   allowNull: false,
-    //   validate: {
-    //     isIn: [['IN', 'OUT']],
-    //   }
-    // },
-    // location: {
-    //   type: DataTypes.STRING,
-    //   allowNull: true
-    // },
-    // check_in_time: {
-    //   type: DataTypes.STRING,
-    //   allowNull: false
-    // },
-    // check_out_time: {
-    //   type: DataTypes.STRING,
-    //   allowNull: true
-    // },
-    // shift_time: {
-    //   type: DataTypes.STRING,
-    //   allowNull: true
-    // },
-    // photo_url: {
-    //   type: DataTypes.STRING,
-    //   allowNull: true
-    // },
-    // date: {
-    //   type: DataTypes.STRING,
-    //   allowNull: true
-    // },
-    // status: {
-    //   // type: DataTypes.STRING, // 'PRESENT', 'LATE', 'ABSENT'
-    //   type: DataTypes.ENUM('PRESENT', 'LATE', 'ABSENT'),
-    //   allowNull: true
-    // },
-    // late_minutes: {
-    //   type: DataTypes.STRING,
-    //   allowNull: true
-    // }
+    // ── Location captured at check-in ─────────────────────────────────
+    // All nullable, on purpose. Three-state meaning for *_offsite:
+    //   null  = no location was captured (older rows, or a system-generated event like auto-checkout) false = within range of an office true  = off-site DECIMAL(10,7) = about 1cm of coordinate precision.
+    check_in_lat: { 
+      type: DataTypes.DECIMAL(10, 7), 
+      allowNull: true 
+    },
+    check_in_lng: { 
+      type: DataTypes.DECIMAL(10, 7), 
+      allowNull: true 
+    },
+    // The phone's own confidence radius in metres, e.g. "±18m". Stored on every reading so a reviewer can judge how far to trust it.
+    check_in_accuracy_m: { 
+      type: DataTypes.DECIMAL(8, 2), 
+      allowNull: true 
+    },
+    // Office name ("EPO"/"MM") when on-site, resolved address text when off-site. Stored at write time, not derived later, so changing office coordinates in future can't silently rewrite history.
+    check_in_location_label: { 
+      type: DataTypes.STRING(255), 
+      allowNull: true 
+    },
+    check_in_offsite: { 
+      type: DataTypes.BOOLEAN, 
+      allowNull: true 
+    },
+    // ── Location captured at check-out (same shape) ───────────────────
+    check_out_lat: { 
+      type: DataTypes.DECIMAL(10, 7), 
+      allowNull: true 
+    },
+    check_out_lng: { 
+      type: DataTypes.DECIMAL(10, 7), 
+      allowNull: true 
+    },
+    check_out_accuracy_m: { 
+      type: DataTypes.DECIMAL(8, 2), 
+      allowNull: true
+    },
+    check_out_location_label: { 
+      type: DataTypes.STRING(255), 
+      allowNull: true 
+    },
+    check_out_offsite: { 
+      type: DataTypes.BOOLEAN, 
+      allowNull: true 
+    },
+
   }, {
     tableName: 'attendance',
     underscored: true,
