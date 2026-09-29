@@ -51,6 +51,16 @@ export default (sequelize) => {
             defaultValue: 180,
             validate: { min: 0 },
         },
+        // Metres around each office within which a check-in/out counts as
+        // "at the office". Bounds are enforced in the service (clear error
+        // messages for the admin UI); the validate rule here is a second
+        // safety net at the database layer.
+        office_radius_meters: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 300,
+            validate: { min: 50, max: 1000 },
+        },
         // Lightweight trace of the last admin to change these values. Full before/after audit history is deferred to the AuditLog table (a later phase) — noted here explicitly, not silently dropped. This column alone is enough to answer "who touched this last" even before AuditLog exists.
         updated_by: {
             type: DataTypes.UUID,
