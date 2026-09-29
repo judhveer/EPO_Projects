@@ -1,8 +1,9 @@
-import models from "../../models/index.js";
+import models from '../../models/index.js';
 import { getCache, setCache, deleteCache, CACHE_KEYS, TTL } from '../../utils/cache.js';
 import { ATTENDANCE_SETTINGS_ID } from '../../models/attendanceModels/attendanceSettings.model.js';
+import { writeAuditLog } from './auditLogService.js';
 
-const { AttendanceSettings } = models;
+const { AttendanceSettings, sequelize } = models;
 
 // ── Read — cache-first, self-healing ────────────────────────────────
 // Never throws due to missing config. If the singleton row somehow
@@ -39,6 +40,7 @@ export async function updateAttendanceSettings(patch, updatedByUserId){
         'shift_start_hour', 'shift_start_minute',
         'grace_minutes', 'overtime_threshold_minutes',
         'reminder_delay_minutes',
+        'office_radius_meters',
     ];
 
     const updates = [];
@@ -46,6 +48,11 @@ export async function updateAttendanceSettings(patch, updatedByUserId){
     for (const field of allowedFields){
         if(patch[field] === undefined){
             continue;
+        }
+        // Number(null) and Number('') are both 0. Without this check, a
+        // blank input would silently save as 0 (e.g. a 0-minute grace period).
+        if (patch[field] === null || (typeof patch[field] === 'string' && patch[field].trim() === '')) {
+            throw new Error(`${field} cannot be blank`);
         }
         const value = Number(patch[field]);
         if (!Number.isFinite(value) || value < 0) {
@@ -66,18 +73,55 @@ export async function updateAttendanceSettings(patch, updatedByUserId){
         throw new Error('overtime_threshold_minutes must be at least 1');
     }
 
+    if (updates.office_radius_meters !== undefined) {
+        if (!Number.isInteger(updates.office_radius_meters) || updates.office_radius_meters < 50 || updates.office_radius_meters > 1000) {
+            throw new Error('Office radius meters must be a whole number between 50 and 1000');
+        }
+    }
+
     if(Object.keys(updates).length === 0){
         throw new Error('No valid fields provided to update');
     }
 
-    updates.updated_by = updatedByUserId;
+    // The settings change and its audit entry commit together. This is the control that decides what gets flagged, so a change must never be able to land without its trace.
+    const t = await sequelize.transaction();
+    let settings;
 
-    const [settings] = await AttendanceSettings.findOrCreate({
+    try{
+        [settings] = await AttendanceSettings.findOrCreate({
         where: { id: ATTENDANCE_SETTINGS_ID },
         defaults: { id: ATTENDANCE_SETTINGS_ID },
-    });
+        transaction: t,
+        });
 
-    await settings.update(updates);
+        // Log only fields whose value actually changed, so pressing Save with nothing edited doesn't create noise.
+        const oldValue = {};
+        const newValue = {};
+        for (const field of Object.keys(updates)) {
+            if (settings[field] !== updates[field]) {
+                oldValue[field] = settings[field];
+                newValue[field] = updates[field];
+            }
+        }
+        await settings.update({ ...updates, updated_by: updatedByUserId }, { transaction: t });
+        
+        if (Object.keys(newValue).length > 0) {
+            await writeAuditLog({
+                entityType: 'ATTENDANCE_SETTINGS',
+                entityId: ATTENDANCE_SETTINGS_ID,
+                action: 'UPDATED',
+                performedBy: updatedByUserId,
+                oldValue,
+                newValue,
+                transaction: t,
+            });
+        }
+
+        await t.commit();
+    }catch (err){
+        await t.rollback();
+        throw err;
+    }
 
     // Invalidate immediately — never serve a stale threshold after an explicit admin change, even for the few seconds a TTL would allow.
     await deleteCache(CACHE_KEYS.attendanceSettings);
@@ -85,3 +129,4 @@ export async function updateAttendanceSettings(patch, updatedByUserId){
     return settings.toJSON();
 
 }
+
