@@ -17,45 +17,54 @@ const { Attendance, User } = models;
 // ------------- LIST ATTENDANCE (with filters/pagination) -------------
 async function listAttendance(req, res) {
   try {
-    let { date, name, showLate, page = 1, limit = 50, month } = req.query;
+    let { date, name, showLate, page = 1, limit = 50, month, office, locationFilter } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
 
     const where = {};
     if (date) {
-      // where.date = (typeof date === 'string') ? date : toString(date);
       where.shift_date = date;
     }
     else if (month) {
       const { start, end } = monthRangeIST(month);
-      where.shift_date = { [Op.between]: [start, end] }; // ← was Op.like
+      where.shift_date = { [Op.between]: [start, end] };
     }
     else {
-      // Default: fetch today (IST)
-      // const nowIST = DateTime.now().setZone('Asia/Kolkata');
-      // const todayStr = getDateStringFromDate(nowIST);
-      // where.date = todayStr;
-
       where.shift_date = todayISTDateOnly();
     }
-
-
-    // if (name) {
-    //   where.name = { [Op.like]: `%${name.trim().toUpperCase()}%` };
-    // }
 
     if (showLate === 'true') {
       where.status = 'LATE';
     }
     else {
-      where.status = { [Op.ne]: 'ABSENT' };  // Exclude absents
+      where.status = { [Op.ne]: 'ABSENT' };
     }
 
-    // Only show action: 'IN' (one row per emp/date)
-    // where.action = 'IN';
+    // Employee's own office, snapshotted on the row at check-in time —
+    // see the model comment on Attendance.office. Filtering here
+    // instead of through the User join keeps this both faster and
+    // historically accurate if someone's assigned office ever changes.
+    if (office === 'EPO' || office === 'MM') {
+      where.office = office;
+    }
 
-    // Name search now filters on the joined User record, not a raw string column — this is the actual point of the whole rebuild: attendance is tied to a real account, not free text.
-    const employeeWhere = name 
+    // A row is flagged if EITHER its check-in or its check-out was
+    // off-site — either point is worth a look. "Missing" means a real
+    // check-in/out happened but no location was ever captured for it
+    // (every row from before this feature existed, or any future
+    // anomaly) — a different situation from off-site, so kept as a
+    // separate filter rather than folded into it.
+    if (locationFilter === 'offsite') {
+      where[Op.or] = [{ check_in_offsite: true }, { check_out_offsite: true }];
+    }
+    else if (locationFilter === 'missing') {
+      where[Op.or] = [
+        { [Op.and]: [{ check_in_time: { [Op.ne]: null } }, { check_in_lat: null }] },
+        { [Op.and]: [{ check_out_time: { [Op.ne]: null } }, { check_out_lat: null }] },
+      ];
+    }
+
+    const employeeWhere = name
       ? { username: { [Op.like]: `%${name.trim()}%` } }
       : undefined;
 
@@ -66,7 +75,7 @@ async function listAttendance(req, res) {
         as: "employee",
         attributes: ['id', 'username', 'office', 'department'],
         where: employeeWhere,
-        required: !!employeeWhere, // INNER JOIN only when actually filtering by name
+        required: !!employeeWhere,  // INNER JOIN only when actually filtering by name
       }],
       offset: (page - 1) * limit,
       limit,
@@ -153,18 +162,9 @@ async function absentList(req, res) {
     const shiftDate = req.query.date || todayISTDateOnly();
     const month = req.query.month || null;
     const name = req.query.name || null;
-
-
-    // const nowIST = DateTime.now().setZone('Asia/Kolkata');
-    // const date = req.query.date || getDateStringFromDate(nowIST);
-    // const month = req.query.month || null;
-    // const name = req.query.name || null;
+    const office = req.query.office || null;
 
     let where = { status: 'ABSENT' };
-
-    // if (name) {
-    //   where.name = { [Op.like]: `%${name.trim().toUpperCase()}%` };
-    // }
 
     if (month) {
       const { start, end } = monthRangeIST(month);
@@ -172,6 +172,10 @@ async function absentList(req, res) {
     }
     else {
       where.shift_date = shiftDate;
+    }
+
+    if (office === 'EPO' || office === 'MM') {
+      where.office = office;
     }
 
     const employeeWhere = name
