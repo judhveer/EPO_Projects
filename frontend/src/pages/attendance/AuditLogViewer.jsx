@@ -5,7 +5,7 @@ import api from '../../lib/api';
 const ZONE = 'Asia/Kolkata';
 const fmtDateTime = (d) => DateTime.fromISO(d, { zone: ZONE }).toFormat('dd LLL yyyy, hh:mm a');
 
-const ENTITY_TYPES = ['ATTENDANCE', 'LEAVE_REQUEST', 'LEAVE_LEDGER', 'LEAVE_ALLOCATION', 'HOLIDAY', 'USER'];
+const ENTITY_TYPES = ['ATTENDANCE', 'ATTENDANCE_SETTINGS', 'LEAVE_REQUEST', 'LEAVE_LEDGER', 'LEAVE_ALLOCATION', 'LEAVE_TYPE', 'LEAVE_POLICY', 'HOLIDAY', 'USER'];
 
 export default function AuditLogViewer() {
   const [entries, setEntries] = useState([]);
