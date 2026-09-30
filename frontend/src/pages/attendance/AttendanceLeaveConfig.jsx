@@ -150,6 +150,17 @@ export default function AttendanceLeaveConfig() {
               onChange={(e) => setSettings((s) => ({ ...s, reminder_delay_minutes: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm" />
           </div>
+
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Office Radius (metres, 50–1000)</label>
+            <input type="number" min="50" max="1000" value={settings.office_radius_meters}
+              onChange={(e) => setSettings((s) => ({ ...s, office_radius_meters: e.target.value }))}
+              className="w-full border rounded-lg px-3 py-2 text-sm" />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Check-ins within this distance of EPO or MM show the office name. Farther away, they're flagged as off-site.
+            </p>
+          </div>
+          
         </div>
         <button onClick={saveSettings} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold">
           Save Settings
