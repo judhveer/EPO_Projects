@@ -15,7 +15,7 @@ const AttendanceDashboard = () => {
         holidayCount: 0, weekOffCount: 0, leaveCount: 0,
     });
     const [absentEmployees, setAbsentEmployees] = useState([]);
-    const [filter, setFilter] = useState({ date: '', month: '', name: '', showLate: false });
+    const [filter, setFilter] = useState({ date: '', month: '', name: '', showLate: false, office: '', locationFilter: '' });
     const [loading, setLoading] = useState(true);
     const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 1 });
     const [overrideTarget, setOverrideTarget] = useState(null);
@@ -34,7 +34,7 @@ const AttendanceDashboard = () => {
             const summaryRes = await api.get('/api/attendance/summary', { params: { date: filter.date } });
             setSummary(summaryRes.data);
 
-            const absentRes = await api.get('/api/attendance/absent', { params: { date: filter.date, month: filter.month, name: filter.name } });
+            const absentRes = await api.get('/api/attendance/absent', { params: { date: filter.date, month: filter.month, name: filter.name, office: filter.office } });
             setAbsentEmployees(absentRes.data);
         } catch (error) {
             console.error('Error fetching data:', error);
