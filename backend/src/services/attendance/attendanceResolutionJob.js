@@ -12,7 +12,7 @@ const { User, sequelize } = models;
 // specific days, not an unbounded automatic backfill. This is a
 // practical operational choice, not an attempt to define how far
 // back this system's history "should" reach.
-const CATCHUP_WINDOW_DAYS = 7; // 7
+const CATCHUP_WINDOW_DAYS = 1; // 7
 
 export async function runAttendanceResolutionJob() {
   const today = DateTime.now().setZone(ZONE).startOf('day');
