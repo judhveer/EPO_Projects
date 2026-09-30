@@ -9,7 +9,7 @@ const ZONE = 'Asia/Kolkata';
 export function startMonthlyReportJob() {
   // Run on the 1st of every month at 08:00 IST, for the previous month
   // '0 8 1 * *'
-  cron.schedule('30 23 30 * *', async () => {
+  cron.schedule('2 0 1 * *', async () => {
     try {
       const now = DateTime.now().setZone(ZONE);
       console.log(`[MonthlyReport] Starting at ${now.toISO()}`);

@@ -9,7 +9,7 @@ const { ZONE } = week;
 export function startAccountantMonthlyReportJob() {
   // 1st of every month at 08:15 IST
 //   '15 8 1 * *'
-  cron.schedule('25 23 30 * *', async () => {
+  cron.schedule('1 0 1 * *', async () => {
     try {
       const now = DateTime.now().setZone(ZONE);
       console.log(`[AccountantMonthly] Starting at ${now.toISO()}`);
