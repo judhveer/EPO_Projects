@@ -3,6 +3,7 @@ import { DateTime } from 'luxon';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { Link } from 'react-router-dom';
+import { getCurrentLocation, LOCATION_ERROR_MESSAGES } from '../../utils/attendance/getCurrentLocation';
 
 const ZONE = 'Asia/Kolkata';
 
@@ -48,6 +49,7 @@ export default function MyAttendance({ compact = false }) {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionStage, setActionStage] = useState(null); // 'locating' | 'saving' | null
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [summary, setSummary] = useState(null);
@@ -72,35 +74,43 @@ export default function MyAttendance({ compact = false }) {
     api.get('/api/attendance/me/summary').then(({ data }) => setSummary(data)).catch(() => {});
   }, []);
 
-  const handleCheckIn = async () => {
-    setActionLoading(true);
-    setError('');
-    setMessage('');
-    try {
-      const { data } = await api.post('/api/attendance/check-in');
-      setMessage(data.message);
-      await fetchToday(); // re-fetch so status/late-flag reflect the confirmed DB state, not an optimistic guess
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to check in.');
-    } finally {
-      setActionLoading(false);
-    }
-  };
 
-  const handleCheckOut = async () => {
+   // Shared by check-in and check-out: get a FRESH location first
+  // (mandatory), and only then call the server.
+  const submitWithLocation = async (endpoint, failMessage) => {
     setActionLoading(true);
     setError('');
     setMessage('');
     try {
-      const { data } = await api.post('/api/attendance/check-out');
+      setActionStage('locating');
+      let location;
+      try {
+        location = await getCurrentLocation();
+      } catch (locErr) {
+        setError(LOCATION_ERROR_MESSAGES[locErr.kind] || LOCATION_ERROR_MESSAGES.UNKNOWN);
+        return; // nothing is sent to the server without a location
+      }
+
+      setActionStage('saving');
+      const { data } = await api.post(endpoint, location);
       setMessage(data.message);
       await fetchToday();
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to check out.');
+      const apiMessage = err.response?.data?.error || failMessage;
+      // The screen was out of date (an overnight shift is open): refresh
+      // FIRST so the right button shows. fetchToday clears the error, so
+      // the message is set after it.
+      if (['OVERNIGHT_SHIFT_OPEN', 'PREVIOUS_SHIFT_UNCLOSED'].includes(err.response?.data?.code)) await fetchToday();
+      setError(apiMessage);
     } finally {
       setActionLoading(false);
+      setActionStage(null);
     }
   };
+
+  const handleCheckIn = () => submitWithLocation('/api/attendance/check-in', 'Failed to check in.');
+  const handleCheckOut = () => submitWithLocation('/api/attendance/check-out', 'Failed to check out.');
+
 
   if (loading) {
     return <div className="p-8 text-center text-gray-500">Loading…</div>;
@@ -120,6 +130,7 @@ export default function MyAttendance({ compact = false }) {
   }
 
   const record = status?.attendance;
+  const blockedBy = status?.blockedBy;
   const hasCheckedIn = !!record?.check_in_time;
   const hasCheckedOut = !!record?.check_out_time;
   const todayLabel = DateTime.now().setZone(ZONE).toFormat('EEEE, dd LLLL yyyy');
@@ -167,8 +178,25 @@ export default function MyAttendance({ compact = false }) {
           </div>
         )}
 
+        {/* ── Earlier shift never closed: Check In is hidden ─────────── */}
+        {!hasCheckedIn && blockedBy && (
+          <div className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-5 text-left">
+            <p className="text-base font-bold text-amber-800">
+              ⏳ Your shift from {DateTime.fromISO(blockedBy.shift_date, { zone: ZONE }).toFormat('dd LLL')} was not checked out.
+            </p>
+            <p className="mt-2 text-sm text-amber-700">It will be closed automatically soon. Please check again in a few minutes.</p>
+            <p className="mt-1 text-sm text-amber-700">If this message does not go away, please tell HR.</p>
+            <button
+              onClick={fetchToday}
+              className="mt-4 px-6 py-3 rounded-full bg-amber-600 hover:bg-amber-700 text-white font-semibold active:scale-95 transition"
+            >
+              🔄 Check again
+            </button>
+          </div>
+        )}
+
         {/* ── Not checked in yet ─────────────────────────────────────── */}
-        {!hasCheckedIn && (
+        {!hasCheckedIn && !blockedBy && (
           <div className="mt-8">
             <p className="text-gray-500 mb-4">You haven't checked in today.</p>
             <button
@@ -176,8 +204,9 @@ export default function MyAttendance({ compact = false }) {
               disabled={actionLoading}
               className="px-8 py-4 rounded-full bg-green-600 hover:bg-green-700 text-white text-lg font-semibold shadow-lg disabled:opacity-50 transition active:scale-95"
             >
-              {actionLoading ? 'Checking in…' : '✅ Check In'}
+              {actionStage === 'locating' ? '📍 Getting location…' : actionStage === 'saving' ? 'Checking in…' : '✅ Check In'}
             </button>
+            <p className="mt-3 text-[11px] text-gray-400">📍 Your location is recorded when you check in / out.</p>
           </div>
         )}
 
@@ -193,6 +222,15 @@ export default function MyAttendance({ compact = false }) {
               )}
             </p>
 
+            {status?.overnight && (
+              <p className="mt-1 text-xs text-indigo-600">
+                Your shift started yesterday, {DateTime.fromISO(record.shift_date, { zone: ZONE }).toFormat('dd LLL')}.
+              </p>
+            )}
+            {record.check_in_location_label && (
+              <p className="mt-1 text-xs text-gray-500">📍 {record.check_in_location_label}</p>
+            )}
+
             <div className="mt-4 mb-6">
               <p className="text-xs text-gray-400 mb-1">Time elapsed</p>
               <LiveElapsed checkInTime={record.check_in_time} />
@@ -203,8 +241,9 @@ export default function MyAttendance({ compact = false }) {
               disabled={actionLoading}
               className="px-8 py-4 rounded-full bg-red-600 hover:bg-red-700 text-white text-lg font-semibold shadow-lg disabled:opacity-50 transition active:scale-95"
             >
-              {actionLoading ? 'Checking out…' : '🚪 Check Out'}
+              {actionStage === 'locating' ? '📍 Getting location…' : actionStage === 'saving' ? 'Checking out…' : '🚪 Check Out'}
             </button>
+            <p className="mt-3 text-[11px] text-gray-400">📍 Your location is recorded when you check in / out.</p>
           </div>
         )}
 
@@ -214,6 +253,12 @@ export default function MyAttendance({ compact = false }) {
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-100 text-green-800 font-medium">
               ✔ Day complete
             </div>
+
+            {record.shift_date !== DateTime.now().setZone(ZONE).toISODate() && (
+              <p className="mt-1 text-xs text-gray-400">
+                Shift of {DateTime.fromISO(record.shift_date, { zone: ZONE }).toFormat('dd LLL')} · You can check in again from 6:00 AM.
+              </p>
+            )}
 
             <div className="mt-4">
               <p className="text-xs text-gray-400 mb-1">Total Shift Time</p>
@@ -228,10 +273,12 @@ export default function MyAttendance({ compact = false }) {
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-gray-400 text-xs">Check-in</p>
                 <p className="font-semibold text-gray-700">{formatTime(record.check_in_time)}</p>
+                {record.check_in_location_label && <p className="text-[11px] text-gray-400 mt-1">📍 {record.check_in_location_label}</p>}
               </div>
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-gray-400 text-xs">Check-out</p>
                 <p className="font-semibold text-gray-700">{formatTime(record.check_out_time)}</p>
+                {record.check_out_location_label && <p className="text-[11px] text-gray-400 mt-1">📍 {record.check_out_location_label}</p>}
               </div>
             </div>
             {record.status === 'LATE' && (
