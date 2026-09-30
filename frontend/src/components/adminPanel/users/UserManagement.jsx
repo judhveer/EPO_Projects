@@ -8,6 +8,9 @@ import DeleteUserModal from "./DeleteUserModal.jsx";
 const fmt = (d) =>
   d ? DateTime.fromJSDate(new Date(d)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a") : "Never";
 
+const onlyDate = (d) => 
+  d ? DateTime.fromJSDate(new Date(d)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy") : "Not Set";
+
 
 // ── Inline toggle switch component ───────────────────────────────────
 // Kept here since it's only used in this table. Extract to a shared
@@ -210,6 +213,7 @@ export default function UserManagement() {
               <th className="border p-2 text-left">Department</th>
               <th className="border p-2 text-left">Office</th> 
               <th className="border p-2 text-center">Status</th>
+              <th className="border p-2 text-center">Joining Date</th>
               <th className="border p-2 text-left">Last Login</th>
               <th className="border p-2 text-center w-[220px]">Actions</th>
             </tr>
@@ -294,6 +298,8 @@ export default function UserManagement() {
                         )}
                       </div>
                     </td>
+
+                    <td className="border p-2 text-gray-600">{onlyDate(u.join_date)}</td>
 
                     {/* Last Login */}
                     <td className="border p-2 text-gray-600">{fmt(u.lastLoginAt)}</td>
