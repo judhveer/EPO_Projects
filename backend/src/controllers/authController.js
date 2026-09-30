@@ -14,6 +14,10 @@ import {
   LOGIN_LIMIT,
 } from "../middlewares/rateLimiter.js";
 
+import { OFFICES } from "../models/salesPipelineModels/User.model.js";
+
+
+
 const { User } = models;
 
 function sign(user) {
@@ -145,7 +149,7 @@ export async function createUser(req, res) {
       });
     }
 
-    const { email, username, role, department, password } = req.body;
+    const { email, username, role, department, password, office, join_date } = req.body;
 
     if (!username || !role || !department || !password) {
       return res.status(400).json({
@@ -162,6 +166,42 @@ export async function createUser(req, res) {
         status: false,
         data: null,
       });
+    }
+
+    // ── NEW: office/join_date required for everyone except BOSS ────────
+    // Mirrors User.model.js's enforceAttendanceFieldsPresent hook — the hook is the last line of defense, but validating here first means the admin gets a clean, specific 400 instead of a generic model-hook error surfacing as a 500.
+    if(role !== 'BOSS'){
+      if(!office){
+        return res.status(400).json({
+          message: "Office is required for all roles except BOSS.",
+          status: false,
+          data: null,
+        });
+      }
+
+      if(!OFFICES.includes(office)) {
+        return res.status(400).json({
+          message: `Office must be one of: ${OFFICES.join(", ")}`,
+          status: false,
+          data: null,
+        });
+      }
+
+      if(!join_date){
+        return res.status(400).json({
+          message: "Join date is required for all roles except BOSS.",
+          status: false,
+          data: null,
+        });
+      }
+
+      if(isNaN(new Date(join_date).getTime())){
+        return res.status(400).json({
+          message: "Join date is not a valid date.",
+          status: false,
+          data: null,
+        });
+      }
     }
 
     // Check email only if provided
@@ -196,6 +236,8 @@ export async function createUser(req, res) {
       username,
       role,
       department,
+      office: role === "BOSS" ? null : office,
+      join_date: role === "BOSS" ? null : join_date,
       createdBy: req.user.id,
       passwordHash: password,
     });
@@ -218,6 +260,8 @@ export async function createUser(req, res) {
         username: user.username,
         role: user.role,
         department: user.department,
+        office: user.office,
+        join_date: user.join_date,
       },
     });
 
@@ -256,6 +300,7 @@ export async function createUser(req, res) {
 
     /* ------------------------------------------------ */
   } catch (error) {
+    console.error("createUser error:", error);
     return res.status(500).json({
       message: error.message || "User creation failed",
       status: false,

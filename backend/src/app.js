@@ -32,6 +32,10 @@ import coordinatorRoutes from './routes/salesPipeline/coordinatorRoutes.js';
 
 // Attendance routes // Attendance imports
 import attendanceRoutes from './routes/attendance/attendance.js';
+import leaveRoutes from './routes/attendance/leave.js';
+import holidayRoutes from './routes/attendance/holiday.js';
+import leaveConfigRoutes from './routes/attendance/leaveConfig.js';
+import auditLogRoutes from './routes/attendance/auditLog.js';
 // import attendanceBot from "./utils/attendance/bot.js";
 
 
@@ -41,11 +45,13 @@ import taskRoutes from './routes/taskBot/taskRoutes.js';
 import taskBot from './controllers/taskbotController/bot.js';
 
 
-// Attendance jobs
-import { startWeeklyReportJob } from './jobs/attendance/scheduleWeeklyReport.js';
-import { startMonthlyReportJob } from './jobs/attendance/scheduleMonthlyReport.js';
-import { startAccountantMonthlyReportJob } from './jobs/attendance/scheduleAccountantMonthlyReport.js';
-import { AttendanceSyncAll } from './jobs/attendance/syncAllData.js';
+// JOB IMPORTS:
+import { startLeaveAllocationJob } from './jobs/attendance/scheduleLeaveAllocationJob.js';
+import { startAttendanceResolutionJob } from './jobs/attendance/scheduleAttendanceResolutionJob.js';
+import { startAttendanceReminderJob } from "./jobs/attendance/scheduleAttendanceReminderJob.js"
+import { startCheckoutReminderJob } from './jobs/attendance/scheduleCheckoutReminderJob.js';
+
+
 
 //Taskbot jobs
  import { startTaskReportJob } from "./jobs/taskbot/scheduleReports.js";
@@ -176,10 +182,18 @@ app.use('/api/sales/coordinator', authenticate, coordinatorRoutes);
 
 // Attendance route define
 app.use('/api/attendance',
-  // authenticate,
+  authenticate,
   // requirePermission('attendance.view'),
   attendanceRoutes
 );
+
+app.use('/api/leave', authenticate, leaveRoutes); 
+
+app.use('/api/holidays', authenticate, holidayRoutes);
+
+app.use('/api/leave-config', authenticate, leaveConfigRoutes);
+
+app.use('/api/audit-log', authenticate, auditLogRoutes);
 
 
 
@@ -301,12 +315,11 @@ export async function init() {
     // console.log("Task bot is running");
     // taskBotRunning = true;
 
-    startWeeklyReportJob();
-    startMonthlyReportJob();
-    startAccountantMonthlyReportJob();
-    AttendanceSyncAll();
     startTaskReportJob();
-
+    startLeaveAllocationJob();
+    startAttendanceResolutionJob(); 
+    startAttendanceReminderJob();
+    startCheckoutReminderJob();
   }
   catch (err) {
     console.error("Failed to initialize application:", err);

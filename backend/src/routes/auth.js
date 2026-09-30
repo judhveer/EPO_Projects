@@ -4,6 +4,7 @@ import authenticate from '../middlewares/authenticate.js';
 import { requireBossOrAdmin } from '../middlewares/authorize.js';
 import { login, createUser, me, getTelecallers, getExecutives } from '../controllers/authController.js';
 import { loginByIpLimiter } from "../middlewares/rateLimiter.js";
+import { OFFICES } from "../models/salesPipelineModels/User.model.js";
 
 const router = Router();
 
@@ -28,6 +29,8 @@ router.post(
     body('password').isStrongPassword({minLength: 8, minSymbols: 0}),
     body('role').isString(),
     body('department').isString(),
+    body('office').optional({ checkFalsy: true }).isIn(OFFICES),
+    body('join_date').optional({ checkFalsy: true }).isISO8601(),
     createUser
 );
 

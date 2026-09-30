@@ -8,16 +8,22 @@ const AbsentEmployees = ({ absentEmployees }) => (
                 <thead className="bg-gray-50">
                     <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Office</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                     {absentEmployees.length === 0 ? (
-                        <tr><td colSpan="2" className="px-6 py-4 text-center text-gray-500">No absent employees today</td></tr>
+                        <tr><td colSpan="4" className="px-6 py-4 text-center text-gray-500">No absent employees today</td></tr>
                     ) : absentEmployees.map((emp, idx) => (
                         <tr key={idx} className="hover:bg-gray-50">
                             <td className="px-6 py-4">{emp.name}</td>
+                            <td className="px-6 py-4">
+                                <span className="px-2 py-0.5 text-xs font-medium rounded bg-slate-100 text-slate-700">
+                                    {emp.office || '—'}
+                                </span>
+                            </td>
                             <td className="px-6 py-4">{emp.date}</td>
                             <td className="px-6 py-4">
                                 <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">{emp.status}</span>

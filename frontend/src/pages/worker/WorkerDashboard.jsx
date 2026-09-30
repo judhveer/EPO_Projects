@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import api from "../../lib/api.js";
 import { useAuth } from "../../context/AuthContext.jsx";
+import WorkerSwitcherHeader from "../../components/worker/WorkerSwitcherHeader.jsx"; // add to imports
 
 const STAGE_LABELS = {
   printing: "Printing",
@@ -173,20 +174,18 @@ export default function WorkerDashboard() {
   return (
     <div className="min-h-screen bg-gray-100">
       {/* ── Sticky header ── */}
-      <header className="bg-blue-700 text-white px-4 py-4 flex justify-between items-center shadow-md sticky top-0 z-10">
-        <div>
-          <h1 className="text-xl font-black tracking-tight">My Jobs</h1>
-          <p className="text-xs text-blue-200 mt-0.5">
-            Hello, <span className="font-semibold">{user?.username}</span>
-          </p>
-        </div>
-        <button
-          onClick={handleLogout}
-          className="text-xs bg-blue-600 hover:bg-blue-500 active:bg-blue-400 border border-blue-400 px-4 py-2 rounded-lg font-semibold transition"
-        >
-          Logout
-        </button>
-      </header>
+      <WorkerSwitcherHeader
+        title="My Jobs"
+        onBeforeLogout={() => {
+          const hasActiveWork = assignments.some((a) => a.status === "in_progress");
+          if (hasActiveWork) {
+            return window.confirm(
+              "A job is in progress.\n\nIf you log out now, it will be PAUSED automatically.\n\nLog out anyway?"
+            );
+          }
+          return true;
+        }}
+      />
 
       {/* ── Content ── */}
       <main className="p-4 max-w-lg mx-auto space-y-4 pb-10">
