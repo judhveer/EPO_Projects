@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react";
 import { setAuthToken, registerPauseOnLogout } from '../lib/api';
 import api from '../lib/api';
+import { warmLocationPermission } from "../utils/attendance/warmLocationPermission.js";
 
 import {
   registerPushNotifications,
@@ -91,6 +92,7 @@ export function AuthProvider({ children }) {
                 // Re-register push subscription on page refresh
                 // (the token is already in localStorage)
                 registerPushNotifications(localStorage.getItem('token')).catch(() => {});
+                warmLocationPermission(data.user); // fire-and-forget, never blocks boot
             }
             catch(error) {
                 setUser(null);
@@ -123,7 +125,8 @@ export function AuthProvider({ children }) {
         // Register for push notifications after login
         // Fire-and-forget — don't block login if this fails
         registerPushNotifications(data.token).catch(() => {});
-
+        warmLocationPermission(data.user); // fire-and-forget, never blocks login
+        
         return data.user;
     };
 
