@@ -85,10 +85,12 @@ export default function MyAttendance({ compact = false }) {
       setActionStage('locating');
       let location;
       try {
-        location = await getCurrentLocation();
+        location = await getCurrentLocation({
+          onRetry: () => setActionStage('locating-retry'),
+        });
       } catch (locErr) {
         setError(LOCATION_ERROR_MESSAGES[locErr.kind] || LOCATION_ERROR_MESSAGES.UNKNOWN);
-        return; // nothing is sent to the server without a location
+        return;
       }
 
       setActionStage('saving');
@@ -204,7 +206,7 @@ export default function MyAttendance({ compact = false }) {
               disabled={actionLoading}
               className="px-8 py-4 rounded-full bg-green-600 hover:bg-green-700 text-white text-lg font-semibold shadow-lg disabled:opacity-50 transition active:scale-95"
             >
-              {actionStage === 'locating' ? '📍 Getting location…' : actionStage === 'saving' ? 'Checking in…' : '✅ Check In'}
+              {actionStage === 'locating' ? '📍 Getting location…' : actionStage === 'locating-retry' ? '📍 Getting a better location…' : actionStage === 'saving' ? 'Checking in…' : '✅ Check In'}
             </button>
             <p className="mt-3 text-[11px] text-gray-400">📍 Your location is recorded when you check in / out.</p>
           </div>
@@ -241,7 +243,7 @@ export default function MyAttendance({ compact = false }) {
               disabled={actionLoading}
               className="px-8 py-4 rounded-full bg-red-600 hover:bg-red-700 text-white text-lg font-semibold shadow-lg disabled:opacity-50 transition active:scale-95"
             >
-              {actionStage === 'locating' ? '📍 Getting location…' : actionStage === 'saving' ? 'Checking out…' : '🚪 Check Out'}
+              {actionStage === 'locating' ? '📍 Getting location…' : actionStage === 'locating-retry' ? '📍 Getting a better location…' : actionStage === 'saving' ? 'Checking out…' : '🚪 Check Out'}
             </button>
             <p className="mt-3 text-[11px] text-gray-400">📍 Your location is recorded when you check in / out.</p>
           </div>
