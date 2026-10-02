@@ -21,6 +21,13 @@ function formatMinutes(mins) {
   return `${h}h ${m}m`;
 }
 
+function elapsedSinceCheckIn(checkInTime) {
+  const checkIn = DateTime.fromJSDate(new Date(checkInTime)).setZone(ZONE);
+  const totalSec = Math.max(0, Math.floor(DateTime.now().setZone(ZONE).diff(checkIn).toMillis() / 1000));
+  if (totalSec < 60) return `${totalSec} second${totalSec === 1 ? '' : 's'}`;
+  return formatMinutes(Math.round(totalSec / 60));
+}
+
 // ── Isolated live timer ──────────────────────────────────────────────
 // Ticks every second on its own — only THIS component re-renders,
 // never the parent page. Matches the exact pattern already established
@@ -53,6 +60,7 @@ export default function MyAttendance({ compact = false }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [summary, setSummary] = useState(null);
+  const [confirming, setConfirming] = useState(null); // 'checkin' | 'checkout' | null
 
   const fetchToday = useCallback(async () => {
     setLoading(true);
@@ -110,9 +118,18 @@ export default function MyAttendance({ compact = false }) {
     }
   };
 
-  const handleCheckIn = () => submitWithLocation('/api/attendance/check-in', 'Failed to check in.');
-  const handleCheckOut = () => submitWithLocation('/api/attendance/check-out', 'Failed to check out.');
+  // const handleCheckIn = () => submitWithLocation('/api/attendance/check-in', 'Failed to check in.');
+  // const handleCheckOut = () => submitWithLocation('/api/attendance/check-out', 'Failed to check out.');
 
+  const handleCheckIn = () => setConfirming('checkin');
+  const handleCheckOut = () => setConfirming('checkout');
+
+  const confirmAction = () => {
+    const action = confirming;
+    setConfirming(null);
+    if (action === 'checkin') submitWithLocation('/api/attendance/check-in', 'Failed to check in.');
+    if (action === 'checkout') submitWithLocation('/api/attendance/check-out', 'Failed to check out.');
+  };
 
   if (loading) {
     return <div className="p-8 text-center text-gray-500">Loading…</div>;
@@ -198,7 +215,7 @@ export default function MyAttendance({ compact = false }) {
         )}
 
         {/* ── Not checked in yet ─────────────────────────────────────── */}
-        {!hasCheckedIn && !blockedBy && (
+        {!hasCheckedIn && !blockedBy && !confirming && (
           <div className="mt-8">
             <p className="text-gray-500 mb-4">You haven't checked in today.</p>
             <button
@@ -213,7 +230,7 @@ export default function MyAttendance({ compact = false }) {
         )}
 
         {/* ── Checked in, still working ─────────────────────────────── */}
-        {hasCheckedIn && !hasCheckedOut && (
+        {hasCheckedIn && !hasCheckedOut && !confirming && (
           <div className="mt-6">
             <p className="text-sm text-gray-500">
               Checked in at <span className="font-semibold text-gray-700">{formatTime(record.check_in_time)}</span>
@@ -292,6 +309,44 @@ export default function MyAttendance({ compact = false }) {
           </div>
         )}
       </div>
+
+        {/* ── Confirm before acting — catches an accidental tap ──────── */}
+        {confirming && (
+          <div className="mt-8 rounded-xl border-2 border-blue-200 bg-blue-50 p-6 text-center">
+            {confirming === 'checkin' ? (
+              <>
+                <p className="text-4xl mb-2">✅</p>
+                <p className="text-lg font-bold text-gray-800">Check in now?</p>
+                <p className="mt-1 text-sm text-gray-500">{DateTime.now().setZone(ZONE).toFormat('hh:mm a')}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-4xl mb-2">🚪</p>
+                <p className="text-lg font-bold text-gray-800">Check out now?</p>
+                <p className="mt-1 text-sm text-gray-600">
+                  You've been checked in for <span className="font-semibold">{elapsedSinceCheckIn(record.check_in_time)}</span>.
+                </p>
+              </>
+            )}
+
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => setConfirming(null)}
+                className="flex-1 px-6 py-4 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 text-lg font-semibold active:scale-95 transition"
+              >
+                ❌ No, go back
+              </button>
+              <button
+                onClick={confirmAction}
+                className={`flex-1 px-6 py-4 rounded-full text-white text-lg font-semibold active:scale-95 transition ${
+                  confirming === 'checkin' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                {confirming === 'checkin' ? '✅ Yes, Check In' : '🚪 Yes, Check Out'}
+              </button>
+            </div>
+          </div>
+        )}
     </div>
   );
 }
