@@ -63,6 +63,7 @@ export default function ProductionTable() {
   const [limit, setLimit] = useState(50);
   const [totalJobs, setTotalJobs] = useState(0);
   const [stageFilter, setStageFilter] = useState("");
+  const [downloadingJobs, setDownloadingJobs] = useState(new Set());
 
   const resetPage = () => setPage(1);
 
@@ -95,6 +96,11 @@ export default function ProductionTable() {
 
 
   const handleDownloadCard = useCallback(async (job) => {
+    // Ignore repeat double-clicks while this job's card is already downloading
+    if (downloadingJobs.has(job.job_no)) return;
+
+    setDownloadingJobs((prev) => new Set(prev).add(job.job_no));
+
     try {
       const response = await api.get(
         `/api/fms/jobcards/${job.job_no}/download-card`,
@@ -114,7 +120,15 @@ export default function ProductionTable() {
       console.error("Download failed:", err);
       alert(`Failed to download job card for Job #${job.job_no}`);
     }
-  }, []);
+    finally {
+      // Always clear the loading state, on success or failure
+      setDownloadingJobs((prev) => {
+        const next = new Set(prev);
+        next.delete(job.job_no);
+        return next;
+      });
+    }
+  }, [downloadingJobs]);
 
   const totalPages = totalJobs > 0 ? Math.ceil(totalJobs / limit) : 1;
 
@@ -142,8 +156,8 @@ export default function ProductionTable() {
   // reads changes, and this effect just reacts to that. Don't reintroduce
   // a second effect with its own hand-maintained dependency list — that's
   // exactly what caused stageFilter changes to silently stop refetching.
-  useEffect(() => { 
-    fetchJobs(); 
+  useEffect(() => {
+    fetchJobs();
   }, [fetchJobs]);
 
   useEffect(() => {
@@ -234,7 +248,7 @@ export default function ProductionTable() {
           </button>
 
         </div>
-        
+
         <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full">
           <span className="text-xs text-blue-700 font-medium">Total Jobs</span>
           <span className="text-sm font-bold text-blue-800">{totalJobs}</span>
@@ -246,11 +260,10 @@ export default function ProductionTable() {
           <button
             key={p.value}
             onClick={() => { setStageFilter(p.value); setPage(1); }}
-            className={`px-3 py-1 rounded-full text-xs font-medium border transition ${
-              stageFilter === p.value
+            className={`px-3 py-1 rounded-full text-xs font-medium border transition ${stageFilter === p.value
                 ? "bg-blue-600 text-white border-blue-600"
                 : "bg-white text-gray-700 border-gray-300 hover:bg-blue-50"
-            }`}
+              }`}
           >
             {p.label}
           </button>
@@ -294,20 +307,35 @@ export default function ProductionTable() {
             ) : jobs.length > 0 ? (
               jobs.map((job, index) => (
                 <tr key={job.job_no}
-                  className={`group border-b transition-all duration-200 ${
-                    index % 2 === 0 ? "bg-white" : "bg-slate-300"
-                  } hover:bg-blue-500 hover:text-white`}
+                  className={`group border-b transition-all duration-200 ${index % 2 === 0 ? "bg-white" : "bg-slate-300"
+                    } hover:bg-blue-500 hover:text-white`}
                 >
                   <td
-                    className={`border p-2 sticky left-0 z-20 text-center font-bold cursor-pointer hover:underline ${
-                      job.execution_location === "Out-Bound"
+                    className={`border p-2 sticky left-0 z-20 text-center font-bold select-none ${downloadingJobs.has(job.job_no)
+                        ? "cursor-wait"
+                        : "cursor-pointer hover:underline"
+                      } ${job.execution_location === "Out-Bound"
                         ? "bg-blue-900 text-yellow-300"
                         : "bg-white text-blue-700"
-                    }`}
+                      }`}
                     onDoubleClick={() => handleDownloadCard(job)}
-                    title="Double-click to download job card"
+                    title={
+                      downloadingJobs.has(job.job_no)
+                        ? "Downloading job card…"
+                        : "Double-click to download job card"
+                    }
                   >
-                    {job.job_no} 
+                    {downloadingJobs.has(job.job_no) ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
+                        <span className="text-[9px] font-medium leading-none opacity-80">
+                          Downloading…
+                        </span>
+                      </div>
+                    ) : (
+                      job.job_no
+                    )}
+
                     {job.execution_location === "Out-Bound" && (
                       <div className="m-1 text-[9px] text-yellow-300">OutBound</div>
                     )}
@@ -344,11 +372,10 @@ export default function ProductionTable() {
                               <span className="shrink-0">🚚</span>
                               <span className="font-semibold text-blue-700">Out for Delivery</span>
                               <span
-                                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${
-                                  allConfirmed
+                                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${allConfirmed
                                     ? "bg-green-100 text-green-700"
                                     : "bg-orange-100 text-orange-700"
-                                }`}
+                                  }`}
                               >
                                 {allConfirmed ? "All confirmed ✓" : `${done}/${total} confirmed`}
                               </span>
@@ -365,8 +392,8 @@ export default function ProductionTable() {
 
                       const activeStages = stageFilter
                         ? STAGE_DISPLAY_ORDER.filter(
-                            (s) => s === stageFilter && stageMap[s]
-                          )
+                          (s) => s === stageFilter && stageMap[s]
+                        )
                         : STAGE_DISPLAY_ORDER.filter((s) => stageMap[s]);
 
                       if (activeStages.length === 0) {
@@ -393,9 +420,8 @@ export default function ProductionTable() {
                                 <div className="flex items-center gap-1 flex-wrap mb-0.5">
                                   <span className="shrink-0">{STAGE_ICON[s]}</span>
                                   <span
-                                    className={`font-semibold capitalize ${
-                                      isCurrent ? "text-blue-700" : "text-gray-400"
-                                    }`}
+                                    className={`font-semibold capitalize ${isCurrent ? "text-blue-700" : "text-gray-400"
+                                      }`}
                                   >
                                     {s.replace(/_/g, " ")}
                                   </span>
@@ -403,28 +429,26 @@ export default function ProductionTable() {
                                   {/* Pill shown only for current active stage */}
                                   {isCurrent && info.total > 0 && (
                                     <span
-                                      className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${
-                                        allDone
+                                      className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${allDone
                                           ? "bg-green-100 text-green-700"
                                           : noneStarted
-                                          ? "bg-gray-100 text-gray-500"
-                                          : "bg-orange-100 text-orange-700"
-                                      }`}
+                                            ? "bg-gray-100 text-gray-500"
+                                            : "bg-orange-100 text-orange-700"
+                                        }`}
                                     >
                                       {allDone
                                         ? "All done ✓"
                                         : noneStarted
-                                        ? "Not started"
-                                        : `${info.done}/${info.total} done`}
+                                          ? "Not started"
+                                          : `${info.done}/${info.total} done`}
                                     </span>
                                   )}
                                 </div>
 
                                 {info.names.length > 0 && (
                                   <div
-                                    className={`pl-4 text-[11px] leading-snug ${
-                                      isCurrent ? "text-gray-700" : "text-gray-400"
-                                    }`}
+                                    className={`pl-4 text-[11px] leading-snug ${isCurrent ? "text-gray-700" : "text-gray-400"
+                                      }`}
                                   >
                                     {info.names.join(", ")}
                                   </div>
@@ -467,9 +491,8 @@ export default function ProductionTable() {
                   </td>
                   <td className="border p-2"><StageChip value={job.status} /></td>
                   <td className="border p-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                      job.task_priority === "Urgent" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                    }`}>
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${job.task_priority === "Urgent" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+                      }`}>
                       {job.task_priority}
                     </span>
                   </td>
