@@ -93,6 +93,29 @@ export default function ProductionTable() {
     setDebouncedSearch(""); // clear instantly instead of waiting for the 300ms debounce
   };
 
+
+  const handleDownloadCard = useCallback(async (job) => {
+    try {
+      const response = await api.get(
+        `/api/fms/jobcards/${job.job_no}/download-card`,
+        { responseType: "blob" }
+      );
+      const url = URL.createObjectURL(
+        new Blob([response.data], { type: "application/pdf" })
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `JobCard_${job.job_no}_${job.client_name.replace(/\s/g, "_")}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed:", err);
+      alert(`Failed to download job card for Job #${job.job_no}`);
+    }
+  }, []);
+
   const totalPages = totalJobs > 0 ? Math.ceil(totalJobs / limit) : 1;
 
   const fetchJobs = useCallback(async () => {
@@ -271,8 +294,25 @@ export default function ProductionTable() {
             ) : jobs.length > 0 ? (
               jobs.map((job, index) => (
                 <tr key={job.job_no}
-                  className={`group border-b ${index % 2 === 0 ? "bg-white" : "bg-slate-100"} hover:bg-blue-50`}>
-                  <td className="border p-2 sticky left-0 group-hover:bg-blue-50 bg-inherit z-20 text-center font-bold text-blue-700">{job.job_no}</td>
+                  className={`group border-b transition-all duration-200 ${
+                    index % 2 === 0 ? "bg-white" : "bg-slate-300"
+                  } hover:bg-blue-500 hover:text-white`}
+                >
+                  <td
+                    className={`border p-2 sticky left-0 z-20 text-center font-bold cursor-pointer hover:underline ${
+                      job.execution_location === "Out-Bound"
+                        ? "bg-blue-900 text-yellow-300"
+                        : "bg-white text-blue-700"
+                    }`}
+                    onDoubleClick={() => handleDownloadCard(job)}
+                    title="Double-click to download job card"
+                  >
+                    {job.job_no} 
+                    {job.execution_location === "Out-Bound" && (
+                      <div className="m-1 text-[9px] text-yellow-300">OutBound</div>
+                    )}
+                  </td>
+
                   <td className="border p-2">
                     <StageChip
                       value={job.production_stage}
