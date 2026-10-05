@@ -37,12 +37,43 @@ const buildWhereClause = (query) => {
 
   if (status) {
     if (productionStages.includes(status)) {
+      // A specific production sub-stage (printing, binding, etc.)
       where.status = "in_production";
       where.production_stage = status;
+
+    } else if (status === "in_mm") {
+      // All jobs currently in the MM building — ready for or actively in production.
+      // Cancelled excluded per requirement.
+      where.status = { [Op.in]: ["ready_for_production", "in_production"] };
+
+    } else if (status === "in_epo") {
+      // All jobs still inside EPO office — design and approval stages only.
+      // Cancelled excluded per requirement.
+      where.status = {
+        [Op.in]: [
+          "coordinator_review",
+          "assigned_to_designer",
+          "design_in_progress",
+          "sent_for_approval",
+          "awaiting_client_response",
+          "client_changes",
+        ],
+      };
+
+    } else if (status === "not_delivered") {
+      // Every active job that has not yet reached delivery or completion.
+      // Cancelled explicitly excluded — these are jobs still needing action.
+      where.status = {
+        [Op.notIn]: ["delivered", "completed", "cancelled"],
+      };
+
     } else {
+      // Any single specific status value (the existing behaviour)
       where.status = status;
     }
   }
+
+
   if (order_type) where.order_type = order_type;
   if (order_handled_by) where.order_handled_by = order_handled_by;
   if (execution_location) where.execution_location = execution_location;
