@@ -94,14 +94,26 @@ export default function DashboardFilters({ filters, setFilters, resetPage, crmUs
         className="border rounded px-2 py-1 text-xs"
       >
         <option value="">Stage</option>
-        <option value="assigned_to_designer">Assigned To Designer</option>
-        <option value="design_in_progress">Design In Progress</option>
-        <option value="sent_for_approval">Sent for Approval</option>
-        <option value="awaiting_client_response">Awaiting Client</option>
-        <option value="client_changes">Client Changes</option>
-        <option value="ready_for_production">Ready For Production</option>
-        {/* <option value="in_production">Production</option> */}
-        <optgroup label="Production">
+          {/* ── Grouped views ─── */}
+        <optgroup label="Quick Views">
+          <option value="not_delivered">Not Delivered</option>
+          <option value="in_epo">In EPO</option>
+          <option value="in_mm">In MM</option>
+        </optgroup>
+
+          {/* ── EPO stages ──── */}
+        <optgroup label="EPO Stages">
+          <option value="coordinator_review">Coordinator Review</option>
+          <option value="assigned_to_designer">Assigned To Designer</option>
+          <option value="design_in_progress">Design In Progress</option>
+          <option value="sent_for_approval">Sent for Approval</option>
+          <option value="awaiting_client_response">Awaiting Client</option>
+          <option value="client_changes">Client Changes</option>
+        </optgroup>
+
+        {/* ── MM / Production stages ── */}
+        <optgroup label="MM Stages">
+          <option value="ready_for_production">Ready For Production</option>
           <option value="printing">Printing</option>
           <option value="binding">Binding</option>
           <option value="quality_check">Quality Check</option>
@@ -109,10 +121,15 @@ export default function DashboardFilters({ filters, setFilters, resetPage, crmUs
           <option value="ready_to_dispatch">Ready To Dispatch</option>
           <option value="out_for_delivery">Out For Delivery</option>
         </optgroup>
-        <option value="delivered">Delivered</option>
-        <option value="completed">Completed</option>
-        <option value="cancelled">Cancelled</option>
+        
+        {/* ── Final stages --- */}
+        <optgroup label="Final">
+          <option value="delivered">Delivered</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+        </optgroup>
       </select>
+
 
       {/* DIRECT TO PRODUCTION */}
       <select
