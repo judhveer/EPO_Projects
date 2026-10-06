@@ -5,7 +5,7 @@ import models from "../models/index.js";
 import { sendMailForCreateUser } from "../email/sendMail.js";
 import { userCreatedEmail } from "../email/templates/emailTemplates.js";
 import path from "path";
-import { deleteCache, delCachePattern, CACHE_KEYS, CACHE_PATTERNS } from "../utils/cache.js";
+import { deleteCache, CACHE_KEYS } from "../utils/cache.js";
 import {
   getLoginAttemptInfo,
   incrementLoginFailure,
@@ -249,7 +249,6 @@ export async function createUser(req, res) {
       CACHE_KEYS.nonBossUsers,
       CACHE_KEYS.crmUsers,
     );
-    await delCachePattern(CACHE_PATTERNS.allWorkersDept);
 
     res.status(201).json({
       message: "User created successfully",
