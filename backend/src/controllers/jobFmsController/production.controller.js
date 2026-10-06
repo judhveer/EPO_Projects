@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 
 import { uploadChallanToDrive, uploadMaterialPhotoToDrive } from "../../utils/jobFms/googleDriveUpload.js"
 import { sendPushToUser, sendPushToDepartment } from "../../utils/pushNotification.js";
+import { assertWorkersCheckedIn } from "../../utils/jobFms/workerAttendance.js";
 
 
 
@@ -363,18 +364,25 @@ export const advanceProductionStage = async (req, res) => {
           );
         }
       } else {
-        // Delivery stage: must be "Delivery" department
+        // Delivery stage: "Delivery" department OR "Production Worker".
+        // Production Workers keep their department — this only lets them
+        // be picked for a delivery assignment.
         const wrongDept = selectedWorkers.find(
-          (w) => w.department !== "Delivery"
+          (w) => !["Delivery", "Production Worker"].includes(w.department)
         );
         if (wrongDept) {
           throw Object.assign(
-            new Error(`User "${wrongDept.username}" is not a Delivery worker.`),
+            new Error(
+              `User "${wrongDept.username}" cannot be assigned a delivery.`
+            ),
             { statusCode: 400 }
           );
         }
-        // Delivery workers must have email for the challan upload link
-        const noEmail = selectedWorkers.find((w) => !w.email);
+        // Only Delivery-department workers receive the challan link by
+        // email. Production Workers use their dashboard, so no email needed.
+        const noEmail = selectedWorkers.find(
+          (w) => w.department === "Delivery" && !w.email
+        );
         if (noEmail) {
           throw Object.assign(
             new Error(
@@ -384,7 +392,14 @@ export const advanceProductionStage = async (req, res) => {
           );
         }
       }
+
+      // Every NEW assignment must go to a worker who is checked in now.
+      // Existing assignments are never touched by this check.
+      await assertWorkersCheckedIn(selectedWorkers, t);
     }
+
+
+
 
     let autoForcedCount = 0;
     // CHANGED: Auto force-complete any remaining incomplete worker assignments
@@ -506,7 +521,7 @@ export const advanceProductionStage = async (req, res) => {
           job_no,
           worker_id: w.id,
           worker_name: w.username,   // CHANGED: was worker_code-name
-          worker_email: w.email,
+          worker_email: w.email || null,
           upload_token: uuidv4(),
           token_expires_at: expiresAt,
           status: "pending",
@@ -555,6 +570,9 @@ export const advanceProductionStage = async (req, res) => {
       for (const assignment of assignments) {
         const worker = selectedWorkers.find((w) => w.id === assignment.worker_id);
         if (!worker) continue;
+        
+        // Production Workers get a push + dashboard card instead (below)
+        if (worker.department !== "Delivery") continue;
 
         const uploadLink = `${frontendUrl}/delivery/confirm/${assignment.upload_token}`;
         const expiryStr = new Date(
@@ -606,8 +624,45 @@ export const advanceProductionStage = async (req, res) => {
           });
       }
 
+      // Push to EVERY assigned worker so they notice without refreshing.
+      // Delivery workers get it in addition to their email; Production
+      // Workers get it instead of one. Each is sent to their own dashboard.
+      // Fire-and-forget — never blocks the response.
+      selectedWorkers.forEach((w) => {
+        sendPushToUser(w.id, {
+          title: "New Delivery Assigned",
+          body: `Job #${job_no} · ${job.client_name} | For Delivery`,
+          icon: "/favicon.png",
+          vibrate: [1000, 200, 1000, 200, 1000],
+          requireInteraction: true,
+          data: {
+            url: w.department === "Delivery" ? "/delivery-dashboard" : "/worker",
+            tag: `job-${job_no}-delivery`,
+          },
+        }).catch((err) =>
+          console.warn(
+            `Push failed for delivery assignment to ${w.username} (job ${job_no}):`,
+            err.message
+          )
+        );
+      });
+
+      const productionDeliveryWorkers = selectedWorkers.filter(
+        (w) => w.department === "Production Worker"
+      );
+
+      const emailedCount = selectedWorkers.length - productionDeliveryWorkers.length;
+      const deliveryMessage =
+        `Stage advanced to ${STAGE_LABELS[to_stage]}.` +
+        (emailedCount > 0
+          ? ` Emails sent to ${emailedCount} delivery worker(s).`
+          : "") +
+        (productionDeliveryWorkers.length > 0
+          ? ` ${productionDeliveryWorkers.length} production worker(s) notified on their dashboard.`
+          : "");
+
       return res.json({
-        message: `Stage advanced to ${STAGE_LABELS[to_stage]}. Emails sent to ${selectedWorkers.length} delivery worker(s).`,
+        message: deliveryMessage,
         job_no,
         production_stage: to_stage,
         auto_force_completed: autoForcedCount,
@@ -861,6 +916,8 @@ export const revertProductionStage = async (req, res) => {
           { statusCode: 400 }
         );
       }
+      // New assignment → worker must be checked in now.
+      await assertWorkersCheckedIn(selectedWorkers, t);
     }
 
     // CHANGED: worker_name = w.username, status starts as "assigned"
@@ -1461,9 +1518,9 @@ export const getWorkerStats = async (req, res) => {
       .filter((w) => w.department === "Production Worker")
       .map((w) => w.id);
 
-    const deliveryIds = allWorkers
-      .filter((w) => w.department === "Delivery")
-      .map((w) => w.id);
+    // Deliveries can be done by Delivery workers AND by Production Workers,
+    // so delivery stats / pending deliveries are looked up for everyone.
+    const allIds = allWorkers.map((w) => w.id);
 
     // ── Production Worker stats ──────────
 
@@ -1483,7 +1540,12 @@ export const getWorkerStats = async (req, res) => {
               // NEW: Assignments where this worker's output failed QC and caused rework
               [db.sequelize.literal("SUM(CASE WHEN caused_rework = 1 THEN 1 ELSE 0 END)"), "rework_caused"],
             ],
-            where: { worker_id: { [Op.in]: productionIds } },
+            // out_for_delivery is tracked in DeliveryAssignment — never count a
+            // stale stage-worker row for it here (it would double-count).
+            where: {
+              worker_id: { [Op.in]: productionIds },
+              stage_name: { [Op.ne]: "out_for_delivery" },
+            },
             group: ["worker_id"],
             raw: true,
           }) : [];
@@ -1496,6 +1558,7 @@ export const getWorkerStats = async (req, res) => {
         ? await db.JobProductionStageWorker.findAll({
             where: {
               worker_id: { [Op.in]: productionIds },
+              stage_name: { [Op.ne]: "out_for_delivery" },
               status: { [Op.in]: ["in_progress", "paused", "assigned"] },
             },
             attributes: ["worker_id", "job_no", "stage_name", "status", "started_at"],
@@ -1514,7 +1577,7 @@ export const getWorkerStats = async (req, res) => {
         : [];
 
     // ── Delivery Worker stats ───
-    const deliveryStats = deliveryIds.length > 0 ? await db.DeliveryAssignment.findAll({
+    const deliveryStats = allIds.length > 0 ? await db.DeliveryAssignment.findAll({
             attributes: [
               "worker_id",
               [db.sequelize.fn("COUNT", db.sequelize.col("id")), "total_assignments"],
@@ -1523,18 +1586,20 @@ export const getWorkerStats = async (req, res) => {
               [db.sequelize.literal("SUM(CASE WHEN status = 'overridden' THEN 1 ELSE 0 END)"), "force_completed"],
               [db.sequelize.literal("SUM(CASE WHEN status = 'confirmed' AND DATE(confirmed_at) = CURDATE() THEN 1 ELSE 0 END)"), "done_today"],
             ],
-            where: { worker_id: { [Op.in]: deliveryIds } },
+            where: { worker_id: { [Op.in]: allIds } },
             group: ["worker_id"],
             raw: true,
           }) : [];
 
     // Delivery workers with pending assignments = currently out delivering
-    const activeDeliveries = deliveryIds.length > 0 ? await db.DeliveryAssignment.findAll({
+    const activeDeliveries = allIds.length > 0 ? await db.DeliveryAssignment.findAll({
             where: {
-              worker_id: { [Op.in]: deliveryIds },
+              worker_id: { [Op.in]: allIds },
               status: "pending",
             },
             attributes: ["worker_id", "job_no", "status"],
+            // oldest first, so the "primary" pending delivery is stable
+            order: [["created_at", "ASC"]],
             include: [
               {
                 model: db.JobCard,
@@ -1586,6 +1651,8 @@ export const getWorkerStats = async (req, res) => {
 
 
     // ── Merge ─────────────────────────────────────────────────────────────
+    const n = (v) => parseInt(v) || 0;
+
     const result = allWorkers.map((w) => {
       if (w.department === "Production Worker") {
         const s = productionStatsMap[w.id] || {};
@@ -1594,10 +1661,27 @@ export const getWorkerStats = async (req, res) => {
         // additional_count = paused/assigned jobs the worker also holds
         const additionalCount = active ? active.total - 1 : 0;
 
+        // Deliveries this Production Worker was given (same tables/rules a
+        // Delivery worker's numbers use).
+        const d = deliveryStatsMap[w.id] || {};
+        const pendingDelivery = activeDeliveryMap[w.id] || null;
+
+        // Status priority: in-progress production work, then out delivering,
+        // then paused, then assigned.
+        let liveStatus = primary?.status || null;
+        if (liveStatus !== "in_progress" && pendingDelivery) {
+          liveStatus = "delivering";
+        }
+
+        // Only CONFIRMED deliveries count as done. Coordinator-overridden ones
+        // count in Force ✓ and Total Jobs only — exactly as for Delivery workers.
+        const deliveryDone = n(d.total_done);
+
         return {
           id: w.id,
           username: w.username,
           department: "Production Worker",
+          live_status: liveStatus,
           current: primary
             ? {
                 job_no: primary.job_no,
@@ -1608,14 +1692,23 @@ export const getWorkerStats = async (req, res) => {
                 additional_count: additionalCount,
               }
             : null,
+          current_delivery: pendingDelivery
+            ? {
+                job_no: pendingDelivery.primary.job_no,
+                client_name: pendingDelivery.primary.jobCard?.client_name || "—",
+                additional_count: pendingDelivery.total - 1,
+              }
+            : null,
           stats: {
-            total_assignments: parseInt(s.total_assignments) || 0,
-            total_done:        parseInt(s.total_done)        || 0,
-            self_completed:    parseInt(s.self_completed)    || 0,
-            force_completed:   parseInt(s.force_completed)   || 0,
-            done_today:        parseInt(s.done_today)        || 0,
-            defects_reported:  parseInt(s.defects_reported)  || 0,
-            rework_caused:     parseInt(s.rework_caused)     || 0,
+            total_assignments: n(s.total_assignments) + n(d.total_assignments),
+            total_done:        n(s.total_done) + deliveryDone,
+            self_completed:    n(s.self_completed) + deliveryDone,
+            force_completed:   n(s.force_completed) + n(d.force_completed),
+            done_today:        n(s.done_today) + n(d.done_today),
+            defects_reported:  n(s.defects_reported),
+            rework_caused:     n(s.rework_caused),
+            // how many of Total ✓ were confirmed deliveries (shown as "(🚚 n)")
+            delivery_done:     deliveryDone,
           },
         };
       }
@@ -1629,6 +1722,7 @@ export const getWorkerStats = async (req, res) => {
         id: w.id,
         username: w.username,
         department: "Delivery",
+        live_status: active ? "delivering" : null,
         // Treat pending deliveries as "in_progress" for display consistency
         current: active
           ? {
@@ -1652,9 +1746,9 @@ export const getWorkerStats = async (req, res) => {
       };
     });
 
-    const working = result.filter((w) => w.current?.status === "in_progress").length;
-    const paused  = result.filter((w) => w.current?.status === "paused").length;
-    const idle    = result.filter((w) => !w.current).length;
+    const working = result.filter((w) => ["in_progress", "delivering"].includes(w.live_status)).length;
+    const paused  = result.filter((w) => w.live_status === "paused").length;
+    const idle    = result.filter((w) => !w.live_status).length;
 
     return res.json({
       workers: result,
@@ -1743,6 +1837,9 @@ export const assignAdditionalWorkers = async (req, res) => {
         { statusCode: 400 }
       );
     }
+
+    // New assignment → worker must be checked in now.
+    await assertWorkersCheckedIn(selectedWorkers, t);
 
     // Block if any selected worker is already actively on this stage
     // (assigned/in_progress/paused = still working, cannot double-assign)

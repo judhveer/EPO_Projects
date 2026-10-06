@@ -18,7 +18,7 @@ import {
     OFFICES,
 } from "../../models/salesPipelineModels/User.model.js";
 import { getDeletionBlockers } from "../utils/userDeletionGuard.js";
-import { deleteCache, delCachePattern, CACHE_KEYS, CACHE_PATTERNS } from "../../utils/cache.js";
+import { deleteCache, CACHE_KEYS } from "../../utils/cache.js";
 
 const { User } = db;
 
@@ -280,13 +280,11 @@ export const updateUser = async (req, res) => {
         await t.commit();
 
         // Invalidate auth cache for this user — their role/dept/username may have changed.
-        // Invalidate workers cache — department might have changed.
         await deleteCache(
             CACHE_KEYS.user(id),
             CACHE_KEYS.nonBossUsers,
             CACHE_KEYS.crmUsers,
         );
-        await delCachePattern(CACHE_PATTERNS.allWorkersDept);
 
         return res.json({
             message: "User updated successfully.",
@@ -344,13 +342,11 @@ export const toggleUserStatus = async (req, res) => {
         await t.commit();
 
         // Deactivated users must not be served from cache on next request.
-        // Workers list changes when a worker is activated/deactivated.
         await deleteCache(
             CACHE_KEYS.user(id),
             CACHE_KEYS.nonBossUsers,
             CACHE_KEYS.crmUsers,
         );
-        await delCachePattern(CACHE_PATTERNS.allWorkersDept);
 
         return res.json({
             message: isActive ? "User reactivated." : "User deactivated.",
@@ -403,7 +399,6 @@ export const deleteUser = async (req, res) => {
             CACHE_KEYS.nonBossUsers,
             CACHE_KEYS.crmUsers,
         );
-        await delCachePattern(CACHE_PATTERNS.allWorkersDept);
 
         return res.json({ 
             message: "User deleted permanently.", 

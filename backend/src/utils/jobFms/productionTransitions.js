@@ -112,12 +112,14 @@ export function isShipmentDelivery(deliveryLocation) {
 /**
  * Stages where at least one worker name must be recorded before transitioning.
  * ready_to_dispatch and out_for_delivery are excluded — dispatch/delivery
- * uses delivery_persons_name separately.
+ * is tracked in DeliveryAssignment (and delivery_persons_name), NOT in
+ * JobProductionStageWorker. Listing out_for_delivery here made every delivery
+ * assignment also create a production stage-worker row, which then showed up
+ * as a START card on a Production Worker's dashboard.
  */
 export const STAGES_REQUIRING_WORKERS = Object.freeze([
   "printing",
   "binding",
   "quality_check",
   "packaging",
-  "out_for_delivery",
 ]);

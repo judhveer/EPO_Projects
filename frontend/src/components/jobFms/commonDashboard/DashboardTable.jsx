@@ -3,6 +3,24 @@ import api from "../../../lib/api.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { DateTime } from "luxon";
 
+
+const PRODUCTION_STAGE_LABELS = {
+  printing: "Printing",
+  binding: "Binding",
+  quality_check: "Quality Check",
+  packaging: "Packaging",
+  ready_to_dispatch: "Ready to Dispatch",
+  out_for_delivery: "Out for Delivery",
+};
+
+const getStatusLabel = (job) => {
+  if (job.status === "in_production") {
+    return PRODUCTION_STAGE_LABELS[job.production_stage] || "In Production";
+  }
+  return job.status;
+};
+
+
 export default function DashboardTable({ 
   jobs,
   loading,
@@ -169,6 +187,7 @@ export default function DashboardTable({
                       {job.payment_status}
                     </span>
                   </td>
+
                   <td className="border p-2 sticky right-0 bg-inherit z-20 text-center">
                     <span
                       className={`px-2 py-1 rounded-md text-xs font-semibold ${
@@ -176,12 +195,15 @@ export default function DashboardTable({
                           ? "bg-green-100 text-green-700"
                           : job.status === "cancelled"
                           ? "bg-gray-300 text-gray-600"
+                          : job.status === "in_production"
+                          ? "bg-purple-100 text-purple-700"
                           : "bg-blue-100 text-blue-700"
                       }`}
                     >
-                      {job.status}
+                      {getStatusLabel(job)}
                     </span>
                   </td>
+
                   <td className="border p-2">
                     {DateTime
                       .fromJSDate(new Date(job.job_completion_deadline))
@@ -215,7 +237,7 @@ export default function DashboardTable({
               ))
             ) : (
               <tr>
-                <td colSpan="15" className="text-center py-4 text-gray-500">
+                <td colSpan="20" className="text-center py-4 text-gray-500">
                   No jobs found
                 </td>
               </tr>

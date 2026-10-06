@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import api from "../../lib/api.js";
-import { useAuth } from "../../context/AuthContext.jsx";
 import WorkerSwitcherHeader from "../../components/worker/WorkerSwitcherHeader.jsx"; // add to imports
+import DeliveryCard from "../../components/worker/DeliveryCard.jsx";
 
 const STAGE_LABELS = {
   printing: "Printing",
@@ -94,23 +94,42 @@ function WorkTimer({ started_at, paused_at, total_pause_duration_seconds, status
 const POLL_INTERVAL_MS = 30_000;
 
 export default function WorkerDashboard() {
-  const { user, logout } = useAuth();
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Deliveries assigned to this Production Worker (same Upload Challan flow as the Delivery dashboard). Fetched independently so a failure here can never hide the normal production jobs.
+  const [deliveries, setDeliveries] = useState([]);
+  const [deliveryError, setDeliveryError] = useState(false);
   // Per-assignment submitting flag — prevents double-tap on slow networks
   const [submitting, setSubmitting] = useState({});
 
   const fetchAssignments = useCallback(async (silent = false) => {
-    if (!silent) setError(null);
-    try {
-      const { data } = await api.get("/api/fms/worker/assignments");
-      setAssignments(data);
-    } catch {
-      if (!silent) setError("Could not load your jobs. Check your connection.");
-    } finally {
-      if (!silent) setLoading(false);
+    if (!silent) {
+      setError(null);
+      setDeliveryError(false);
     }
+
+    // Two independent requests — one failing must never hide the other.
+    // allSettled never rejects, so no try/catch is needed.
+    const [jobsResult, deliveriesResult] = await Promise.allSettled([
+      api.get("/api/fms/worker/assignments"),
+      api.get("/api/fms/delivery-worker/assignments"),
+    ]);
+
+    if (jobsResult.status === "fulfilled") {
+      setAssignments(jobsResult.value.data);
+    } else if (!silent) {
+      setError("Could not load your jobs. Check your connection.");
+    }
+
+    if (deliveriesResult.status === "fulfilled") {
+      const list = deliveriesResult.value.data;
+      setDeliveries(Array.isArray(list) ? list : []);
+    } else if (!silent) {
+      setDeliveryError(true);
+    }
+
+    if (!silent) setLoading(false);
   }, []);
 
   // Initial load
@@ -149,15 +168,9 @@ export default function WorkerDashboard() {
     }
   };
 
-  const handleLogout = () => {
-    const hasActiveWork = assignments.some((a) => a.status === "in_progress");
-    if (hasActiveWork) {
-      const confirmed = window.confirm(
-        "A job is in progress.\n\nIf you log out now, it will be PAUSED automatically.\n\nLog out anyway?"
-      );
-      if (!confirmed) return;
-    }
-    logout();
+  // Called by a delivery card after it confirms — removes it from the list
+  const handleDeliveryConfirmed = (assignmentId) => {
+    setDeliveries((prev) => prev.filter((a) => a.id !== assignmentId));
   };
 
   // ── Full-screen loading ───────────────────────────────────────────────────
@@ -203,7 +216,7 @@ export default function WorkerDashboard() {
         )}
 
         {/* Empty state */}
-        {assignments.length === 0 && !error && (
+        {assignments.length === 0 && deliveries.length === 0 && !error && (
           <div className="text-center py-20">
             <div className="text-6xl mb-4">✅</div>
             <p className="text-gray-700 font-bold text-xl">All done!</p>
@@ -219,7 +232,10 @@ export default function WorkerDashboard() {
           </div>
         )}
 
-        {/* Assignment cards */}
+        {/* Production assignment cards. The section header only appears when a delivery is also present, so a worker with no delivery sees the dashboard exactly as before. */}
+        {deliveries.length > 0 && assignments.length > 0 && (
+          <SectionHeader icon="🛠️" title="Production Work" count={assignments.length} />
+        )}
         {assignments.map((assignment) => (
           <AssignmentCard
             key={assignment.id}
@@ -228,7 +244,58 @@ export default function WorkerDashboard() {
             onAction={handleAction}
           />
         ))}
+
+        {/* Delivery load failed — say so, so a delivery is never missed silently */}
+        {deliveryError && (
+          <div className="bg-orange-50 border border-orange-200 text-orange-700 text-sm p-3 rounded-xl flex justify-between items-center">
+            <span>Could not load your deliveries.</span>
+            <button
+              onClick={() => fetchAssignments()}
+              className="underline font-semibold ml-3 shrink-0"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Delivery assignments — same Upload Challan card the Delivery
+            dashboard uses. Only rendered when this worker has one. */}
+        {deliveries.length > 0 && (
+          <>
+            <SectionHeader icon="🚚" title="Delivery Work" count={deliveries.length} accent />
+            {deliveries.map((delivery) => (
+              <DeliveryCard
+                key={delivery.id}
+                assignment={delivery}
+                onConfirmed={handleDeliveryConfirmed}
+              />
+            ))}
+          </>
+        )}
       </main>
+    </div>
+  );
+}
+
+// ── Section header (only used when a worker has both kinds of work) ───────────
+function SectionHeader({ icon, title, count, accent = false }) {
+  return (
+    <div className="flex items-center gap-2 pt-2">
+      <span className="text-xl">{icon}</span>
+      <h2
+        className={`text-sm font-black uppercase tracking-widest ${
+          accent ? "text-blue-700" : "text-gray-600"
+        }`}
+      >
+        {title}
+      </h2>
+      <span
+        className={`ml-auto text-xs font-bold rounded-full px-2 py-0.5 ${
+          accent ? "bg-blue-100 text-blue-700" : "bg-gray-200 text-gray-600"
+        }`}
+      >
+        {count}
+      </span>
     </div>
   );
 }

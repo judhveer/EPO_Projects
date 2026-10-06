@@ -12,10 +12,13 @@ const STAGE_LABELS = {
 
 const POLL_INTERVAL_MS = 30_000;
 
-// Current status config per worker
-function getStatusConfig(current, department) {
-  if (!current) return { label: "Idle", dot: "bg-gray-300", badge: "bg-gray-100 text-gray-500" };
-  switch (current.status) {
+// Status config per worker. `status` is the backend's live_status:
+// in_progress | delivering | paused | assigned | null (idle)
+function getStatusConfig(status, department) {
+  if (!status) return { label: "Idle", dot: "bg-gray-300", badge: "bg-gray-100 text-gray-500" };
+  switch (status) {
+    case "delivering":
+      return { label: "Delivering", dot: "bg-cyan-500 animate-pulse", badge: "bg-cyan-100 text-cyan-700" };
     case "in_progress":
       return department === "Delivery"
         ? { label: "Delivering", dot: "bg-cyan-500 animate-pulse", badge: "bg-cyan-100 text-cyan-700" }
@@ -160,7 +163,7 @@ export default function WorkerStats() {
             </thead>
             <tbody>
               {workers.map((w, index) => {
-                const sc = getStatusConfig(w.current, w.department);
+                const sc = getStatusConfig(w.live_status ?? w.current?.status ?? null, w.department);
                 const stage = w.current
                   ? STAGE_LABELS[w.current.stage_name] || w.current.stage_name
                   : null;
@@ -196,24 +199,47 @@ export default function WorkerStats() {
                       </span>
                     </td>
 
-                    {/* Current job */}
+                    {/* Current job (+ delivery line for Production Workers who are delivering) */}
                     <td className="px-4 py-3">
-                      {w.current ? (
+                      {w.current || w.current_delivery ? (
                         <div>
-                          <div>
-                            <span className="font-bold text-blue-700">
-                              #{w.current.job_no}
-                            </span>
-                            <span className="text-gray-500 mx-1">·</span>
-                            <span className="text-gray-700">{w.current.client_name}</span>
-                          </div>
-                          <div className="text-[11px] text-gray-400 mt-0.5">
-                            {w.department === "Delivery" ? "🚚 Out for Delivery" : `Stage: ${stage}`}
-                          </div>
-                          {/* Show additional paused/assigned jobs if worker holds more than one */}
-                          {w.current.additional_count > 0 && (
-                            <div className="text-[11px] text-orange-500 font-semibold mt-0.5">
-                              + {w.current.additional_count} more paused job{w.current.additional_count > 1 ? "s" : ""}
+                          {w.current && (
+                            <div>
+                              <div>
+                                <span className="font-bold text-blue-700">
+                                  #{w.current.job_no}
+                                </span>
+                                <span className="text-gray-500 mx-1">·</span>
+                                <span className="text-gray-700">{w.current.client_name}</span>
+                              </div>
+                              <div className="text-[11px] text-gray-400 mt-0.5">
+                                {w.department === "Delivery" ? "🚚 Out for Delivery" : `Stage: ${stage}`}
+                              </div>
+                              {/* Show additional paused/assigned jobs if worker holds more than one */}
+                              {w.current.additional_count > 0 && (
+                                <div className="text-[11px] text-orange-500 font-semibold mt-0.5">
+                                  + {w.current.additional_count} more paused job{w.current.additional_count > 1 ? "s" : ""}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* A Production Worker who is also out delivering */}
+                          {w.current_delivery && (
+                            <div className={w.current ? "mt-1.5 pt-1.5 border-t border-dashed border-gray-200" : ""}>
+                              <div>
+                                <span className="font-semibold text-cyan-700">🚚 Delivering</span>
+                                <span className="font-bold text-blue-700 ml-1">
+                                  #{w.current_delivery.job_no}
+                                </span>
+                                <span className="text-gray-500 mx-1">·</span>
+                                <span className="text-gray-700">{w.current_delivery.client_name}</span>
+                              </div>
+                              {w.current_delivery.additional_count > 0 && (
+                                <div className="text-[11px] text-cyan-600 font-semibold mt-0.5">
+                                  + {w.current_delivery.additional_count} more deliver{w.current_delivery.additional_count > 1 ? "ies" : "y"}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -232,6 +258,14 @@ export default function WorkerStats() {
                     {/* Total done */}
                     <td className="px-4 py-3 text-center">
                       <span className="font-bold text-blue-700">{w.stats.total_done}</span>
+                      {w.stats.delivery_done > 0 && (
+                        <span
+                          className="ml-1 text-[10px] font-semibold text-cyan-600"
+                          title={`Includes ${w.stats.delivery_done} confirmed deliver${w.stats.delivery_done > 1 ? "ies" : "y"}`}
+                        >
+                          (🚚 {w.stats.delivery_done})
+                        </span>
+                      )}
                     </td>
 
                     {/* Force completed */}
@@ -272,6 +306,7 @@ export default function WorkerStats() {
           <div className="bg-gray-50 border-t border-gray-200 px-4 py-2 flex flex-wrap gap-4 text-[11px] text-gray-500">
             <span><strong className="text-green-700">Today ✓</strong> — jobs completed today</span>
             <span><strong className="text-blue-700">Total ✓</strong> — all-time completed</span>
+            <span><strong className="text-cyan-600">(🚚 n)</strong> — confirmed deliveries included in Total ✓</span>
             <span><strong className="text-purple-600">Force ✓</strong> — coordinator had to intervene</span>
             <span><strong className="text-emerald-600">Defects Found</strong> — defects correctly identified at QC (positive)</span>
             <span><strong className="text-red-500">Rework Caused</strong> — output failed QC and required rework</span>

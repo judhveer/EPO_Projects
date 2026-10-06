@@ -7,7 +7,6 @@
  *
  * Key naming convention — prefix all keys with "epo:" to namespace them:
  *   epo:user:{userId}              — authenticated user object (auth middleware)
- *   epo:workers:dept:{department}  — workers list by department
  *   epo:items:cat:{category}       — item master by category
  *   epo:paper:types                — all paper types
  *   epo:paper:gsm:{paperName}      — GSM values for a paper type
@@ -139,7 +138,6 @@ export const CACHE_KEYS = {
   // User lists
   nonBossUsers:                     "epo:users:non-boss",
   crmUsers:                         "epo:users:crms",
-  workersByDept:      (dept)     => `epo:workers:dept:${dept}`,
 
   // Item master — static reference data
   itemsByCategory:    (category) => `epo:items:cat:${category}`,
@@ -167,5 +165,4 @@ export const CACHE_KEYS = {
 export const CACHE_PATTERNS = {
     allPaper:        "epo:paper:*",
     allWide:         "epo:wide:*",
-    allWorkersDept:  "epo:workers:dept:*",
 }

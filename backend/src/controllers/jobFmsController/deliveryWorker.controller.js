@@ -1,5 +1,10 @@
 import db from "../../models/index.js";
 
+// Departments that can hold a delivery assignment. Production Workers keep
+// their own department — this only lets them see/confirm deliveries that
+// were assigned to them.
+const DELIVERY_ELIGIBLE_DEPARTMENTS = ["Delivery", "Production Worker"];
+
 /**
  * GET /api/fms/delivery-worker/assignments
  * Returns all pending delivery assignments for the logged-in delivery worker.
@@ -9,8 +14,10 @@ import db from "../../models/index.js";
  */
 export const getMyDeliveryAssignments = async (req, res) => {
   try {
-    if (!req.user || req.user.department !== "Delivery") {
-      return res.status(403).json({ message: "Delivery worker access only." });
+    if (!req.user || !DELIVERY_ELIGIBLE_DEPARTMENTS.includes(req.user.department)) {
+      return res.status(403).json({
+        message: "Delivery assignments are available to Delivery and Production Worker accounts only.",
+      });
     }
 
     const assignments = await db.DeliveryAssignment.findAll({

@@ -21,7 +21,7 @@ const safeUpload = (mw) => (req, res, next) =>
     if (err) {
       if (err.code === "LIMIT_FILE_SIZE") {
         return res.status(413).json({
-          message: "File too large. Maximum size is 15 MB. Please compress the photo and try again.",
+          message: `File too large. Maximum size is ${MAX_UPLOAD_MB} MB. Please compress the photo and try again.`,
         });
       }
       if (err.code === "LIMIT_FILE_COUNT") {

@@ -16,7 +16,7 @@ const STAGE_WORKER_LABEL = {
   binding: "Binding Workers",
   quality_check: "QC Workers",
   packaging: "Packaging Workers",
-  out_for_delivery: "Delivery Workers",
+  out_for_delivery: "Assign for Delivery",
 };
 
 // Delivery assignment status badges (existing)
