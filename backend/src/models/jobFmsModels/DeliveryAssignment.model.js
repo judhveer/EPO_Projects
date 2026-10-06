@@ -25,7 +25,7 @@ export default (sequelize) => {
       },
       worker_email: {
         type: DataTypes.STRING(255),
-        allowNull: false,
+        allowNull: true,
         comment: "Stored at assignment time",
       },
       upload_token: {
