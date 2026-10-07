@@ -108,8 +108,10 @@ export async function checkIn(req, res) {
                 // Two simultaneous check-in requests for the same employee/day (e.g. a double-tap on a slow connection) both pass the findOne check above before either has committed an insert. The unique (employee_id, shift_date) constraint is the real safety net here — this catch turns that DB-level rejection into a clean "already checked in" response instead of a 500.
                 if (err.name === 'SequelizeUniqueConstraintError') {
                     const already = await Attendance.findOne({
-                        employee_id: employeeId,
-                        shift_date: shiftDate,
+                        where: {
+                            employee_id: employeeId,
+                            shift_date: shiftDate,
+                        }
                     });
                     return res.status(409).json({
                         error: 'You have already checked in today.',
