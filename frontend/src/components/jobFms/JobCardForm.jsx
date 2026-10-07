@@ -109,13 +109,29 @@ const isItemReady = (item) => {
     case "Single Sheet":
       return !!(item.paper_type && item.paper_gsm);
 
+    // case "Multiple Sheet": {
+    //   // Use the first inside paper for backward-compat backend calculation.
+    //   // Backend will be updated later to handle all inside_papers.
+    //   const firstPaper = item.inside_papers?.[0];
+    //   return !!(
+    //     firstPaper?.paper_type &&
+    //     firstPaper?.paper_gsm &&
+    //     item.inside_pages &&
+    //     item.cover_paper_type &&
+    //     item.cover_paper_gsm &&
+    //     item.cover_pages
+    //   );
+    // }
+
     case "Multiple Sheet": {
-      // Use the first inside paper for backward-compat backend calculation.
-      // Backend will be updated later to handle all inside_papers.
-      const firstPaper = item.inside_papers?.[0];
+      const papers = item.inside_papers || [];
+
+      // Every inside paper must have type + GSM before we calculate
+      const allPapersComplete =
+        papers.length > 0 && papers.every((p) => p?.paper_type && p?.paper_gsm);
+
       return !!(
-        firstPaper?.paper_type &&
-        firstPaper?.paper_gsm &&
+        allPapersComplete &&
         item.inside_pages &&
         item.cover_paper_type &&
         item.cover_paper_gsm &&
@@ -1695,8 +1711,10 @@ export default function JobCardForm({
         items[index] = item;
         return { ...prev, job_items: items };
       });
+      // NEW: paper hatne ke baad price dobara calculate karo
+      triggerCalculation(itemId);
     },
-    [findItemIndexById, setFormAndRef],
+    [findItemIndexById, setFormAndRef, triggerCalculation],
   );
 
   const createEmptyItem = React.useCallback(
