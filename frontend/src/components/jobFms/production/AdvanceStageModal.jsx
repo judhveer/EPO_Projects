@@ -336,11 +336,12 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
     opts.stage_worker_summary.total > 0 &&
     opts?.current_production_stage !== "out_for_delivery";
 
+
   return (
     <AnimatePresence>
       {job && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -350,7 +351,8 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
             initial={{ scale: 0.96, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.96, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 200, damping: 22 }}
+            // transition={{ type: "spring", stiffness: 200, damping: 22 }}
+            transition={{ ease: "easeOut" }}
             className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
@@ -376,10 +378,12 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
             {/* ── Current stage info ── */}
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4">
               <div className="text-xs text-gray-500 mb-1">Current Stage</div>
-              <StageChip
+              {/* <StageChip
                 value={opts?.current_production_stage || opts?.status}
                 fallback="Not Started"
-              />
+              /> */}
+              <StageChip value={opts?.current_production_stage || opts?.status || job.production_stage || job.status} fallback="Not Started" />
+
               {opts?.delivery_mode && (
                 <div className="text-xs text-gray-500 mt-2">
                   Delivery:{" "}
