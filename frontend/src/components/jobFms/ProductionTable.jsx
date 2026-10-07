@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef, memo } from "react";
 import api from "../../lib/api.js";
 import { DateTime } from "luxon";
 import JobItemsSidebar from "../../components/jobFms/commonDashboard/JobItemsSidebar";
@@ -52,6 +52,235 @@ const STAGE_ICON = {
 
 const STAGE_DISPLAY_ORDER = ["printing", "binding", "quality_check", "packaging", "out_for_delivery"];
 
+const fmtIST = (value) =>
+  DateTime.fromJSDate(new Date(value)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a");
+
+/**
+ * One table row. Wrapped in memo so opening/closing the Update Stage modal
+ * (or any other ProductionTable state change that doesn't touch this job)
+ * does not re-render every row. All callbacks passed in MUST be stable
+ * (useCallback / state setters), and isDownloading is a per-row boolean —
+ * never pass the whole downloadingJobs Set, or every row re-renders again.
+ */
+const JobRow = memo(function JobRow({
+  job,
+  index,
+  stageFilter,
+  isDownloading,
+  onDownload,
+  onOpen,
+  onViewItems,
+}) {
+  const createdOn = fmtIST(job.createdAt);
+  return (
+      <tr
+        className={`group border-b transition-all duration-200 ${index % 2 === 0 ? "bg-white" : "bg-slate-300"
+          } hover:bg-blue-500 hover:text-white`}
+      >
+        <td
+          className={`border p-2 sticky left-0 z-20 text-center font-bold select-none ${isDownloading
+              ? "cursor-wait"
+              : "cursor-pointer hover:underline"
+            } ${job.execution_location === "Out-Bound"
+              ? "bg-blue-900 text-yellow-300"
+              : "bg-white text-blue-700"
+            }`}
+          onDoubleClick={() => onDownload(job)}
+          title={
+            isDownloading
+              ? "Downloading job card…"
+              : "Double-click to download job card"
+          }
+        >
+          {isDownloading ? (
+            <div className="flex flex-col items-center gap-1">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
+              <span className="text-[9px] font-medium leading-none opacity-80">
+                Downloading…
+              </span>
+            </div>
+          ) : (
+            job.job_no
+          )}
+
+          {job.execution_location === "Out-Bound" && (
+            <div className="m-1 text-[9px] text-yellow-300">OutBound</div>
+          )}
+        </td>
+
+        <td className="border p-2">
+          <StageChip
+            value={job.production_stage}
+            fallback={job.status === "ready_for_production" ? "Not Started" : "—"}
+          />
+        </td>
+
+        <td className="border p-2 align-top">
+          {(() => {
+            const currentStage = job.production_stage;
+
+            // ── Special case: out_for_delivery ───────────────────────────────
+            // Delivery workers live in DeliveryAssignment, not JobProductionStageWorker.
+            // Show delivery confirmation status instead of stage worker summary.
+            if (currentStage === "out_for_delivery") {
+              const das = job.deliveryAssignments || [];
+              if (das.length === 0) {
+                return <span className="text-gray-400 text-xs italic">—</span>;
+              }
+              const total = das.length;
+              const done = das.filter((da) =>
+                ["confirmed", "overridden"].includes(da.status)
+              ).length;
+              const allConfirmed = done === total;
+
+              return (
+                <div className="text-xs">
+                  <div className="flex items-center gap-1 flex-wrap mb-0.5">
+                    <span className="shrink-0">🚚</span>
+                    <span className="font-semibold text-blue-700">Out for Delivery</span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${allConfirmed
+                          ? "bg-green-100 text-green-700"
+                          : "bg-orange-100 text-orange-700"
+                        }`}
+                    >
+                      {allConfirmed ? "All confirmed ✓" : `${done}/${total} confirmed`}
+                    </span>
+                  </div>
+                  <div className="pl-4 text-[11px] text-gray-700 leading-snug">
+                    {das.map((da) => da.worker_name).join(", ")}
+                  </div>
+                </div>
+              );
+            }
+
+            // ── All other production stages ───────────────────────────────────
+            const stageMap = getWorkerStageSummary(job.stageWorkers);
+
+            const activeStages = stageFilter
+              ? STAGE_DISPLAY_ORDER.filter(
+                (s) => s === stageFilter && stageMap[s]
+              )
+              : STAGE_DISPLAY_ORDER.filter((s) => stageMap[s]);
+
+            if (activeStages.length === 0) {
+              return <span className="text-gray-400 text-xs italic">—</span>;
+            }
+
+            return (
+              <div className="space-y-2">
+                {activeStages.map((s) => {
+                  const info = stageMap[s];
+                  const isCurrent = s === currentStage;
+                  const allDone = info.total > 0 && info.done === info.total;
+
+                  // FIX: "Not started" only when ALL workers are still on 'assigned'
+                  // (nobody has pressed START yet). If any are in_progress or paused,
+                  // they have started — show "X/Y done" in orange instead.
+                  const noneStarted =
+                    info.total > 0 &&
+                    info.done === 0 &&
+                    info.activelyWorking === 0;
+
+                  return (
+                    <div key={s} className="text-xs">
+                      <div className="flex items-center gap-1 flex-wrap mb-0.5">
+                        <span className="shrink-0">{STAGE_ICON[s]}</span>
+                        <span
+                          className={`font-semibold capitalize ${isCurrent ? "text-blue-700" : "text-gray-400"
+                            }`}
+                        >
+                          {s.replace(/_/g, " ")}
+                        </span>
+
+                        {/* Pill shown only for current active stage */}
+                        {isCurrent && info.total > 0 && (
+                          <span
+                            className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${allDone
+                                ? "bg-green-100 text-green-700"
+                                : noneStarted
+                                  ? "bg-gray-100 text-gray-500"
+                                  : "bg-orange-100 text-orange-700"
+                              }`}
+                          >
+                            {allDone
+                              ? "All done ✓"
+                              : noneStarted
+                                ? "Not started"
+                                : `${info.done}/${info.total} done`}
+                          </span>
+                        )}
+                      </div>
+
+                      {info.names.length > 0 && (
+                        <div
+                          className={`pl-4 text-[11px] leading-snug ${isCurrent ? "text-gray-700" : "text-gray-400"
+                            }`}
+                        >
+                          {info.names.join(", ")}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </td>
+
+        <td className="border p-2">
+          {createdOn}
+        </td>
+        <td className="border p-2">{job.client_name}
+          {job.reference && (
+            <> ({job.reference})</>
+          )}
+        </td>
+        <td className="border p-2 text-center">
+          {job.item_count || 0}
+          {job.item_count > 0 && (
+            <button onClick={() => onViewItems(job.job_no)}
+              className="ml-2 text-blue-600 hover:underline text-xs">View</button>
+          )}
+        </td>
+        <td className="border p-2 font-semibold text-blue-600">
+          <span className="bg-yellow-300 text-blue-900 rounded-md font-bold p-1">
+            {job.delivery_date
+              ? fmtIST(job.delivery_date)
+              : "—"}
+          </span>
+        </td>
+        <td className="border p-2">
+          {job.delivery_location?.replace(/_/g, " ")}
+          {job.delivery_address && (
+            <div className="text-[11px] text-gray-500 italic mt-1">{job.delivery_address}</div>
+          )}
+        </td>
+        <td className="border p-2"><StageChip value={job.status} /></td>
+        <td className="border p-2">
+          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${job.task_priority === "Urgent" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+            }`}>
+            {job.task_priority}
+          </span>
+        </td>
+        <td className="border p-2">{job.order_handled_by}</td>
+        <td className="border p-2">{job.execution_location}</td>
+        <td className="border p-2 text-center">{job.no_of_files}</td>
+        <td className="border p-2">
+          {job.job_completion_deadline
+            ? fmtIST(job.job_completion_deadline)
+            : "—"}
+        </td>
+        <td className="border p-2 sticky right-0 bg-inherit group-hover:bg-blue-50 z-10 text-center">
+          <button onClick={() => onOpen(job)}
+            className="px-3 py-1.5 rounded-md text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-sm">
+            Update Stage
+          </button>
+        </td>
+      </tr>
+  );
+});
+
 
 export default function ProductionTable() {
   const [jobs, setJobs] = useState([]);
@@ -94,10 +323,14 @@ export default function ProductionTable() {
     setDebouncedSearch(""); // clear instantly instead of waiting for the 300ms debounce
   };
 
+  // Ref mirrors the Set so the handler can stay stable (empty deps) and still block repeat double-clicks; state is only for showing the spinner.
+  const downloadingRef = useRef(new Set());
+
 
   const handleDownloadCard = useCallback(async (job) => {
     // Ignore repeat double-clicks while this job's card is already downloading
-    if (downloadingJobs.has(job.job_no)) return;
+    if (downloadingRef.current.has(job.job_no)) return;
+    downloadingRef.current.add(job.job_no);
 
     setDownloadingJobs((prev) => new Set(prev).add(job.job_no));
 
@@ -122,13 +355,14 @@ export default function ProductionTable() {
     }
     finally {
       // Always clear the loading state, on success or failure
+      downloadingRef.current.delete(job.job_no);
       setDownloadingJobs((prev) => {
         const next = new Set(prev);
         next.delete(job.job_no);
         return next;
       });
     }
-  }, [downloadingJobs]);
+  }, []);
 
   const totalPages = totalJobs > 0 ? Math.ceil(totalJobs / limit) : 1;
 
@@ -152,10 +386,7 @@ export default function ProductionTable() {
     }
   }, [page, limit, stageFilter, debouncedSearch, filters.status, filters.execution_location, filters.delivery_location]);
 
-  // Single source of truth: fetchJobs is recreated whenever anything it
-  // reads changes, and this effect just reacts to that. Don't reintroduce
-  // a second effect with its own hand-maintained dependency list — that's
-  // exactly what caused stageFilter changes to silently stop refetching.
+  // Single source of truth: fetchJobs is recreated whenever anything it reads changes, and this effect just reacts to that. Don't reintroduce a second effect with its own hand-maintained dependency list — that's exactly what caused stageFilter changes to silently stop refetching.
   useEffect(() => {
     fetchJobs();
   }, [fetchJobs]);
@@ -226,7 +457,7 @@ export default function ProductionTable() {
 
           {/* DELIVERY LOCATION */}
           <select
-            value={filters.payment_status}
+            value={filters.delivery_location}
             onChange={(e) => update("delivery_location", e.target.value)}
             className="border rounded px-1 py-1 text-xs"
           >
@@ -306,211 +537,16 @@ export default function ProductionTable() {
               </tr>
             ) : jobs.length > 0 ? (
               jobs.map((job, index) => (
-                <tr key={job.job_no}
-                  className={`group border-b transition-all duration-200 ${index % 2 === 0 ? "bg-white" : "bg-slate-300"
-                    } hover:bg-blue-500 hover:text-white`}
-                >
-                  <td
-                    className={`border p-2 sticky left-0 z-20 text-center font-bold select-none ${downloadingJobs.has(job.job_no)
-                        ? "cursor-wait"
-                        : "cursor-pointer hover:underline"
-                      } ${job.execution_location === "Out-Bound"
-                        ? "bg-blue-900 text-yellow-300"
-                        : "bg-white text-blue-700"
-                      }`}
-                    onDoubleClick={() => handleDownloadCard(job)}
-                    title={
-                      downloadingJobs.has(job.job_no)
-                        ? "Downloading job card…"
-                        : "Double-click to download job card"
-                    }
-                  >
-                    {downloadingJobs.has(job.job_no) ? (
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
-                        <span className="text-[9px] font-medium leading-none opacity-80">
-                          Downloading…
-                        </span>
-                      </div>
-                    ) : (
-                      job.job_no
-                    )}
-
-                    {job.execution_location === "Out-Bound" && (
-                      <div className="m-1 text-[9px] text-yellow-300">OutBound</div>
-                    )}
-                  </td>
-
-                  <td className="border p-2">
-                    <StageChip
-                      value={job.production_stage}
-                      fallback={job.status === "ready_for_production" ? "Not Started" : "—"}
-                    />
-                  </td>
-
-                  <td className="border p-2 align-top">
-                    {(() => {
-                      const currentStage = job.production_stage;
-
-                      // ── Special case: out_for_delivery ───────────────────────────────
-                      // Delivery workers live in DeliveryAssignment, not JobProductionStageWorker.
-                      // Show delivery confirmation status instead of stage worker summary.
-                      if (currentStage === "out_for_delivery") {
-                        const das = job.deliveryAssignments || [];
-                        if (das.length === 0) {
-                          return <span className="text-gray-400 text-xs italic">—</span>;
-                        }
-                        const total = das.length;
-                        const done = das.filter((da) =>
-                          ["confirmed", "overridden"].includes(da.status)
-                        ).length;
-                        const allConfirmed = done === total;
-
-                        return (
-                          <div className="text-xs">
-                            <div className="flex items-center gap-1 flex-wrap mb-0.5">
-                              <span className="shrink-0">🚚</span>
-                              <span className="font-semibold text-blue-700">Out for Delivery</span>
-                              <span
-                                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${allConfirmed
-                                    ? "bg-green-100 text-green-700"
-                                    : "bg-orange-100 text-orange-700"
-                                  }`}
-                              >
-                                {allConfirmed ? "All confirmed ✓" : `${done}/${total} confirmed`}
-                              </span>
-                            </div>
-                            <div className="pl-4 text-[11px] text-gray-700 leading-snug">
-                              {das.map((da) => da.worker_name).join(", ")}
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      // ── All other production stages ───────────────────────────────────
-                      const stageMap = getWorkerStageSummary(job.stageWorkers);
-
-                      const activeStages = stageFilter
-                        ? STAGE_DISPLAY_ORDER.filter(
-                          (s) => s === stageFilter && stageMap[s]
-                        )
-                        : STAGE_DISPLAY_ORDER.filter((s) => stageMap[s]);
-
-                      if (activeStages.length === 0) {
-                        return <span className="text-gray-400 text-xs italic">—</span>;
-                      }
-
-                      return (
-                        <div className="space-y-2">
-                          {activeStages.map((s) => {
-                            const info = stageMap[s];
-                            const isCurrent = s === currentStage;
-                            const allDone = info.total > 0 && info.done === info.total;
-
-                            // FIX: "Not started" only when ALL workers are still on 'assigned'
-                            // (nobody has pressed START yet). If any are in_progress or paused,
-                            // they have started — show "X/Y done" in orange instead.
-                            const noneStarted =
-                              info.total > 0 &&
-                              info.done === 0 &&
-                              info.activelyWorking === 0;
-
-                            return (
-                              <div key={s} className="text-xs">
-                                <div className="flex items-center gap-1 flex-wrap mb-0.5">
-                                  <span className="shrink-0">{STAGE_ICON[s]}</span>
-                                  <span
-                                    className={`font-semibold capitalize ${isCurrent ? "text-blue-700" : "text-gray-400"
-                                      }`}
-                                  >
-                                    {s.replace(/_/g, " ")}
-                                  </span>
-
-                                  {/* Pill shown only for current active stage */}
-                                  {isCurrent && info.total > 0 && (
-                                    <span
-                                      className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${allDone
-                                          ? "bg-green-100 text-green-700"
-                                          : noneStarted
-                                            ? "bg-gray-100 text-gray-500"
-                                            : "bg-orange-100 text-orange-700"
-                                        }`}
-                                    >
-                                      {allDone
-                                        ? "All done ✓"
-                                        : noneStarted
-                                          ? "Not started"
-                                          : `${info.done}/${info.total} done`}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {info.names.length > 0 && (
-                                  <div
-                                    className={`pl-4 text-[11px] leading-snug ${isCurrent ? "text-gray-700" : "text-gray-400"
-                                      }`}
-                                  >
-                                    {info.names.join(", ")}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                  </td>
-
-                  <td className="border p-2">
-                    {DateTime.fromJSDate(new Date(job.createdAt)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")}
-                  </td>
-                  <td className="border p-2">{job.client_name}
-                    {job.reference && (
-                      <> ({job.reference})</>
-                    )}
-                  </td>
-                  <td className="border p-2 text-center">
-                    {job.item_count || 0}
-                    {job.item_count > 0 && (
-                      <button onClick={() => setItemSidebarJobNo(job.job_no)}
-                        className="ml-2 text-blue-600 hover:underline text-xs">View</button>
-                    )}
-                  </td>
-                  <td className="border p-2 font-semibold text-blue-600">
-                    <span className="bg-yellow-300 text-blue-900 rounded-md font-bold p-1">
-                      {job.delivery_date
-                        ? DateTime.fromJSDate(new Date(job.delivery_date)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")
-                        : "—"}
-                    </span>
-                  </td>
-                  <td className="border p-2">
-                    {job.delivery_location?.replace(/_/g, " ")}
-                    {job.delivery_address && (
-                      <div className="text-[11px] text-gray-500 italic mt-1">{job.delivery_address}</div>
-                    )}
-                  </td>
-                  <td className="border p-2"><StageChip value={job.status} /></td>
-                  <td className="border p-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${job.task_priority === "Urgent" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                      }`}>
-                      {job.task_priority}
-                    </span>
-                  </td>
-                  <td className="border p-2">{job.order_handled_by}</td>
-                  <td className="border p-2">{job.execution_location}</td>
-                  <td className="border p-2 text-center">{job.no_of_files}</td>
-                  <td className="border p-2">
-                    {job.job_completion_deadline
-                      ? DateTime.fromJSDate(new Date(job.job_completion_deadline)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")
-                      : "—"}
-                  </td>
-                  <td className="border p-2 sticky right-0 bg-inherit group-hover:bg-blue-50 z-10 text-center">
-                    <button onClick={() => setActiveJob(job)}
-                      className="px-3 py-1.5 rounded-md text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-sm">
-                      Update Stage
-                    </button>
-                  </td>
-                </tr>
+                <JobRow
+                  key={job.job_no}
+                  job={job}
+                  index={index}
+                  stageFilter={stageFilter}
+                  isDownloading={downloadingJobs.has(job.job_no)}
+                  onDownload={handleDownloadCard}
+                  onOpen={setActiveJob}
+                  onViewItems={setItemSidebarJobNo}
+                />
               ))
             ) : (
               <tr>
@@ -544,3 +580,6 @@ export default function ProductionTable() {
     </div>
   );
 }
+
+
+
