@@ -1966,10 +1966,36 @@ export default function JobCardForm({
   }, [existingJob, setFormAndRef, loadDropdownsForMappedItems]);
   // ── END REFACTORED ────────────────────────────────────────────────────────
 
+
+    // ── Payment lock (edit mode) ──
+  const originalFinalAmount = useMemo(() => {
+    if (!isEditMode || !existingJob) return null;
+    return computeBilling(
+      existingJob.total_amount,
+      existingJob.discount,
+      existingJob.gst_percentage,
+    ).finalAmount;
+  }, [isEditMode, existingJob]);
+
+  const isPaymentSettled =
+    isEditMode && ["Paid", "Complimentary"].includes(existingJob?.payment_status);
+
+  const currentFinalAmount = computeBilling(
+    form.total_amount,
+    form.discount,
+    form.gst_percentage,
+  ).finalAmount;
+
+  const amountChanged =
+    originalFinalAmount !== null &&
+    Math.round(currentFinalAmount * 100) !== Math.round(originalFinalAmount * 100);
+
+  const paymentLocked = isPaymentSettled && !amountChanged;
+
   return (
     <FormCard title="Job Card Entry">
       {showSuccessPopup && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm">
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30">
           <div className="bg-white shadow-2xl rounded-xl px-8 py-6 border border-green-200 animate-fade-in text-center">
             <h3 className="text-2xl font-semibold text-green-700 mb-2">
               🎉 Success!
@@ -2576,9 +2602,11 @@ export default function JobCardForm({
             <Field label="Mode of Payment" required>
               <Select
                 name="mode_of_payment"
-                value={form.mode_of_payment}
+                // value={form.mode_of_payment}
+                value={paymentLocked ? (existingJob.mode_of_payment ?? "") : form.mode_of_payment}
+                disabled={paymentLocked}
                 onChange={onChange}
-                required
+                required={!paymentLocked}
               >
                 <option value="">Select</option>
                 <option value="upi">UPI</option>
@@ -2688,25 +2716,42 @@ export default function JobCardForm({
                 min="0"
                 step="0.01"
                 name="advance_payment"
-                value={form.advance_payment || ""}
+                // value={form.advance_payment || ""}
+                value={paymentLocked ? (existingJob.advance_payment ?? "") : (form.advance_payment || "")}
                 placeholder="0.00"
                 onChange={onChange}
+                disabled={paymentLocked}
               />
             </Field>
+
+            
 
             <Field label="Payment Status" required>
               <Select
                 name="payment_status"
-                value={form.payment_status}
+                // value={form.payment_status}
+                value={paymentLocked ? existingJob.payment_status : form.payment_status}
                 onChange={onChange}
-                required
+                required={!paymentLocked}
+                disabled={paymentLocked}
               >
                 <option value="">Select</option>
+                {paymentLocked && (
+                  <option value={existingJob.payment_status}>{existingJob.payment_status}</option>
+                )}
                 <option>Half Paid</option>
                 <option>Un-paid</option>
               </Select>
             </Field>
           </div>
+
+          {isPaymentSettled && (
+            <p className={`mt-2 text-xs ${paymentLocked ? "text-slate-500" : "text-amber-700"}`}>
+              {paymentLocked
+                ? `🔒 Payment is ${existingJob.payment_status} — locked (managed by Accounts). Payment fields unlock only if the payable amount actually changes.`
+                : "⚠️ Payable amount changed — please re-select Payment Status (Half Paid / Un-paid) and update the advance."}
+            </p>
+          )}
         </div>
 
         {/* ══════════════════ SUBMIT ══════════════════ */}
