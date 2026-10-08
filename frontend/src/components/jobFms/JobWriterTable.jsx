@@ -473,7 +473,7 @@ export default function JobWriterTable() {
         </table>
 
         {/* 📄 Sticky Pagination Controls */}
-        <div className="sticky bottom-0 left-0 right-0 bg-gray-50 backdrop-blur-sm border-t border-gray-300 p-3 flex justify-between items-center z-30 shadow-md">
+        <div className="sticky bottom-0 left-0 right-0 bg-gray-50 border-t border-gray-300 p-3 flex justify-between items-center z-30 shadow-md">
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">Rows per page:</label>
             <select
@@ -515,7 +515,7 @@ export default function JobWriterTable() {
       <AnimatePresence>
         {showModal && (
           <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -555,7 +555,7 @@ export default function JobWriterTable() {
       <AnimatePresence>
         {confirmCancel && (
           <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

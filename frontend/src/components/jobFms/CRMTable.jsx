@@ -144,7 +144,7 @@ export default function CRMTable({ refresh }) {
   return (
     <div>
       {popup.open && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm">
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30">
           <div
             className={`bg-white shadow-2xl rounded-xl px-8 py-6 border text-center animate-fade-in
               ${
@@ -416,7 +416,7 @@ export default function CRMTable({ refresh }) {
         </table>
 
         {/* PAGINATION */}
-        <div className="sticky bottom-0 left-0 right-0 bg-gray-50 backdrop-blur-sm border-t border-gray-300 p-3 flex justify-between items-center z-30 shadow-md">
+        <div className="sticky bottom-0 left-0 right-0 bg-gray-50 border-t border-gray-300 p-3 flex justify-between items-center z-30 shadow-md">
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">Rows per page:</label>
             <select
