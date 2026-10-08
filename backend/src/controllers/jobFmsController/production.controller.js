@@ -255,6 +255,11 @@ export const getValidStagesForJob = async (req, res) => {
         isPickup &&
         job.production_stage === "ready_to_dispatch",
       delivery_assignments: deliveryAssignments,
+      can_direct_deliver:
+        job.status === "in_production" &&
+        isShipment &&
+        ["ready_to_dispatch", "out_for_delivery"].includes(job.production_stage),
+      delivery_assignments: deliveryAssignments,
       // NEW field — worker completion summary for current stage
       stage_worker_summary: stageWorkerSummary,
     });
@@ -991,7 +996,8 @@ export const markJobDelivered = async (req, res) => {
   try{
     ensureProductionRole(req);
     const { job_no } = req.params;
-    const { remarks } = req.body || {};
+    const { remarks, client_pickup } = req.body || {};
+    const isDirectPickup = client_pickup === true;
 
     if (!job_no) { 
       throw Object.assign(
@@ -1022,7 +1028,17 @@ export const markJobDelivered = async (req, res) => {
     const isPickup = isPickupDelivery(job.delivery_location);
     const isShipment = isShipmentDelivery(job.delivery_location);
 
-    if (isPickup) {
+    if (isDirectPickup) {
+      if (!["ready_to_dispatch", "out_for_delivery"].includes(job.production_stage)) {
+        throw Object.assign(
+          new Error(
+            `Cannot mark delivered (client pickup): job must be in "Ready to Dispatch" or "Out for Delivery" (current: ${STAGE_LABELS[job.production_stage] || "none"}).`
+          ),
+          { statusCode: 400 }
+        );
+      }
+    }
+    else if (isPickup) {
       if (job.production_stage !== "ready_to_dispatch") {
         throw Object.assign(
           new Error(
@@ -1047,6 +1063,28 @@ export const markJobDelivered = async (req, res) => {
       );
     }
 
+    let closedAssignments = [];
+    if (isDirectPickup && job.production_stage === "out_for_delivery") {
+      closedAssignments = await db.DeliveryAssignment.findAll({
+        where: { job_no, status: "pending" },
+        attributes: ["id", "worker_id", "worker_name"],
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (closedAssignments.length > 0) {
+        await db.DeliveryAssignment.update(
+          {
+            status: "overridden",
+            overridden_by_id: req.user?.id || null,
+            overridden_at: new Date(),
+            override_reason: "Client collected the order in person (direct delivery).",
+          },
+          { where: { job_no, status: "pending" }, transaction: t }
+        );
+      }
+    }
+
     // Edge case: if payment was already settled before delivery,
     // skip "delivered" and go straight to "completed".
     const isAlreadySettled = ["Paid", "Complimentary"].includes(job.payment_status);
@@ -1068,7 +1106,7 @@ export const markJobDelivered = async (req, res) => {
       job_no,
       new_stage: finalStatus,
       performed_by_id: req.user?.id || null,
-      remarks: `(${isPickup ? "Pickup" : "Shipment"} → ${isAlreadySettled ? "Completed" : "Delivered"})${remarks ? ": " + remarks.trim() : ""}`,
+      remarks: `(${isDirectPickup ? "Client Pickup (direct, planned: " + (job.delivery_location || "").replace(/_/g, " ") + ")" : isPickup ? "Pickup" : "Shipment"} → ${isAlreadySettled ? "Completed" : "Delivered"})${remarks ? ": " + remarks.trim() : ""}`,
       transaction: t,
     });
 
@@ -1078,10 +1116,10 @@ export const markJobDelivered = async (req, res) => {
         action: isAlreadySettled ? "job_auto_completed_on_delivery" : "job_delivered",
         performed_by_id: req.user?.id || null,
         meta: {
-          mode: isPickup ? "pickup" : "shipment",
-          remarks: remarks?.trim() || null,
-          auto_completed: isAlreadySettled,
-          payment_status_at_delivery: job.payment_status,
+          mode: isDirectPickup ? "client_pickup_direct" : isPickup ? "pickup" : "shipment",
+          direct_delivery: isDirectPickup,
+          delivery_location: job.delivery_location,
+          closed_delivery_assignments: closedAssignments.map((a) => a.worker_name),
         },
       },
       { transaction: t }
@@ -1093,7 +1131,7 @@ export const markJobDelivered = async (req, res) => {
     try {
       sendPushToDepartment("Accounts", {
         title: isAlreadySettled ? "Job Completed" : "Job Delivered",
-        body: `Job #${job_no} has been ${isAlreadySettled ? "auto-completed" : "delivered"} (${isPickup ? "pickup" : "shipment"}).`,
+        body: `Job #${job_no} has been ${isAlreadySettled ? "auto-completed" : "delivered"} (${isDirectPickup ? "client pickup" : isPickup ? "pickup" : "shipment"}).`,
         icon: "/favicon.png",
         vibrate: [1000, 200, 1000, 200, 1000],
         requireInteraction: true,
@@ -1103,6 +1141,33 @@ export const markJobDelivered = async (req, res) => {
       });
     } catch (pushErr) {
       console.error(`[push] Accounts notification failed for job ${job_no}:`, pushErr.message);
+    }
+
+    if (closedAssignments.length > 0) {
+      db.User.findAll({
+        where: { id: closedAssignments.map((a) => a.worker_id) },
+        attributes: ["id", "username", "department"],
+      })
+        .then((users) => {
+          users.forEach((u) => {
+            sendPushToUser(u.id, {
+              title: "Delivery Cancelled",
+              body: `Job #${job_no} · ${job.client_name} | Client collected it in person. No delivery needed.`,
+              icon: "/favicon.png",
+              vibrate: [500, 200, 500],
+              requireInteraction: true,
+              data: {
+                url: u.department === "Delivery" ? "/delivery-dashboard" : "/worker",
+                tag: `job-${job_no}-delivery`,
+              },
+            }).catch((err) =>
+              console.warn(`Push failed for cancelled delivery to ${u.username} (job ${job_no}):`, err.message)
+            );
+          });
+        })
+        .catch((err) =>
+          console.warn(`Could not notify workers of cancelled delivery (job ${job_no}):`, err.message)
+        );
     }
 
     return res.json({
