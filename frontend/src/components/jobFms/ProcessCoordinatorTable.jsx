@@ -283,7 +283,7 @@ function DesignerCard({ designer, onSetEstTime }) {
 function DesignerStatusModal({ designers, onClose, onSetEstTime }) {
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -292,7 +292,7 @@ function DesignerStatusModal({ designers, onClose, onSetEstTime }) {
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        transition={{ type: "spring", stiffness: 180, damping: 20 }}
+        transition={{ ease: 'easeOut' }}
         className="bg-white rounded-xl shadow-2xl w-[95%] max-w-3xl max-h-[85vh] flex flex-col"
       >
         <div className="flex justify-between items-center border-b px-6 py-4 shrink-0">
@@ -476,7 +476,7 @@ export default function ProcessCoordinatorTable() {
   return (
     <div>
       {showSuccessPopup && (
-        <div className="fixed inset-0 flex items-center justify-center z-[500] bg-black/30 backdrop-blur-sm">
+        <div className="fixed inset-0 flex items-center justify-center z-[500] bg-black/30">
           <div className="bg-white shadow-2xl rounded-xl px-8 py-6 border border-green-200 animate-fade-in text-center">
             <h3 className="text-2xl font-semibold text-green-700 mb-2">
               🎉 Success!
@@ -621,7 +621,7 @@ export default function ProcessCoordinatorTable() {
       <AnimatePresence>
         {showAssignModal && (
           <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           >
             <motion.div

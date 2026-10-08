@@ -246,7 +246,7 @@ export default function DashboardTable({
         </table>
 
         {/* 📄 Sticky Pagination Controls */}
-        <div className="sticky bottom-0 left-0 right-0 bg-gray-50 backdrop-blur-sm border-t border-gray-300 p-3 flex justify-between items-center z-30 shadow-md">
+        <div className="sticky bottom-0 left-0 right-0 bg-gray-50 border-t border-gray-300 p-3 flex justify-between items-center z-30 shadow-md">
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">Rows per page:</label>
             <select
