@@ -304,6 +304,9 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
           worker_ids: requiresWorkers ? workerIds : [],
           remarks: remarks.trim(),
         };
+      } else if (action.type === "deliver_direct") {
+        url = `/api/fms/production/${job.job_no}/mark-delivered`;
+        body = { client_pickup: true, ...(remarks.trim() ? { remarks: remarks.trim() } : {}) };
       } else {
         url = `/api/fms/production/${job.job_no}/mark-delivered`;
         body = remarks.trim() ? { remarks: remarks.trim() } : {};
@@ -863,6 +866,24 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
                   </div>
                 )}
 
+                {opts?.can_direct_deliver && (
+                  <div className="mb-4">
+                    <button
+                      onClick={() => handleActionSelect({ type: "deliver_direct" })}
+                      className={`w-full px-3 py-2 rounded-lg border text-sm font-semibold transition ${
+                        action?.type === "deliver_direct"
+                          ? "bg-green-600 text-white border-green-800"
+                          : "bg-white text-green-700 border-green-600 hover:bg-green-50"
+                      }`}
+                    >
+                      ✅ Mark as Delivered
+                      <span className="block text-[10px] opacity-60 mt-0.5">
+                          (Client Collected in Person)
+                      </span>
+                    </button>
+                  </div>
+                )}
+
                 {/* Reverse actions (existing — unchanged) */}
                 {opts?.reverse_stages?.length > 0 && (
                   <div className="mb-4">
@@ -899,6 +920,18 @@ export default function AdvanceStageModal({ job, onClose, onSuccess }) {
                 {/* Context inputs after action selected (existing — unchanged) */}
                 {action && (
                   <div className="border-t pt-4 mt-2 space-y-4">
+                    
+                    {action.type === "deliver_direct" &&
+                      opts?.current_production_stage === "out_for_delivery" &&
+                      opts?.delivery_assignments?.some((d) => d.status === "pending") && (
+                        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs p-2 rounded">
+                          ⚠️{" "}
+                          {opts.delivery_assignments.filter((d) => d.status === "pending").length}{" "}
+                          pending delivery assignment(s) will be closed and the delivery
+                          worker(s) will be notified that no delivery is needed.
+                        </div>
+                      )}
+
                     {requiresWorkers && (
                       <div>
                         <label className="block text-xs font-semibold text-gray-700 mb-1">
