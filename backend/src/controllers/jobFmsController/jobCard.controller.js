@@ -1174,6 +1174,42 @@ export const updateJobCard = async (req, res) => {
     });
   }
 
+  // ── Payment lock ──────────────────────────────────────────────────────────
+  // Paid / Complimentary jobs: payment fields are owned by Accounts. They can
+  // only be touched from this form if the payable amount REALLY changed
+  // (final = total - discount + GST, compared to what is stored in the DB).
+  const SETTLED_PAYMENT = ["Paid", "Complimentary"];
+  if (SETTLED_PAYMENT.includes(jobCard.payment_status)) {
+    const cents = (n) => Math.round(Number(n || 0) * 100);
+    const oldFinal = cents(
+      computeGST(
+        jobCard.total_amount ?? 0,
+        jobCard.discount ?? 0,
+        jobCard.gst_percentage,
+      ).final_amount,
+    );
+    const newFinal = cents(
+      computeGST(
+        updates.total_amount ?? jobCard.total_amount ?? 0,
+        updates.discount ?? jobCard.discount ?? 0,
+        "gst_percentage" in updates ? updates.gst_percentage : jobCard.gst_percentage,
+      ).final_amount,
+    );
+
+    if (oldFinal === newFinal) {
+      // Amount did not really change → ignore any payment change in the payload
+      delete updates.payment_status;
+      delete updates.mode_of_payment;
+      delete updates.advance_payment;
+    } else if (SETTLED_PAYMENT.includes(updates.payment_status)) {
+      // Amount changed but the job is still being saved as Paid/Complimentary
+      return res.status(400).json({
+        message:
+          "The payable amount changed on a settled job. Set Payment Status to Half Paid or Un-paid.",
+      });
+    }
+  }
+
   // ── Snapshot old state for diff (pure JS, no DB) ─────────────────────────
   const oldJobCardData = jobCard.toJSON();
   const TRACKED_JOBCARD_FIELDS = [
