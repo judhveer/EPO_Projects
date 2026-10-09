@@ -32,6 +32,7 @@ export default function JobWriterTable() {
   // 🔹 Filters (backend-driven)
   const [filters, setFilters] = useState({
     search: "",
+    item_search: "",
     order_type: "",
     order_handled_by: "",
     execution_location: "",
@@ -52,6 +53,7 @@ export default function JobWriterTable() {
   );
 
   const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
+  const [debouncedItemSearch, setDebouncedItemSearch] = useState(filters.item_search);
 
   // Fetch jobs (backend pagination)
   const fetchJobs = async () => {
@@ -63,10 +65,11 @@ export default function JobWriterTable() {
           limit,
           ...cleanFilters,
           search: debouncedSearch,
+          item_search: debouncedItemSearch,
         },
       });
       setJobs(data.data);
-      setTotalJobs(data.total || jobs.length || 0);
+      setTotalJobs(data.total);
     } catch (err) {
       console.error("Failed to fetch jobs:", err);
     } finally {
@@ -91,6 +94,7 @@ export default function JobWriterTable() {
     page,
     limit,
     debouncedSearch,
+    debouncedItemSearch,
     filters.status,
     filters.order_type,
     filters.order_handled_by,
@@ -110,6 +114,13 @@ export default function JobWriterTable() {
 
     return () => clearTimeout(timer);
   }, [filters.search]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedItemSearch(filters.item_search);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [filters.item_search]);
 
   useEffect(() => {
     fetchCrmUsers();
