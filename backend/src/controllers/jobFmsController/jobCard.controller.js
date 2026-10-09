@@ -1129,6 +1129,24 @@ export const updateJobCard = async (req, res) => {
   const { job_no } = req.params;
   const { job_items = [], ...updates } = req.body;
 
+    // ── Server-owned fields ───────────────────────────────────────────────────
+  // The edit form sends the whole job back (a stale copy from when it was
+  // opened). These fields are changed only by Accounts / Production / Delivery
+  // flows, never by editing the job card, so drop them. Otherwise a form left
+  // open would overwrite a bill or production stage changed in the meantime.
+  const SERVER_OWNED_FIELDS = [
+    "bill_created",
+    "bill_type",
+    "bill_created_at",
+    "bill_created_by_id",
+    "delivered_at",
+    "completed_at",
+    "production_stage",
+    "production_stage_started_at",
+    "delivery_persons_name",
+  ];
+  SERVER_OWNED_FIELDS.forEach((f) => delete updates[f]);
+
   // PRE-FLIGHT READS (outside transaction — no locks held yet)
   // Fetching the current state before we start writing keeps the
   // transaction window narrow and prevents long-held read locks from
