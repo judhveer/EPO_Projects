@@ -95,6 +95,21 @@ const buildWhereClause = (query) => {
     ];
   }
 
+  // ITEM NAME search — jobs that have at least one item matching the name
+  const itemSearch =
+    typeof query.item_search === "string"
+      ? query.item_search.trim().slice(0, 100) : "";
+      
+  if(itemSearch) {
+    // escape LIKE wildcards typed by the user (%, _, \)
+    const likeTerm = `%${itemSearch.replace(/[\\%_]/g, "\\$&")}%`;
+    where.job_no = {
+      [Op.in]: db.sequelize.literal(
+        `(SELECT ji.job_no FROM jobfms_job_items ji WHERE ji.enquiry_for LIKE ${db.sequelize.escape(likeTerm)})`
+      ),
+    };
+  }
+
   if (query.delivery_from || query.delivery_to) {
     where.delivery_date = {};
 
@@ -132,6 +147,18 @@ export const getDashboardJobs = async (req, res) => {
     const offset = (page - 1) * limit;
 
     const whereClause = buildWhereClause(req.query);
+
+    // If the search is a pure job number, that exact job comes first
+    const order = [["created_at", "DESC"]];
+    const searchTerm =
+      typeof req.query.search === "string" ? req.query.search.trim() : "";
+    if (/^\d+$/.test(searchTerm)) {
+      const n = Number(searchTerm);
+      if (Number.isSafeInteger(n)) {
+        order.unshift([db.sequelize.literal(`(JobCard.job_no = ${n})`), "DESC"]);
+      }
+    }
+
     // 1️⃣ COUNT (FAST)
     const total = await JobCard.count({
       where: whereClause,
@@ -180,7 +207,7 @@ export const getDashboardJobs = async (req, res) => {
       ],
       limit: parseInt(limit),
       offset,
-      order: [["created_at", "DESC"]],
+      order,
     });
 
     res.json({
