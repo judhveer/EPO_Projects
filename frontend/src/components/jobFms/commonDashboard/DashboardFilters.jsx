@@ -6,6 +6,7 @@ export default function DashboardFilters({ filters, setFilters, resetPage, crmUs
 
   const emptyFilters = {
     search: "",
+    item_search: "",
     order_type: "",
     order_handled_by: "",
     execution_location: "",
@@ -30,6 +31,14 @@ export default function DashboardFilters({ filters, setFilters, resetPage, crmUs
         value={filters.search}
         onChange={(e) => update("search", e.target.value)}
         placeholder="🔍 Job No, Client, Reference, Contact, Email, Designer Name..."
+        className="col-span-2 border rounded px-2 py-1 text-xs"
+      />
+
+      {/* ITEM NAME SEARCH */}
+      <input
+        value={filters.item_search}
+        onChange={(e) => update("item_search", e.target.value)}
+        placeholder="📦 Item name (e.g. certificates)..."
         className="col-span-2 border rounded px-2 py-1 text-xs"
       />
 
