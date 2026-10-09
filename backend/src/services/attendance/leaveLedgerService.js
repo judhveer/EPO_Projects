@@ -23,6 +23,16 @@ export class LedgerEntryNotFoundError extends Error {
     }
 }
 
+export class AllocationNotFoundError extends Error {
+    constructor(employeeId, leaveTypeId, leaveYear){
+        super(`No leave allocation exists for employee ${employeeId}, type ${leaveTypeId}, year ${leaveYear} — cannot consume/adjust leave that was never allocated.`);
+        this.name = 'AllocationNotFoundError';
+        this.employeeId = employeeId;
+        this.leaveTypeId = leaveTypeId;
+        this.leaveYear = leaveYear;
+    }
+}
+
 // ── Every function in this file REQUIRES an explicit transaction — no default, no silent auto-creation. Leave-balance writes must always be part of a larger atomic operation (e.g. an Attendance row + a LeaveLedger entry succeeding or failing together, per BR-009).
 // Forcing this at the API level means a caller can't accidentally get non-atomic behaviour by forgetting to pass one.
 function requireTransaction(t, fnName){
@@ -49,9 +59,7 @@ export async function lockAllocationRow(employeeId, leaveTypeId, leaveYear, tran
     });
 
     if(!allocation){
-        throw new Error(
-            `No leave allocation exists for employee ${employeeId}, type ${leaveTypeId}, year ${leaveYear} — cannot consume/adjust leave that was never allocated.`
-        );
+        throw new AllocationNotFoundError(employeeId, leaveTypeId, leaveYear);
     }
 
     return allocation;
@@ -151,13 +159,14 @@ export async function consumeLeaveForDay({
     try{
         allocation = await lockAllocationRow(employeeId, leaveTypeId, leaveYear, transaction);
     } catch (err) {
-        // No allocation exists at all for this employee/type/year (never
-        // eligible, or never allocated). From THIS function's callers'
-        // perspective, that's indistinguishable from "0 balance available"
-        // — re-thrown as the same error type so fall-through logic (try
-        // the next leave type, then ABSENT) treats both identically
-        // instead of crashing on one and gracefully handling the other.
-        throw new InsufficientLeaveBalanceError(employeeId, leaveTypeId, 0);
+        // No allocation at all is equivalent to "0 balance available",
+        // so the engine can fall through to the next leave type or ABSENT.
+        if (err instanceof AllocationNotFoundError) {
+            throw new InsufficientLeaveBalanceError(employeeId, leaveTypeId, 0);
+        }
+        // Anything else (DB timeout, deadlock, lost connection) is a real
+        // failure and must propagate instead of being treated as "no balance".
+        throw err;
     }
 
     

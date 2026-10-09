@@ -55,7 +55,7 @@ export async function resolveAttendanceForDay(employee, shiftDate, transaction){
     }
 
     // ── Step 3: Holiday ─────────────────────────────────────────────
-    if (await isHolidayForEmployee(employee.id, shiftDate)) {
+    if (await isHolidayForEmployee(employee.id, shiftDate, transaction)) {
         return Attendance.create({
             employee_id: employee.id, 
             office: employee.office, 
