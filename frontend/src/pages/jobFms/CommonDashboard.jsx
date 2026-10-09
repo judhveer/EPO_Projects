@@ -16,6 +16,7 @@ export default function CommonDashboard() {
   // 🔹 Filters (backend-driven)
   const [filters, setFilters] = useState({
     search: "",
+    item_search: "",
     order_type: "",
     order_handled_by: "",
     execution_location: "",
@@ -44,6 +45,7 @@ export default function CommonDashboard() {
   );
 
   const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
+  const [debouncedItemSearch, setDebouncedItemSearch] = useState(filters.item_search);
 
   // 🔹 Fetch jobs (backend pagination)
   const fetchJobs = async () => {
@@ -55,6 +57,7 @@ export default function CommonDashboard() {
           limit,
           ...cleanFilters,
           search: debouncedSearch,
+          item_search: debouncedItemSearch,
         },
       });
 
@@ -83,6 +86,7 @@ export default function CommonDashboard() {
     page,
     limit,
     debouncedSearch,
+    debouncedItemSearch,
     filters.status,
     filters.order_type,
     filters.order_handled_by,
@@ -102,6 +106,13 @@ export default function CommonDashboard() {
 
     return () => clearTimeout(timer);
   }, [filters.search]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedItemSearch(filters.item_search);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [filters.item_search]);
 
   useEffect(() => {
     fetchCrmUsers();
