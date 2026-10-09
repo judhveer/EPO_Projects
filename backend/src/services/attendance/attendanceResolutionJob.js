@@ -43,8 +43,14 @@ export async function runAttendanceResolutionJob() {
           results.skippedExisting++;
         }
       } catch (err) {
-        await t.rollback();
-        console.error(`[attendanceResolutionJob] Failed for employee ${employee.id}, date ${targetDateStr}:`, err.message);
+        console.error(`[attendanceResolutionJob] Failed for employee ${employee.id}, date ${targetDateStr}:`, err);
+        if (!t.finished) {
+          try {
+            await t.rollback();
+          } catch (rollbackErr) {
+            console.error('[attendanceResolutionJob] Rollback failed:', rollbackErr.message);
+          }
+        }
         results.errors.push({ employeeId: employee.id, date: targetDateStr, error: err.message });
         // Continue — one bad employee-day must never block everyone
         // else's correct resolution, same principle as every other

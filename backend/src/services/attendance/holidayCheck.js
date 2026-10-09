@@ -8,8 +8,11 @@ const { User, Holiday, HolidayApplicability } = models;
 // employee's own value, INDIVIDUAL matches their exact User.id. A
 // Holiday with zero applicability rows naturally matches nobody
 // (the JOIN below simply returns nothing) — no special-casing needed.
-export async function isHolidayForEmployee(employeeId, dateOnlyString) {
-  const employee = await User.findByPk(employeeId, { attributes: ['id', 'office', 'department'] });
+export async function isHolidayForEmployee(employeeId, dateOnlyString, transaction = null) {
+  const employee = await User.findByPk(employeeId, { 
+    attributes: ['id', 'office', 'department'],
+    transaction, 
+  });
   if (!employee) return false;
 
   const holiday = await Holiday.findOne({
@@ -27,6 +30,7 @@ export async function isHolidayForEmployee(employeeId, dateOnlyString) {
         ],
       },
     }],
+    transaction,
   });
 
   return !!holiday;
@@ -35,8 +39,11 @@ export async function isHolidayForEmployee(employeeId, dateOnlyString) {
 // Richer variant — returns the actual Holiday row (name, type) rather
 // than a boolean, for anywhere that needs to SHOW which holiday a day
 // corresponds to (the attendance table, the future resolution engine).
-export async function getHolidayForEmployee(employeeId, dateOnlyString) {
-  const employee = await User.findByPk(employeeId, { attributes: ['id', 'office', 'department'] });
+export async function getHolidayForEmployee(employeeId, dateOnlyString, transaction = null) {
+  const employee = await User.findByPk(employeeId, { 
+    attributes: ['id', 'office', 'department'],
+    transaction, 
+  });
   if (!employee) return null;
 
   return Holiday.findOne({
@@ -54,5 +61,6 @@ export async function getHolidayForEmployee(employeeId, dateOnlyString) {
         ],
       },
     }],
+    transaction,
   });
 }
