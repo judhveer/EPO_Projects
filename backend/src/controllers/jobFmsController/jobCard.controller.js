@@ -12,6 +12,7 @@ import {
 import path, { resolve } from "path";
 // ✅ Fix 2 — import Sequelize directly (most reliable)
 import { Transaction } from "sequelize";
+import { buildProductionEmail } from "../../utils/jobFms/productionEmailBuilder.js";
 
 import { sendPushToUser, sendPushToDepartment } from "../../utils/pushNotification.js";
 
@@ -745,30 +746,8 @@ export const createJobCard = async (req, res) => {
         })
       }
 
-      const productionEmails = productionUsers.map((u) => u.email).filter(Boolean);
-      // Email notification to production coordinators
-      if (productionEmails.length > 0) {
-        const productionEmailHTML = productionDirectJobTemplate({
-          jobNo:             job_no,
-          clientName:        client_name,
-          orderType:         order_type,
-          crmName:           order_handled_by,
-          executionLocation: execution_location,
-          deliveryLocation:  delivery_location,
-          deliveryDate:      delivery_date,
-          taskPriority:      task_priority,
-          instructions:      instructions,
-          dashboardUrl:      `${process.env.LEADS_URL}/jobs/${job_no}`,
-        });
-
-        await sendMailForFMS({
-          to:          productionEmails.join(","),
-          subject:     `🖨️ New Job — Direct to Production | Job No: ${job_no}`,
-          html:        productionEmailHTML,
-          attachments, // reuses the attachments array already defined above
-        }).catch(err => console.error("Production Coordinator direct to production email failed:", err));
-        console.log("Email sent to production team successfully.");
-      }
+      // Email to production coordinators (new format, no attachments, skips Out-Bound)
+      await sendProductionJobEmail({ job_no, kind: "new" });
 
     }
 
@@ -1524,6 +1503,19 @@ export const updateJobCard = async (req, res) => {
     }
   }
 
+    // ── Production email: items BEFORE this edit ──
+  // Only when production has already received this job.
+  const productionAlreadyNotified =
+    ["ready_for_production", "in_production"].includes(jobCard.status) &&
+    jobCard.execution_location !== "Out-Bound";
+  const oldItemsForEmail =
+    productionAlreadyNotified && !nowRevertedFromProd
+      ? await loadItemsForProductionEmail(job_no).catch((e) => {
+          console.error("Old items snapshot for production email failed:", e.message);
+          return null;
+        })
+      : null;
+
   // ─────────────────────────────────────────────────────────────────────────
   // TRANSACTION — writes only
   // ─────────────────────────────────────────────────────────────────────────
@@ -1927,6 +1919,24 @@ export const updateJobCard = async (req, res) => {
       removedItems.length > 0 ||
       modifiedItems.length > 0;
 
+        // ── Production email ──
+    if (nowMovingToProduction) {
+      sendProductionJobEmail({ job_no, kind: "new" });
+    } else if (nowRevertedFromProd) {
+      sendProductionJobEmail({ job_no, kind: "withdrawn" });
+    } else if (oldItemsForEmail) {
+      sendProductionJobEmail({
+        job_no,
+        kind: "corrected",
+        oldItems: oldItemsForEmail,
+        headerChanged: {
+          delivery_date: !!jobCardChanges.delivery_date,
+          client_name: !!jobCardChanges.client_name,
+          order_handled_by: !!jobCardChanges.order_handled_by,
+        },
+      });
+    }
+
     if (hasAnyChange || nowMovingToProduction || nowRevertedFromProd) {
       sendJobNotificationEmail({
         job: updatedJobCard,
@@ -1983,6 +1993,7 @@ export const cancelJobCard = async (req, res) => {
       });
     }
 
+    const prevStatus = job.status; // needed to know if production already had this job
     job.current_stage = "cancelled";
     job.status = "cancelled";
 
@@ -1997,7 +2008,7 @@ export const cancelJobCard = async (req, res) => {
       },
     );
 
-    await job.save();
+    await job.save({ transaction: t });
 
     await advanceStage({
       job_no,
@@ -2012,6 +2023,9 @@ export const cancelJobCard = async (req, res) => {
     res.status(200).json({
       message: "Successfully cancelled the job",
     });
+
+    // 🔔 Push to Production — only if the job had already reached production
+    notifyProductionJobCancelled({ job_no, prevStatus });
 
     // 🔔 Notify CRM + Coordinators + Designer
     await sendJobNotificationEmail({
@@ -2464,7 +2478,7 @@ async function sendJobNotificationEmail({
     const recipients = [
       ...(crmUser?.email ? [crmUser.email] : []),
       ...coordinators.map((u) => u.email).filter(Boolean),
-      ...productionUsers.map((u) => u.email).filter(Boolean),
+      ...(actionType === "cancelled" ? productionUsers.map((u) => u.email).filter(Boolean) : []),
       ...(designerUser?.email ? [designerUser.email] : []),
     ].filter((email) => {
       if (seen.has(email)) return false;
@@ -2592,6 +2606,137 @@ async function sendJobNotificationEmail({
     console.error("❌ Failed to send job push notification and email:", err.message);
   }
 }
+
+
+
+// ── Production email helpers ──────────────────────────────────────────────
+const parseJsonField = (v, fallback) => {
+  if (v === null || v === undefined) return fallback;
+  if (typeof v === "string") {
+    try { return JSON.parse(v); } catch { return fallback; }
+  }
+  return v;
+};
+
+// Same query as getJobItemsByJobNo, so email == JobItemsSidebar
+async function loadItemsForProductionEmail(job_no) {
+  const items = await JobItem.findAll({
+    where: { job_no },
+    include: [
+      { model: PaperMaster, as: "selectedPaper" },
+      { model: PaperMaster, as: "selectedCoverPaper" },
+      { model: WideFormatMaterial, as: "selectedWideMaterial" },
+      { model: JobItemCosting, as: "costing" },
+    ],
+    order: [["id", "ASC"]],
+  });
+
+  return items.map((item) => {
+    const json = item.toJSON();
+    return {
+      ...json,
+      binding_types: parseJsonField(json.binding_types, []),
+      inside_papers: parseJsonField(json.inside_papers, []),
+      binding_targets: parseJsonField(json.binding_targets, null),
+      cover_to_print: json.cover_to_print !== false,
+      costing: json.costing
+        ? { ...json.costing, ms_inside_costing: parseJsonField(json.costing.ms_inside_costing, []) }
+        : null,
+    };
+  });
+}
+
+// kind: "new" | "corrected" | "withdrawn". Never throws.
+export async function sendProductionJobEmail({ job_no, kind, oldItems = null, headerChanged = {} }) {
+  try {
+    const job = await JobCard.findByPk(job_no);
+    if (!job) return;
+    if (job.execution_location === "Out-Bound") return; // no production mail/push for Out-Bound
+
+    const productionUsers = await User.findAll({
+      where: { department: "Production Coordinator", isActive: true },
+    });
+    if (productionUsers.length === 0) return;
+
+    const items = kind === "withdrawn" ? [] : await loadItemsForProductionEmail(job_no);
+    const mail = buildProductionEmail({
+      kind,
+      job: job.toJSON(),
+      items,
+      oldItems: oldItems || [],
+      headerChanged,
+    });
+    if (!mail) return; // nothing production cares about changed → no mail, no push
+
+    // Push — corrections and withdrawals only ("new" already has its own push)
+    const pushByKind = {
+      corrected: {
+        title: "Job Corrected",
+        body: `Job #${job_no} · ${job.client_name} — details were corrected. Please check your email.`,
+      },
+      withdrawn: {
+        title: "Job Withdrawn",
+        body: `Job #${job_no} · ${job.client_name} has been withdrawn and sent back to review. Please do not start / stop work on this job.`,
+      },
+    };
+    const push = pushByKind[kind];
+    if (push) {
+      productionUsers.forEach((u) =>
+        sendPushToUser(u.id, {
+          ...push,
+          icon: "/favicon.png",
+          vibrate: [1000, 200, 1000, 200, 1000],
+          requireInteraction: true,
+          data: { url: "/job-fms/production", tag: `job-${job_no}` },
+        }).catch((err) =>
+          console.warn(`Push failed for production user ${u.username} on job ${job_no}:`, err.message),
+        ),
+      );
+    }
+
+    const emails = productionUsers.map((u) => u.email).filter(Boolean);
+    if (emails.length > 0) {
+      await sendMailForFMS({ to: emails.join(","), subject: mail.subject, html: mail.html });
+      console.log(`📧 Production ${kind} mail sent for job ${job_no}`);
+    }
+  } catch (err) {
+    console.error(`❌ Production ${kind} mail failed for job ${job_no}:`, err.message);
+  }
+}
+
+
+// Push to production when a job that already reached production is cancelled.
+// prevStatus = job status BEFORE it was set to "cancelled".
+async function notifyProductionJobCancelled({ job_no, prevStatus }) {
+  try {
+    if (!["ready_for_production", "in_production"].includes(prevStatus)) return;
+
+    const job = await JobCard.findByPk(job_no, {
+      attributes: ["job_no", "client_name", "execution_location"],
+    });
+    if (!job || job.execution_location === "Out-Bound") return;
+
+    const productionUsers = await User.findAll({
+      where: { department: "Production Coordinator", isActive: true },
+    });
+
+    productionUsers.forEach((u) =>
+      sendPushToUser(u.id, {
+        title: "Job Cancelled",
+        body: `Job #${job_no} · ${job.client_name} has been cancelled. Please stop work on this job.`,
+        icon: "/favicon.png",
+        vibrate: [1000, 200, 1000, 200, 1000],
+        requireInteraction: true,
+        data: { url: "/job-fms/production", tag: `job-${job_no}` },
+      }).catch((err) =>
+        console.warn(`Cancel push failed for ${u.username} on job ${job_no}:`, err.message),
+      ),
+    );
+  } catch (err) {
+    console.error(`❌ Production cancel push failed for job ${job_no}:`, err.message);
+  }
+}
+
 
 /**
  * DELETE JOB CARD
