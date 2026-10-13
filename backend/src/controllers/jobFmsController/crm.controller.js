@@ -11,6 +11,7 @@ import {
   designerRedesignTemplate,
   productionReadyTemplate,
 } from "../../email/templates/emailTemplates.js";
+import { sendProductionJobEmail } from "./jobCard.controller.js";
 
 import { sendPushToUser, sendPushToDepartment } from "../../utils/pushNotification.js";
 
@@ -383,28 +384,7 @@ export const approveJobByClient = async (req, res) => {
       }
 
       if(job.execution_location !== "Out-Bound"){
-        const productionCoordinator = await User.findAll({
-          where: {
-            department: "Production Coordinator",
-            isActive: true,
-          },
-        });
-        for (const coordinator of productionCoordinator) {
-          await sendMailForFMS({
-            to: coordinator.email,
-            subject: `Job Ready for Production - Job No ${job.job_no}`,
-            html: productionReadyTemplate({
-              recipientName: coordinator.username,
-              jobNo: job.job_no,
-              clientName: job.client_name,
-              crmName: job.order_handled_by,
-              designerName: designer?.username,
-              approvedAt,
-              dashboardUrl,
-            }),
-            attachments,
-          });
-        }
+        await sendProductionJobEmail({ job_no: job.job_no, kind: "new" });
       }
 
       // Send to Production (PENDING)
