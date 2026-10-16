@@ -1795,6 +1795,37 @@ export default function JobCardForm({
 
       const currentForm = formRef.current; // ← use ref, not state
 
+
+      // ── Same rules the backend enforces, shown before the round trip ───────
+      const fail = (message) => {
+        setErr(message);
+        setLoading(false);
+        alert(message);
+      };
+
+      if (!currentForm.job_items?.length) {
+        return fail("You have to enter at least one job item.");
+      }
+      if (Number(currentForm.no_of_files) !== currentForm.job_items.length) {
+        return fail("No of files should be same as job items.");
+      }
+
+      const deliveryMs = new Date(currentForm.delivery_date).getTime();
+      if (Number.isNaN(deliveryMs)) {
+        return fail("Please enter a valid delivery date.");
+      }
+      // Edit mode: only a CHANGED delivery date is checked (overdue jobs stay editable).
+      const toMinute = (ms) => Math.floor(ms / 60000);
+      const deliveryChanged =
+        !isEditMode ||
+        !existingJob?.delivery_date ||
+        toMinute(deliveryMs) !==
+          toMinute(new Date(existingJob.delivery_date).getTime());
+      if (deliveryChanged && deliveryMs <= Date.now()) {
+        return fail("Delivery date cannot be in the past.");
+      }
+
+
       const isValidJobItems = currentForm.job_items.every(
         (item) =>
           item.quantity && item.uom && item.unit_rate && item.item_total,
