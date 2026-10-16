@@ -11,7 +11,7 @@ export const WORKLOAD_WEIGHTS = Object.freeze({
   running: 5,       // in_progress and not paused
   paused: 2,        // in_progress but is_paused = 1
   assigned: 3,      // assigned, not started yet
-  urgentWaiting: 5, // flat bonus if an Urgent job is waiting in "assigned"
+  urgentWaiting: 0, // Urgent no longer adds to the workload score (Urgent only decides sweep order)
 });
 
 export function computeScore({ running, paused, assigned, urgentWaiting }) {
