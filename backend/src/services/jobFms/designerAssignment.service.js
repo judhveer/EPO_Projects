@@ -27,6 +27,7 @@ import {
   designerAssignmentTemplate,
   crmJobStageTemplate,
 } from "../../email/templates/emailTemplates.js";
+import { calculateMaxDesignDeadlineWithRule } from "../../controllers/jobFmsController/designer.controller.js";
 
 const { sequelize, JobCard, JobAssignment, ActivityLog, User } = db;
 
@@ -56,8 +57,6 @@ const formatIST = (date) =>
 // A designer must always get a usable window. If the normal maximum deadline is
 // less than MIN_DESIGN_WINDOW_HOURS away (or already past), push it to
 // now + MIN_DESIGN_WINDOW_HOURS, but never beyond the delivery date.
-// (calculateMaxDesignDeadline itself is untouched: setEstimatedTime and the
-// frontend copy of that rule keep working exactly as before.)
 const MIN_DESIGN_WINDOW_HOURS = 2;
 
 function applyMinimumWindow(rawDeadline, deliveryDate) {
@@ -69,13 +68,6 @@ function applyMinimumWindow(rawDeadline, deliveryDate) {
   return { estimated: capped, floorApplied: true };
 }
 
-// Same labels setEstimatedTime() writes to the activity log.
-function describeDeadlineRule(deliveryDate, createdAt, priority) {
-  const totalDays = (deliveryDate - createdAt) / (1000 * 60 * 60 * 24);
-  if (priority === "Urgent" || totalDays < 1) return "urgent_or_same_day_4h";
-  if (totalDays <= 2) return "next_day_1930";
-  return "fifty_percent";
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. DB work: create the assignment and move the job forward
@@ -146,14 +138,16 @@ export async function assignDesignerToJob({
     // Estimated completion = the maximum allowed design time (first assignment => instance 1).
     const deliveryDate = new Date(job.delivery_date);
     const createdAt = new Date(job.get("createdAt"));
-    const rawMaxDeadline = calculateMaxDesignDeadline(
-      deliveryDate,
-      createdAt,
-      job.task_priority,
-      1,
-      null,
-    );
+    const { deadline: rawMaxDeadline, rule: deadlineRule } =
+      calculateMaxDesignDeadlineWithRule(
+        deliveryDate,
+        createdAt,
+        job.task_priority,
+        1,
+        null,
+      );
     const { estimated, floorApplied } = applyMinimumWindow(rawMaxDeadline, deliveryDate);
+
     const estimateAlreadyPast = estimated.getTime() <= Date.now();
 
     const assignment = await JobAssignment.create(
@@ -200,7 +194,7 @@ export async function assignDesignerToJob({
           estimated_completion_time: estimated.toISOString(),
           raw_max_deadline: rawMaxDeadline.toISOString(),
           min_window_floor_applied: floorApplied,
-          deadline_rule: describeDeadlineRule(deliveryDate, createdAt, job.task_priority),
+          deadline_rule: deadlineRule,
           estimate_already_past: estimateAlreadyPast,
           ...(trigger ? { trigger } : {}),
           ...(scoreSnapshot ? { ranking_snapshot: scoreSnapshot } : {}),
@@ -538,4 +532,114 @@ export async function sweepWaitingJobs() {
     sweepRunning = false;
   }
   return summary;
+}
+
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. Delivery date changed -> recalculate the estimate of the designer's active job
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Locks the job's active assignment row (call BEFORE touching the job row, same order as designerStartTask). */
+export async function lockActiveAssignment(jobNo, transaction) {
+  return JobAssignment.findOne({
+    where: { job_no: jobNo, status: { [Op.in]: ["assigned", "in_progress"] } },
+    order: [["created_at", "DESC"]],
+    transaction,
+    lock: transaction.LOCK.UPDATE,
+  });
+}
+
+/**
+ * Runs inside the caller's transaction, AFTER the job's new delivery_date was saved.
+ * Returns { changed: false, reason } or { changed: true, assignmentId, previous, estimated }.
+ */
+export async function recalculateEstimateOnDeliveryChange({
+  jobNo,
+  assignment,
+  performedById = null,
+  transaction,
+}) {
+  if (!assignment) return { changed: false, reason: "no_active_assignment" };
+
+  // Fresh read inside the transaction: gives the delivery date exactly as the DB stored it.
+  const job = await JobCard.findByPk(jobNo, { transaction });
+  if (!job) return { changed: false, reason: "job_not_found" };
+
+  const deliveryDate = new Date(job.delivery_date);
+  const createdAt = new Date(job.get("createdAt"));
+  if (Number.isNaN(deliveryDate.getTime())) {
+    return { changed: false, reason: "invalid_delivery_date" };
+  }
+  if (deliveryDate.getTime() <= Date.now()) {
+    return { changed: false, reason: "delivery_in_past" }; // ignored by design
+  }
+
+  const instance = assignment.instance ?? 1;
+  const { deadline: rawMaxDeadline, rule } = calculateMaxDesignDeadlineWithRule(
+    deliveryDate,
+    createdAt,
+    job.task_priority,
+    instance,
+    instance > 1 ? assignment.assigned_at : null,
+  );
+  const { estimated, floorApplied } = applyMinimumWindow(rawMaxDeadline, deliveryDate);
+
+  const previous = assignment.estimated_completion_time
+    ? new Date(assignment.estimated_completion_time)
+    : null;
+  const toMinute = (d) => Math.floor(d.getTime() / 60000);
+  if (previous && toMinute(previous) === toMinute(estimated)) {
+    return { changed: false, reason: "same_estimate" };
+  }
+
+  await assignment.update({ estimated_completion_time: estimated }, { transaction });
+
+  await ActivityLog.create(
+    {
+      job_no: jobNo,
+      performed_by_id: performedById,
+      action: "Estimated Time Recalculated",
+      meta: {
+        reason: "delivery_date_changed",
+        assignment_id: assignment.id,
+        instance,
+        previous_estimated_completion_time: previous ? previous.toISOString() : null,
+        estimated_completion_time: estimated.toISOString(),
+        raw_max_deadline: rawMaxDeadline.toISOString(),
+        min_window_floor_applied: floorApplied,
+        deadline_rule: rule,
+      },
+    },
+    { transaction },
+  );
+
+  return { changed: true, assignmentId: assignment.id, previous, estimated };
+}
+
+/** Push-only to the designer (no email). Runs after commit; never throws. */
+export async function notifyEstimateChanged({ assignmentId, jobNo }) {
+  try {
+    // Re-read: the assignment may have been cancelled/completed after the commit.
+    const assignment = await JobAssignment.findByPk(assignmentId, {
+      attributes: ["id", "designer_id", "status", "estimated_completion_time"],
+    });
+    if (
+      !assignment ||
+      !["assigned", "in_progress"].includes(assignment.status) ||
+      !assignment.estimated_completion_time
+    ) {
+      return;
+    }
+    await sendPushToUser(assignment.designer_id, {
+      title: "Deadline Updated",
+      body: `Job #${jobNo}: delivery date changed. Complete by ${formatIST(assignment.estimated_completion_time)}.`,
+      icon: "/favicon.png",
+      vibrate: [500, 100, 500],
+      requireInteraction: true,
+      data: { url: "/job-fms/designer", tag: `job-${jobNo}` },
+    });
+  } catch (e) {
+    console.warn(`Estimate-change push failed for job ${jobNo}:`, e.message);
+  }
 }
