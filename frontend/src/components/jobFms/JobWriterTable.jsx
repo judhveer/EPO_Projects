@@ -610,7 +610,7 @@ export default function JobWriterTable() {
                       fetchJobs();
                     } catch (err) {
                       console.error("Failed to cancel job:", err);
-                      alert("Error cancelling job");
+                      alert(err?.response?.data?.message);
                     } finally {
                       setCancelling(false);
                     }
