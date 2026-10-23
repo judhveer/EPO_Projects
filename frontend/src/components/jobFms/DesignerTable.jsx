@@ -10,50 +10,6 @@ import TransferPanel         from "./transferRequests/TransferPanel.jsx";
 import TransferRequestModal  from "./transferRequests/TransferRequestModal.jsx";
 import CancelAndStartModal   from "./transferRequests/CancelAndStartModal.jsx";
 
-
-
-// PURE HELPER — mirrors server logic exactly (no API call needed)
-// Returns a JS Date representing the latest allowed estimated completion time.
-function calcMaxDesignDeadline(deliveryDateISO, createdAtISO, priority, instance = 1, assignedAtISO = null) {
-  const deliveryDate = new Date(deliveryDateISO);
-  const jobCreatedAt = new Date(createdAtISO);
-  const now          = new Date();
-  const totalMs      = deliveryDate.getTime() - jobCreatedAt.getTime();
-  const totalDays    = totalMs / (1000 * 60 * 60 * 24);
-
-  let deadline;
-
-  // ── Rule 1: Urgent or same-day ─
-  if (priority === "Urgent" || totalDays < 1) {
-    // 4 hours from now
-    deadline = new Date(now.getTime() + 4 * 60 * 60 * 1000);
-  }
-  // ── Rule 2: Next-day ─────
-  else if (totalDays <= 2) {
-    // Day before delivery at 19:30 IST (= 14:00 UTC)
-    deadline = new Date(deliveryDate);
-    deadline.setDate(deadline.getDate() - 1);
-    deadline.setUTCHours(14, 0, 0, 0); // 19:30 IST
-  }
-  else{
-    // ── Rule 3: 50% of window ───
-    deadline = new Date(jobCreatedAt.getTime() + totalMs * 0.50);
-  }
-
-  // Redesign override: grant 4h from assignment only when original window
-  // has ≤ 4 hours left (or is already expired)
-  if (instance > 1) {
-    const remainingMs = deadline.getTime() - now.getTime();
-    const fourHoursMs = 4 * 60 * 60 * 1000;
-    if(remainingMs < fourHoursMs){
-      const base = assignedAtISO ? new Date(assignedAtISO) : now;
-      deadline   = new Date(base.getTime() + fourHoursMs);
-    }
-  }
-  // ── HARD CAP: estimated completion can never exceed delivery date ──
-  return deadline > deliveryDate ? deliveryDate : deadline;
-}
-
 // Converts a JS Date → "YYYY-MM-DDTHH:mm" for datetime-local input max/min
 function toDateTimeLocalStr(date) {
   if (!date || isNaN(date.getTime())) return "";
@@ -72,58 +28,6 @@ function isoToDateTimeLocal(isoString) {
   return toDateTimeLocalStr(new Date(isoString));
 }
 
-
-// Human-readable deadline label shown under the input
-function deadlineLabel(deliveryDateISO, createdAtISO, priority, instance = 1, assignedAtISO = null) {
-  const deliveryDate = new Date(deliveryDateISO);
-  const jobCreatedAt = new Date(createdAtISO);
-  const now          = new Date();
-  const totalMs      = deliveryDate.getTime() - jobCreatedAt.getTime();
-  const totalDays    = totalMs / (1000 * 60 * 60 * 24);
-
-  // Compute what the base (non-redesign) deadline would be
-  let baseDeadline;
-  if (priority === "Urgent" || totalDays < 1) {
-    baseDeadline = new Date(now.getTime() + 4 * 60 * 60 * 1000);
-  } else if (totalDays <= 2) {
-    baseDeadline = new Date(deliveryDate);
-    baseDeadline.setDate(baseDeadline.getDate() - 1);
-    baseDeadline.setUTCHours(14, 0, 0, 0);
-  } else {
-    baseDeadline = new Date(jobCreatedAt.getTime() + totalMs * 0.50);
-  }
-
-  const fmtRemaining = (ms) => {
-    if (ms <= 0) return "expired";
-    const days  = Math.floor(ms / 86400000);
-    const hours = Math.round(ms / 3600000);
-    return days >= 1 ? `${days} day${days !== 1 ? "s" : ""} remaining` : `${hours} hr${hours !== 1 ? "s" : ""} remaining`;
-  };
-
-  if (instance > 1) {
-    const remainingMs = baseDeadline.getTime() - now.getTime();
-    const fourHoursMs = 4 * 60 * 60 * 1000;
-
-    if (remainingMs < fourHoursMs) {
-      return { rule: "Redesign — 4 hrs from assignment (window expired)", color: "text-purple-600" };
-    } 
-    return {
-      rule:  `Redesign — original 50% window (${fmtRemaining(remainingMs)})`,
-      color: "text-purple-600",
-    }
-  }
-
-  if (priority === "Urgent" || totalDays < 1) {
-    return { rule: "Urgent — 4 hrs from now", color: "text-red-600" };
-  }
-  if (totalDays <= 2) {
-    return { rule: "Next day — by 7:30 PM today", color: "text-orange-600" };
-  }
-  return {
-    rule:  `50% window — ${fmtRemaining(baseDeadline.getTime() - now.getTime())}`,
-    color: "text-blue-600",
-  };
-}
 
 function formatTimer(totalSec) {
   const h = String(Math.floor(totalSec / 3600)).padStart(2, "0");
@@ -212,29 +116,12 @@ const JobRow = memo(function JobRow({
   // Per-row blur debounce ref — no shared state contention between rows
   const blurTimeoutRef = useRef(null);
 
-  // Expensive deadline calculations — only recompute when relevant job fields change
-  const { maxStr, isLocked, label } = useMemo(() => {
-    const instance   = job.assignment.instance ?? 1;
-    const assignedAt = job.assignment.assigned_at ?? job.assignment.assignedAt ?? null;
-    const maxDate    = calcMaxDesignDeadline(
-      job.delivery_date, job.createdAt, job.task_priority, instance, assignedAt,
-    );
-    return {
-      maxStr:   toDateTimeLocalStr(maxDate),
-      isLocked: !!job.assignment.estimated_completion_time,
-      label:    deadlineLabel(
-        job.delivery_date, job.createdAt, job.task_priority, instance, assignedAt,
-      ),
-    };
-  }, [
-    job.delivery_date,
-    job.createdAt,
-    job.task_priority,
-    job.assignment.instance,
-    job.assignment.assigned_at,
-    job.assignment.assignedAt,
-    job.assignment.estimated_completion_time,
-  ]);
+  // The estimate is set by the system. Only old rows that still have NO estimate
+  // can be filled in once by the designer; every other row is read-only.
+  // The exact allowed maximum is enforced by the server (its error message shows it);
+  // here we only block obvious mistakes: the past, or after the delivery date.
+  const isLocked = !!job.assignment.estimated_completion_time;
+  const maxStr   = isoToDateTimeLocal(job.delivery_date);
 
   // minStr: "now" — intentionally NOT memoised; stale by a render cycle is fine
   const minStr       = toDateTimeLocalStr(new Date());
@@ -243,7 +130,7 @@ const JobRow = memo(function JobRow({
   const validate = (val) => {
     if (!val) return null;
     if (val < minStr) return "Cannot be in the past.";
-    if (val > maxStr) return `Must be on or before ${maxStr.replace("T", " ")}`;
+    if (maxStr && val > maxStr) return "Must be on or before the delivery date.";
     return null;
   };
 
@@ -326,53 +213,57 @@ const JobRow = memo(function JobRow({
 
       {/* ── Estimated Completion Time ─────────────────────────────────────── */}
       <td className="border p-1 sm:p-2 text-center sticky right-[260px] bg-white z-40 min-w-[250px] group-hover:bg-blue-500 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
-        <Input
-          type="datetime-local"
-          min={isLocked ? undefined : minStr}
-          max={isLocked ? undefined : maxStr}
-          value={isoToDateTimeLocal(
-            job.assignment.estimated_completion_time ?? job.tempEstimatedCompletionTime,
-          )}
-          onChange={(e) => {
-            if (isLocked) return;
-            onTempTimeChange(job.job_no, e.target.value);
-          }}
-          onBlur={(e) => {
-            if (isLocked) return;
-            const val = e.target.value;
-            if (!val || val.length !== 16) return;
-            const error = validate(val);
-            if (error) {
-              onTimeBlur(job.job_no, null, error);
-              return;
-            }
-            clearTimeout(blurTimeoutRef.current);
-            blurTimeoutRef.current = setTimeout(() => onTimeBlur(job.job_no, val, null), 300);
-          }}
-          onFocus={() => {
-            clearTimeout(blurTimeoutRef.current);
-            onTimeFocus(job.job_no);
-          }}
-          readOnly={isLocked}
-          className={`border rounded-md p-2 text-xs w-full text-black ${
-            isLocked ? "cursor-not-allowed bg-slate-100" : errMsg ? "border-red-400 bg-red-50" : ""
-          }`}
-        />
+        {isLocked ? (
+          // Set by the system (or by the Process Coordinator) — read-only
+          <div>
+            <div className="font-semibold text-sm text-slate-800 group-hover:text-white">
+              {DateTime.fromJSDate(new Date(job.assignment.estimated_completion_time))
+                .setZone("Asia/Kolkata")
+                .toFormat("dd LLL yyyy, hh:mm a")}
+            </div>
+            <div className="text-[10px] mt-1 text-slate-400 group-hover:text-white">
+              🔒 Locked
+            </div>
+          </div>
+        ) : (
+          // Old job without an estimate — the designer can set it once
+          <>
+            <Input
+              type="datetime-local"
+              min={minStr}
+              max={maxStr}
+              value={isoToDateTimeLocal(job.tempEstimatedCompletionTime)}
+              onChange={(e) => onTempTimeChange(job.job_no, e.target.value)}
+              onBlur={(e) => {
+                const val = e.target.value;
+                if (!val || val.length !== 16) return;
+                const error = validate(val);
+                if (error) {
+                  onTimeBlur(job.job_no, null, error);
+                  return;
+                }
+                clearTimeout(blurTimeoutRef.current);
+                blurTimeoutRef.current = setTimeout(() => onTimeBlur(job.job_no, val, null), 300);
+              }}
+              onFocus={() => {
+                clearTimeout(blurTimeoutRef.current);
+                onTimeFocus(job.job_no);
+              }}
+              className={`border rounded-md p-2 text-xs w-full text-black ${
+                errMsg ? "border-red-400 bg-red-50" : ""
+              }`}
+            />
 
-        {errMsg && !isLocked && (
-          <div className="text-[10px] mt-1 text-red-600 font-medium group-hover:text-red-300 leading-tight">
-            ⚠ {errMsg}
-          </div>
-        )}
-        {!isLocked && !errMsg && (
-          <div className={`text-[10px] mt-1 font-medium ${label.color} group-hover:text-white`}>
-            Max: {label.rule}
-          </div>
-        )}
-        {isLocked && (
-          <div className="text-[10px] mt-1 text-slate-400 group-hover:text-white">
-            Deadline: {maxStr.replace("T", " ")}
-          </div>
+            {errMsg ? (
+              <div className="text-[10px] mt-1 text-red-600 font-medium group-hover:text-red-300 leading-tight">
+                ⚠ {errMsg}
+              </div>
+            ) : (
+              <div className="text-[10px] mt-1 font-medium text-blue-600 group-hover:text-white">
+                Not set — can be set once (before delivery)
+              </div>
+            )}
+          </>
         )}
       </td>
 
@@ -610,7 +501,7 @@ export default function DesignerTable({ refresh }) {
   const handleStart = useCallback(async (jobNo) => {
     const job = jobsRef.current.find((j) => j.job_no === jobNo);
     if (!job?.assignment?.estimated_completion_time) {
-      alert("Please enter estimated completion time first.");
+      alert("Estimated completion time is not set for this job. Please set it, or ask the Process Coordinator.");
       return;
     }
 
