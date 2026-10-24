@@ -3,6 +3,15 @@ import db from "../../models/index.js";
 const { JobCard, JobAssignment, StageTracking, ActivityLog, User } = db;
 import { advanceStage } from "../../utils/jobFms/stageTracking.js";
 import { sendMailForFMS } from "../../email/sendMail.js";
+import { rankDesignersForAssignment } from "../../services/jobFms/designerAllocation.service.js";
+import {
+  assignDesignerToJob,
+  sendAssignmentNotifications,
+  AssignmentError,
+} from "../../services/jobFms/designerAssignment.service.js";
+
+import { nowIST } from "../../utils/attendance/istTime.js";
+import { computeScore, getEligibleDesigners } from "../../services/jobFms/designerAllocation.service.js";
 
 import {
   designerAssignmentTemplate,
@@ -45,265 +54,166 @@ export const getAllJobsForProcessCoordinator = async (req, res) => {
 // process coordinator api to assigns designer to a job
 
 export const assignDesigner = async (req, res) => {
-  const t = await db.sequelize.transaction();
+  const { job_no } = req.params;
+  const { designer_id } = req.body;
+
+  if (!designer_id) {
+    return res.status(400).json({ error: "designer_id is required" });
+  }
 
   try {
-    const { job_no } = req.params;
-    const { designer_id } = req.body;
-
-    if (!designer_id) {
-      return res.status(400).json({ error: "designer_id is required" });
-    }
-
-    const desginer = await User.findByPk(designer_id);
-
-    if (!desginer || desginer.department !== "Designer") {
-      return res.status(400).json({ error: "Invalid designer_id" });
-    }
-
-    const job = await JobCard.findByPk(job_no);
-    if (!job) return res.status(404).json({ error: "Job not found" });
-
-    // Create assignment entry
-    const assignment = await JobAssignment.create(
-      {
-        job_no,
-        designer_id,
-        assigned_by_id: req.user?.id || null,
-        status: "assigned",
-      },
-      { transaction: t }
-    );
-
-    // Update JobCard status
-    job.status = "assigned_to_designer";
-    job.current_stage = "assigned_to_designer";
-    job.assigned_designer = desginer.username;
-    await job.save({ transaction: t });
-
-    // Track Stage
-    await advanceStage({
-      job_no,
-      new_stage: "assigned_to_designer",
-      performed_by_id: req.user?.id || null,
-      remarks: "(Process Coordinator -> Designer) Job assigned to designer",
-      transaction: t,
-    });
-
-    // Log Action
-    await ActivityLog.create(
-      {
-        job_no,
-        performed_by_id: req.user?.id,
-        action: "Assigned Designer",
-        meta: { designer_id },
-      },
-      { transaction: t }
-    );
-
-    await t.commit();
-
-    res.json({ message: "Designer assigned successfully", assignment });
-
-    // Fetch CRM handling this job
-    const crmUser = await User.findOne({
-      where: {
-        username: job.order_handled_by,
-      },
-    });
-
-    // ── Push: designer ──────────────────────────────────────────────────────────
-    sendPushToUser(desginer.id, {
-      title: "New Job Assigned",
-      body: `Job #${job_no} has been assigned to you.`,
-      icon: "/favicon.png",
-      vibrate: [1000, 200, 1000, 200, 1000],
-      requireInteraction: true,
-      data: { url: "/job-fms/designer", tag: `job-${job_no}` },
-    }).catch((err) =>
-      console.warn(`Push failed for designer ${desginer.username} on job ${job_no}:`, err.message)
-    );
-
-    // ── Push: CRM ────────────────────────────────────────────────────────────────
-    if (crmUser?.id) {
-      sendPushToUser(crmUser.id, {
-        title: "Designer Assigned",
-        body: `Job #${job_no} assigned to ${desginer.username}.`,
-        icon: "/favicon.png",
-        vibrate: [1000, 200, 1000, 200, 1000],
-        requireInteraction: true,
-        data: { url: "/job-fms/common", tag: `job-${job_no}` },
-      }).catch((err) =>
-        console.warn(`Push failed for CRM ${crmUser.username} on job ${job_no}:`, err.message)
-      );
-    }
-
-    const attachments = [
-      {
-        filename: "epo-logo.jpg",
-        path: path.resolve("assets/epo-logo.jpg"),
-        cid: "epo-logo",
-      },
-    ];
-
-    // Designer Email
-    await sendMailForFMS({
-      to: desginer.email,
-      subject: `New Job Assigned - Job #${job_no}`,
-      html: designerAssignmentTemplate({
-        designerName: desginer.username,
+    const { assignment, job, designer, estimated_completion_time } =
+      await assignDesignerToJob({
         jobNo: job_no,
-        dashboardUrl: `${process.env.LEADS_URL}/job-fms/designer`,
-      }),
-      attachments,
+        designerId: designer_id,
+        assignedById: req.user?.id,
+        mode: "manual",
+      });
+
+    res.json({
+      message: "Designer assigned successfully",
+      assignment,
+      estimated_completion_time,
     });
 
-    // CRM Notification Email
-    // CRM Email
-    if (crmUser?.email) {
-      await sendMailForFMS({
-        to: crmUser.email,
-        subject: `Job #${job_no} Assigned to Designer`,
-        html: crmJobStageTemplate({
-          crmName: crmUser.username,
-          jobNo: job_no,
-          designerName: desginer.username,
-          assignedAt: new Date(),
-          dashboardUrl: `${process.env.LEADS_URL}/job-fms/crm`,
-        }),
-        attachments,
-      });
-    }
-
+    // After the response: never throws, each channel is isolated.
+    await sendAssignmentNotifications({
+      job,
+      designer,
+      mode: "manual",
+      estimatedCompletionTime: estimated_completion_time,
+    });
   } catch (err) {
-    if (!t.finished) {
-      await t.rollback();
+    if (err instanceof AssignmentError) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
     }
-    console.error(err);
-    return res.status(500).json({ error: "Failed to assign designer" });
+    console.error("[assignDesigner]", err);
+    if (!res.headersSent) {
+      return res.status(500).json({ error: "Failed to assign designer" });
+    }
   }
 };
+
+
+// 25 points of auto-assign workload = a full (100%) bar. One place to tune.
+const FULL_LOAD_SCORE = 25;
+
+/**
+ * GET /designers/status — read-only stats for the Process Coordinator.
+ * 3 queries in total (designers, open assignments, today's completed) + the
+ * attendance check, instead of 3 queries per designer.
+ * Counts use the same definitions (and weights) as the auto-assign ranking.
+ */
 
 export const getDesignerStatus = async (req, res) => {
   try {
     const designers = await User.findAll({
       where: { department: "Designer", isActive: true },
+      attributes: ["id", "username"],
+      order: [["username", "ASC"]],
     });
+    if (designers.length === 0) return res.json([]);
 
-    const result = [];
+    const ids = designers.map((d) => d.id);
+    const now = nowIST();
+    const startOfToday = now.startOf("day").toJSDate();
 
-    for (let designer of designers) {
-      const designerId = designer.id;
-
-      // -----------------------------
-      // 1️⃣ ACTIVE JOBS (in progress)
-      // -----------------------------
-      const activeJobs = await JobAssignment.findAll({
-        where: {
-          designer_id: designerId,
-          status: "in_progress",
+    const [openRows, doneRows, attendance] = await Promise.all([
+      JobAssignment.findAll({
+        where: { 
+          designer_id: { [Op.in]: ids }, 
+          status: { [Op.in]: ["assigned", "in_progress"] } 
         },
-        include: [{ model: JobCard, as: "jobCard" }],
-      });
+        include: [{ 
+          model: JobCard, 
+          as: "jobCard", 
+          attributes: ["job_no", "client_name", "task_priority", "delivery_date"] 
+        }],
+        order: [["assigned_at", "ASC"], ["id", "ASC"]],
+      }),
+      
+      JobAssignment.findAll({
+        attributes: ["designer_id", [db.sequelize.fn("COUNT", db.sequelize.col("id")), "cnt"]],
+        where: { designer_id: { [Op.in]: ids }, status: "completed", designer_end_time: { [Op.gte]: startOfToday } },
+        group: ["designer_id"],
+        raw: true,
+      }),
+      // Same attendance / leave check the auto-assign uses. If it fails, the stats still load.
+      getEligibleDesigners(now).catch((err) => {
+        console.warn("[getDesignerStatus] attendance check failed:", err.message);
+        return null;
+      }),
+    ]);
 
-      // -----------------------------
-      // 2️⃣ PENDING JOBS (assigned but not started)
-      // -----------------------------
-      const pendingJobs = await JobAssignment.findAll({
-        where: {
-          designer_id: designerId,
-          status: "assigned",
-        },
-        include: [{ model: JobCard, as: "jobCard" }],
-      });
-
-      // -----------------------------
-      // 3️⃣ TODAY COMPLETED JOBS
-      // -----------------------------
-      const todayCompletedJobs = await JobAssignment.findAll({
-        where: {
-          designer_id: designerId,
-          status: "completed",
-          designer_end_time: {
-            [Op.gte]: new Date(new Date().setHours(0, 0, 0, 0)),
-          },
-        },
-      });
-
-      // -----------------------------
-      // 4️⃣ Expected Free Time
-      //    Based on end_time of all active tasks.
-      // -----------------------------
-      let expectedFreeTime = null;
-
-      if (activeJobs.length > 0) {
-        const endTimes = activeJobs.map((job) => {
-          if (job.estimated_completion_time)
-            return new Date(job.estimated_completion_time);
-
-          // fallback: assume 1 hour if no end time
-          return new Date(
-            new Date(job.designer_start_time).getTime() + 60 * 60 * 1000
-          );
-        });
-
-        expectedFreeTime = new Date(Math.max(...endTimes));
-      }
-
-      // -----------------------------
-      // 5️⃣ Workload Score
-      //    0–100% based on active + pending job count
-      // -----------------------------
-      const totalTasks = activeJobs.length + pendingJobs.length;
-      const workloadScore = Math.min(totalTasks * 20, 100); // Example: 5 tasks → 100%
-
-      // -----------------------------
-      // 6️⃣ Contains urgent tasks?
-      // -----------------------------
-      const urgentFlag = pendingJobs.some(
-        (p) => p.jobCard?.task_priority === "Urgent"
-      );
-
-      // -----------------------------
-      // 7️⃣ Recommended score
-      // (lower = better: idle designers first, lower workload first)
-      // -----------------------------
-      const recommendedScore =
-        activeJobs.length * 5 + pendingJobs.length * 3 + (urgentFlag ? 5 : 0);
-
-      result.push({
-        designer_id: designerId,
-        name: designer.username,
-        status: activeJobs.length > 0 ? "active" : "idle",
-        active_jobs: activeJobs.map((j) => ({
-          job_no:          j.job_no,
-          client_name:     j.jobCard?.client_name,
-          priority:        j.jobCard?.task_priority,
-          delivery_date:   j.jobCard?.delivery_date,   // ← ADD
-          start_time:      j.designer_start_time,
-          estimated_done:  j.estimated_completion_time, // ← rename for clarity
-          is_paused:       j.is_paused,
-        })),
-        pending_jobs: pendingJobs.map((j) => ({
-          job_no:        j.job_no,
-          client_name:   j.jobCard?.client_name,
-          priority:      j.jobCard?.task_priority,
-          delivery_date: j.jobCard?.delivery_date,      
-          assigned_at:   j.assigned_at,
-          estimated_done: j.estimated_completion_time,
-        })),
-        today_completed: todayCompletedJobs.length,
-        today_jobs:
-          activeJobs.length + pendingJobs.length + todayCompletedJobs.length,
-        workload_score: workloadScore,
-        urgent_flag: urgentFlag,
-        expected_free_time: expectedFreeTime,
-        recommended_score: recommendedScore,
-      });
+    const openByDesigner = new Map();
+    for (const row of openRows) {
+      if (!openByDesigner.has(row.designer_id)) openByDesigner.set(row.designer_id, []);
+      openByDesigner.get(row.designer_id).push(row);
     }
+    const doneByDesigner = new Map(doneRows.map((r) => [r.designer_id, Number(r.cnt)]));
 
-    // Sort designers by score (best recommended first)
-    result.sort((a, b) => a.recommended_score - b.recommended_score);
+    const eligibleIds = attendance ? new Set(attendance.eligible.map((d) => d.id)) : null;
+    const excludedReason = attendance ? new Map(attendance.excluded.map((d) => [d.designer_id, d.reason])) : null;
+
+    const result = designers.map((designer) => {
+      const rows = openByDesigner.get(designer.id) ?? [];
+      const active = rows
+        .filter((r) => r.status === "in_progress")
+        .sort((a, b) => new Date(a.designer_start_time || 0) - new Date(b.designer_start_time || 0));
+      const pending = rows.filter((r) => r.status === "assigned");
+
+      const paused = active.filter((r) => r.is_paused).length;
+      const running = active.length - paused;
+      const urgentWaiting = pending.filter((r) => r.jobCard?.task_priority === "Urgent").length;
+
+      const assignScore = computeScore({ running, paused, assigned: pending.length, urgentWaiting });
+
+      // Expected free time: latest estimate among running/paused jobs (fallback: start + 1h)
+      const endTimes = active
+        .map((r) =>
+          r.estimated_completion_time
+            ? new Date(r.estimated_completion_time)
+            : r.designer_start_time
+              ? new Date(new Date(r.designer_start_time).getTime() + 60 * 60 * 1000)
+              : null,
+        )
+        .filter((d) => d && !Number.isNaN(d.getTime()));
+      const expectedFreeTime = endTimes.length ? new Date(Math.max(...endTimes.map((d) => d.getTime()))) : null;
+
+      const todayCompleted = doneByDesigner.get(designer.id) ?? 0;
+
+      return {
+        designer_id: designer.id,
+        name: designer.username,
+        status: active.length > 0 ? "active" : "idle",
+        active_jobs: active.map((r) => ({
+          job_no: r.job_no,
+          client_name: r.jobCard?.client_name,
+          priority: r.jobCard?.task_priority,
+          delivery_date: r.jobCard?.delivery_date,
+          start_time: r.designer_start_time,
+          estimated_done: r.estimated_completion_time,
+          is_paused: r.is_paused,
+        })),
+        pending_jobs: pending.map((r) => ({
+          job_no: r.job_no,
+          client_name: r.jobCard?.client_name,
+          priority: r.jobCard?.task_priority,
+          delivery_date: r.jobCard?.delivery_date,
+          assigned_at: r.assigned_at,
+          estimated_done: r.estimated_completion_time,
+        })),
+        today_completed: todayCompleted,
+        today_jobs: active.length + pending.length + todayCompleted,
+        workload_score: Math.min(100, Math.round((assignScore / FULL_LOAD_SCORE) * 100)), // 0–100 % bar
+        assign_score: assignScore, // the exact number the auto-assign ranking uses
+        urgent_flag: urgentWaiting > 0,
+        expected_free_time: expectedFreeTime,
+        availability: eligibleIds
+          ? { available: eligibleIds.has(designer.id), reason: excludedReason.get(designer.id) ?? null }
+          : { available: null, reason: null },
+      };
+    });
 
     res.json(result);
   } catch (err) {
@@ -311,7 +221,6 @@ export const getDesignerStatus = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch designer status" });
   }
 };
-
 
 
 export const coordinatorSetEstimatedTime = async (req, res) => {
@@ -413,3 +322,18 @@ export const coordinatorSetEstimatedTime = async (req, res) => {
     res.status(500).json({ error: "Failed to set estimated time" });
   }
 }
+
+// READ-ONLY preview of who would receive the next job. Changes no data.
+export const previewDesignerRanking = async (req, res) => {
+  try {
+    const { ranked, excluded } = await rankDesignersForAssignment();
+    return res.json({
+      next_designer: ranked[0]?.name ?? null,
+      ranked,
+      excluded,
+    });
+  } catch (err) {
+    console.error("[previewDesignerRanking]", err);
+    return res.status(500).json({ error: "Failed to compute designer ranking" });
+  }
+};
