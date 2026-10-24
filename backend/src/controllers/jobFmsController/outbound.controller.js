@@ -22,7 +22,6 @@ export const getOutboundJobs = async (req, res) => {
         "task_priority",
         "instructions",
         "no_of_files",
-        "job_completion_deadline",
         "status",
         "outbound_sent_to",
         "paper_ordered_from",
