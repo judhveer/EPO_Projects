@@ -946,7 +946,7 @@ export default function DesignerTable({ refresh }) {
 
             {/* ACTIONS */}
             <div className="flex gap-2 flex-wrap">
-              {job.status === "assigned_to_designer" && (
+              {(job.status === "assigned_to_designer" || job.status === "client_changes") && (
                 <button
                   onClick={() => handleStart(job.job_no)}
                   className="px-3 py-1 bg-blue-600 text-white rounded text-xs"
