@@ -118,59 +118,78 @@ export const getAllJobsForDesginer = async (req, res) => {
   }
 };
 
-// ── Pure helper — same logic runs on frontend too ──────────────────────────
-// deliveryDate, jobCreatedAt: JS Date objects
-// priority: "Urgent" | "High" | "Medium" | "Low"
-export function calculateMaxDesignDeadline(
+
+
+
+// ── Pure helper — single source of truth for the designer's maximum window ──
+// First assignment (instance 1):
+//   • delivery < 1 day from job creation → 4h from now
+//   • 1–2 days                           → day before delivery, 19:30 IST
+//   • longer                             → 50% of (created → delivery)
+// Redesign (instance > 1):
+//   • 50% point of (created → delivery), if it is MORE than 4h after assignment
+//   • otherwise 4h after assignment
+// Always capped at the delivery date. Priority never changes the result.
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const REDESIGN_MIN_WINDOW_MS = 4 * HOUR_MS;
+
+
+export function calculateMaxDesignDeadlineWithRule(
   deliveryDate,
   jobCreatedAt,
-  priority,
+  priority, // kept so old callers don't break; no longer used
   instance = 1,
   assignedAt = null,
 ) {
   const now = new Date();
+  const base = assignedAt ? new Date(assignedAt) : now;
   const totalMs = deliveryDate.getTime() - jobCreatedAt.getTime();
-  const totalDays = totalMs / (1000 * 60 * 60 * 24);
+  const totalDays = totalMs / DAY_MS;
 
   let deadline;
+  let rule;
 
-  // ── Rule 1: Urgent OR same-day delivery → 4 hours from now ─────────────
-  if (priority === "Urgent" || totalDays < 1) {
-    deadline = new Date(now.getTime() + 4 * 60 * 60 * 1000);
-  }
-  // ── Rule 2: Next-day delivery → day before delivery at 19:30 IST ───────
-  else if (totalDays <= 2) {
-    // Work with IST (UTC+5:30)
+  if (instance > 1) {
+    const halfPoint = new Date(jobCreatedAt.getTime() + totalMs * 0.5);
+    if (halfPoint.getTime() - base.getTime() > REDESIGN_MIN_WINDOW_MS) {
+      deadline = halfPoint;
+      rule = "redesign_fifty_percent";
+    } else {
+      deadline = new Date(base.getTime() + REDESIGN_MIN_WINDOW_MS);
+      rule = "redesign_4h";
+    }
+  } else if (totalDays < 1) {
+    deadline = new Date(base.getTime() + 4 * HOUR_MS);
+    rule = "same_day_4h";
+  } else if (totalDays <= 2) {
     const d = new Date(deliveryDate);
     d.setUTCDate(d.getUTCDate() - 1);
-    d.setUTCHours(14, 0, 0, 0);
+    d.setUTCHours(14, 0, 0, 0); // 19:30 IST
     deadline = d;
+    rule = "next_day_1930";
   } else {
-    // ── Rule 3: Any longer delivery → 50% of total duration ────────────────
     deadline = new Date(jobCreatedAt.getTime() + totalMs * 0.5);
+    rule = "fifty_percent";
   }
 
-  // ── Redesign override (instance > 1) ────────
-  // Give 4-hour extension ONLY when the normal deadline leaves less than 4 hours from now. If the window still has ≥ 4 hours, keep it as-is.
-  // Redesign instance → always 4 hours from assignment creation time
-  if (instance > 1) {
-    const remainingMs = deadline.getTime() - now.getTime();
-    const fourHoursMs = 4 * 60 * 60 * 1000;
+  // HARD CAP: never exceed delivery date
+  if (deadline > deliveryDate) deadline = deliveryDate;
+  return { deadline, rule };
+}
 
-    if (remainingMs < fourHoursMs) {
-      // Window is exhausted or nearly gone → grant fresh 4 hours from assignment time
-      const base = assignedAt ? new Date(assignedAt) : now;
-      deadline = new Date(base.getTime() + fourHoursMs);
-    }
-    // else: window still has ≥ 4 hours left → keep the calculated deadline unchanged
-  }
-
-  // ── HARD CAP: never exceed delivery date ──
-  return deadline > deliveryDate ? deliveryDate : deadline;
+// Same as before for existing callers: returns only the Date.
+export function calculateMaxDesignDeadline( deliveryDate, jobCreatedAt, priority, instance = 1, assignedAt = null, ) {
+  return calculateMaxDesignDeadlineWithRule(
+    deliveryDate,
+    jobCreatedAt,
+    priority,
+    instance,
+    assignedAt,
+  ).deadline;
 }
 
 export const setEstimatedTime = async (req, res) => {
-  console.log("setEstimatedTime called:");
   try {
     const { job_no, estimated_completion_time } = req.body;
 
@@ -179,6 +198,7 @@ export const setEstimatedTime = async (req, res) => {
         error: "estimated_completion_time is required",
       });
     }
+
     const assignment = await JobAssignment.findOne({
       where: {
         job_no,
@@ -195,13 +215,27 @@ export const setEstimatedTime = async (req, res) => {
     });
 
     if (!assignment) {
-      return res.status(404).json({
-        error: "No active assignment found",
+      return res.status(404).json({ 
+        error: "No active assignment found" 
       });
+    }
+
+    // ── Lock: the system sets the estimate; once set it cannot be changed here.
+    // (Only old assignments that still have no estimate can be set, once.)
+    const LOCKED_MSG = "Estimated time is set by the system and cannot be changed.";
+    if (assignment.estimated_completion_time) {
+      return res.status(400).json({ error: LOCKED_MSG });
     }
 
     const estimatedTime = new Date(estimated_completion_time);
     const now = new Date();
+
+    // ── Guard 0: invalid date string ────────────────────────────────────
+    if (Number.isNaN(estimatedTime.getTime())) {
+      return res.status(400).json({ 
+        error: "Invalid estimated_completion_time." 
+      });
+    }
 
     // ── Guard 1: no past dates ──────────────────────────────────────────
     if (estimatedTime <= now) {
@@ -215,17 +249,15 @@ export const setEstimatedTime = async (req, res) => {
     const jobCreatedAt = new Date(assignment.jobCard.dataValues.created_at);
     const priority = assignment.jobCard.dataValues.task_priority;
 
-    // ── Pass instance + assigned_at so redesign gets 4-hour window ──────────
-    const maxAllowed = calculateMaxDesignDeadline(
+    const { deadline: maxAllowed, rule } = calculateMaxDesignDeadlineWithRule(
       deliveryDate,
       jobCreatedAt,
       priority,
-      assignment.instance ?? 1, // ← new
-      assignment.assigned_at, // ← new
+      assignment.instance ?? 1,
+      assignment.assigned_at,
     );
 
     if (estimatedTime > maxAllowed) {
-      // Format in IST for the error message
       const maxStr = maxAllowed.toLocaleString("en-IN", {
         timeZone: "Asia/Kolkata",
         day: "2-digit",
@@ -237,32 +269,28 @@ export const setEstimatedTime = async (req, res) => {
       });
       return res.status(400).json({
         error: `Estimated completion time cannot exceed ${maxStr} based on the delivery schedule.`,
-        max_allowed_iso: maxAllowed.toISOString(), // frontend uses this to clamp the picker
+        max_allowed_iso: maxAllowed.toISOString(),
       });
     }
 
-    assignment.estimated_completion_time = estimated_completion_time;
-    await assignment.save();
+    // Atomic "set only if still empty": two simultaneous requests cannot both win.
+    const [affected] = await JobAssignment.update(
+      { estimated_completion_time: estimatedTime },
+      { where: { id: assignment.id, estimated_completion_time: null } },
+    );
+    if (affected === 0) {
+      return res.status(400).json({ error: LOCKED_MSG });
+    }
+    assignment.setDataValue("estimated_completion_time", estimatedTime);
 
-    const totalDays =
-      (deliveryDate.getTime() - jobCreatedAt.getTime()) / (1000 * 60 * 60 * 24);
-
-    // Log Action
     await ActivityLog.create({
       job_no,
       performed_by_id: req.user?.id,
       action: "Set Estimated Time",
       meta: {
-        estimated_completion_time,
+        estimated_completion_time: estimatedTime.toISOString(),
         max_allowed: maxAllowed.toISOString(),
-        rule_applied:
-          assignment.instance > 1
-            ? "redesign_4h"
-            : priority === "Urgent"
-              ? "urgent_4h"
-              : totalDays <= 2
-                ? "next_day_1930"
-                : "fifty_percent",
+        rule_applied: rule,
         instance: assignment.instance,
       },
     });
@@ -274,9 +302,7 @@ export const setEstimatedTime = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({
-      error: "Failed to set estimated time",
-    });
+    res.status(500).json({ error: "Failed to set estimated time" });
   }
 };
 
@@ -964,5 +990,49 @@ export const pauseOnLogout = async (req, res) => {
     );
   } catch (err) {
     console.error("pause-on-logout error:", err);
+  }
+};
+
+
+
+
+/**
+ * GET /api/fms/designers/my-open-jobs
+ * Read-only. Open jobs of the logged-in designer: not started, running, paused.
+ * Used for the warning shown before the designer checks out (checkout is NOT blocked).
+ */
+export const getMyOpenJobs = async (req, res) => {
+  try {
+    const rows = await JobAssignment.findAll({
+      where: {
+        designer_id: req.user.id,
+        status: { [Op.in]: ["assigned", "in_progress"] },
+      },
+      include: [{ 
+        model: JobCard, 
+        as: "jobCard", 
+        attributes: ["job_no", "client_name"] 
+      }],
+      order: [["assigned_at", "ASC"], ["id", "ASC"]],
+    });
+
+    const assigned = rows.filter((r) => r.status === "assigned").length;
+    const paused = rows.filter((r) => r.status === "in_progress" && r.is_paused).length;
+    const running = rows.filter((r) => r.status === "in_progress" && !r.is_paused).length;
+
+    return res.json({
+      total: rows.length,
+      assigned,
+      running,
+      paused,
+      jobs: rows.slice(0, 10).map((r) => ({
+        job_no: r.job_no,
+        client_name: r.jobCard?.client_name ?? null,
+        state: r.status === "assigned" ? "not_started" : r.is_paused ? "paused" : "in_progress",
+      })),
+    });
+  } catch (err) {
+    console.error("[getMyOpenJobs]", err);
+    return res.status(500).json({ error: "Failed to fetch your open jobs." });
   }
 };
