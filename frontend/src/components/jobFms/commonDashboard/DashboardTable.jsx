@@ -156,11 +156,11 @@ export default function DashboardTable({
                     )}
                   </td>
                   <td className="border p-2 ">
-                    {/* {new Date(job.proof_date).toLocaleDateString()} */}
-                    {DateTime
-                      .fromJSDate(new Date(job.proof_date))
-                      .setZone("Asia/Kolkata")
-                      .toFormat("dd LLL yyyy")}
+                    {job.proof_date
+                      ? DateTime.fromJSDate(new Date(job.proof_date))
+                          .setZone("Asia/Kolkata")
+                          .toFormat("dd LLL yyyy")
+                      : "Not Set"}
                   </td>
                   <td className="border p-2">
                     <span
