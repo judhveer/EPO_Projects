@@ -267,7 +267,6 @@ export default function JobWriterTable() {
               <th className="border p-2">Mode of Payment</th>
               <th className="border p-2">Payment Status</th>
               <th className="border p-2">Status</th>
-              <th className="border p-2">Job Completion Deadline</th>
               <th className="border p-2 sticky right-0 bg-blue-800 z-40">
                 Actions
               </th>
@@ -277,7 +276,7 @@ export default function JobWriterTable() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={25} className="text-center py-6 text-gray-500">
+                <td colSpan={24} className="text-center py-6 text-gray-500">
                   Loading jobs…
                 </td>
               </tr>
@@ -382,11 +381,6 @@ export default function JobWriterTable() {
                       {job.status}
                     </span>
                   </td>
-                  <td className="border p-2">
-                    {DateTime.fromJSDate(new Date(job.job_completion_deadline))
-                      .setZone("Asia/Kolkata")
-                      .toFormat("dd LLL yyyy, hh:mm a")}
-                  </td>
 
                   <td className="border p-2 sticky right-0 bg-white z-10 text-center relative action-dropdown">
                     <div className="relative inline-block text-left action-dropdown">
@@ -475,7 +469,7 @@ export default function JobWriterTable() {
               ))
             ) : (
               <tr>
-                <td colSpan="15" className="text-center py-4 text-gray-500">
+                <td colSpan="24" className="text-center py-4 text-gray-500">
                   No jobs found
                 </td>
               </tr>

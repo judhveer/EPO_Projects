@@ -229,7 +229,7 @@ export default function DashboardTable({
               ))
             ) : (
               <tr>
-                <td colSpan="20" className="text-center py-4 text-gray-500">
+                <td colSpan="19" className="text-center py-4 text-gray-500">
                   No jobs found
                 </td>
               </tr>
