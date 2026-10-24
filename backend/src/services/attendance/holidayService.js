@@ -8,6 +8,8 @@ import { yearRangeIST } from '../../utils/attendance/istTime.js';
 
 const { User, Holiday, HolidayApplicability, Attendance, LeaveLedger, sequelize } = models;
 
+const badRequest = (message) => Object.assign(new Error(message), { statusCode: 400 });
+
 // Given a set of applicability rows about to be attached to a new
 // Holiday, finds every trackable employee they'd actually cover —
 // the inverse of isHolidayForEmployee (that answers "does this holiday
@@ -39,28 +41,76 @@ async function findAffectedEmployeeIds(applicabilityRows, transaction) {
   return new Set(matched.map((u) => u.id));
 }
 
+// Validates the shape of every scope row and returns a de-duplicated copy
+// (same scope added twice => stored once). INDIVIDUAL ids are checked
+// against the User table: each must be an existing, active, non-BOSS user
+// with an office — exactly the people the attendance system tracks, and
+// exactly the set the Holiday Master user picker offers. Without this a
+// mistyped / stale / BOSS / inactive id would save "successfully" and
+// then apply to nobody.
+
+async function validateAndNormalizeApplicability(applicability) {
+  if (!Array.isArray(applicability) || applicability.length === 0) {
+    throw badRequest('At least one applicability scope is required — a holiday with no scope would apply to nobody.');
+  }
+
+  const seen = new Set();
+  const normalized = [];
+
+  for (const a of applicability) {
+    if (!a || typeof a !== 'object') {
+      throw badRequest('Invalid applicability entry.');
+    }
+    if (!HOLIDAY_SCOPE_TYPES.includes(a.scope_type)) {
+      throw badRequest(`Invalid scope_type: ${a.scope_type}`);
+    }
+    if (a.scope_type === 'OFFICE' && !OFFICES.includes(a.scope_ref_id)) {
+      throw badRequest(`Invalid office: ${a.scope_ref_id}`);
+    }
+    if (a.scope_type === 'DEPARTMENT' && !DEPARTMENTS.includes(a.scope_ref_id)) {
+      throw badRequest(`Invalid department: ${a.scope_ref_id}`);
+    }
+    if (a.scope_type === 'INDIVIDUAL' && (typeof a.scope_ref_id !== 'string' || !a.scope_ref_id.trim())) {
+      throw badRequest('INDIVIDUAL scope requires a user id.');
+    }
+
+    const ref = a.scope_type === 'ALL' ? null : a.scope_ref_id;
+    const key = `${a.scope_type}:${ref ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push({ scope_type: a.scope_type, scope_ref_id: ref });
+  }
+
+  const individualIds = normalized.filter((a) => a.scope_type === 'INDIVIDUAL').map((a) => a.scope_ref_id);
+  if (individualIds.length > 0) {
+    const found = await User.findAll({
+      where: {
+        id: { [Op.in]: individualIds },
+        role: { [Op.ne]: 'BOSS' },
+        office: { [Op.ne]: null },
+        isActive: true,
+      },
+      attributes: ['id'],
+    });
+    const foundIds = new Set(found.map((u) => u.id));
+    const invalid = individualIds.filter((id) => !foundIds.has(id));
+    if (invalid.length > 0) {
+      throw badRequest(
+        `Cannot apply holiday to ${invalid.length} user(s) that do not exist or are not eligible (inactive, BOSS, or no office assigned): ${invalid.join(', ')}`,
+      );
+    }
+  }
+
+  return normalized;
+}
+
 // ── CREATE — validates, creates the holiday + its scope rows, and
-// performs the BR-003 collision check in the SAME transaction so the
+// performs the BR-003 collision check (approved LEAVE -> HOLIDAY, and
+// no-check-in ABSENT -> HOLIDAY) in the SAME transaction so the
 // holiday can never exist in a state where colliding leave hasn't yet
 // been reversed, even for a moment.
 export async function createHoliday({ name, date, holidayType, notes, applicability, createdBy }) {
-  if (!Array.isArray(applicability) || applicability.length === 0) {
-    throw Object.assign(new Error('At least one applicability scope is required — a holiday with no scope would apply to nobody.'), { statusCode: 400 });
-  }
-  for (const a of applicability) {
-    if (!HOLIDAY_SCOPE_TYPES.includes(a.scope_type)) {
-      throw Object.assign(new Error(`Invalid scope_type: ${a.scope_type}`), { statusCode: 400 });
-    }
-    if (a.scope_type === 'OFFICE' && !OFFICES.includes(a.scope_ref_id)) {
-      throw Object.assign(new Error(`Invalid office: ${a.scope_ref_id}`), { statusCode: 400 });
-    }
-    if (a.scope_type === 'DEPARTMENT' && !DEPARTMENTS.includes(a.scope_ref_id)) {
-      throw Object.assign(new Error(`Invalid department: ${a.scope_ref_id}`), { statusCode: 400 });
-    }
-    if (a.scope_type === 'INDIVIDUAL' && !a.scope_ref_id) {
-      throw Object.assign(new Error('INDIVIDUAL scope requires a user id.'), { statusCode: 400 });
-    }
-  }
+  const scopes = await validateAndNormalizeApplicability(applicability);
 
   const t = await sequelize.transaction();
   try {
@@ -69,24 +119,43 @@ export async function createHoliday({ name, date, holidayType, notes, applicabil
     }, { transaction: t });
 
     const applicabilityRows = await HolidayApplicability.bulkCreate(
-      applicability.map((a) => ({ holiday_id: holiday.id, scope_type: a.scope_type, scope_ref_id: a.scope_ref_id || null })),
+      scopes.map((a) => ({ holiday_id: holiday.id, scope_type: a.scope_type, scope_ref_id: a.scope_ref_id })),
       { transaction: t },
     );
 
     // ── BR-003: retroactive collision check ─────────────────────────
     const affectedEmployeeIds = await findAffectedEmployeeIds(applicabilityRows, t);
     const reversedFor = [];
+    // Days the nightly job (or an earlier moment) already wrote as ABSENT
+    // because this holiday did not exist yet — typically an employee with
+    // no leave balance left. They are reclassified to HOLIDAY here, in the
+    // same transaction. Recorded with the old status in the audit entry.
+    const absentConvertedFor = [];
+    // ABSENT rows HR corrected by hand (is_manual_override) are a human
+    // decision — left alone, but reported so nothing is silent.
+    const skippedManualOverride = [];
 
     for (const employeeId of affectedEmployeeIds) {
       const attendanceRow = await Attendance.findOne({
-        where: { employee_id: employeeId, shift_date: date, status: 'LEAVE' },
+        where: { employee_id: employeeId, shift_date: date, status: { [Op.in]: ['LEAVE', 'ABSENT'] } },
         transaction: t, lock: t.LOCK.UPDATE,
       });
-      // No collision (no row, or day already has a check-in — which
-      // shouldn't coexist with status LEAVE, but never assumed, only
-      // acted on what's actually found).
+      // No row => nothing to correct (a row is never invented here).
+      // A row WITH a check-in means the person actually worked: never
+      // touched, whatever its status says.
       if (!attendanceRow || attendanceRow.check_in_time) continue;
 
+      if (attendanceRow.status === 'ABSENT') {
+        if (attendanceRow.is_manual_override) {
+          skippedManualOverride.push(employeeId);
+          continue;
+        }
+        await attendanceRow.update({ status: 'HOLIDAY' }, { transaction: t });
+        absentConvertedFor.push({ employeeId, from: 'ABSENT' });
+        continue;
+      }
+
+      // status === 'LEAVE' — BR-003 path, unchanged.
       const consumption = await LeaveLedger.findOne({
         where: { employee_id: employeeId, effective_date: date, transaction_type: 'CONSUMPTION' },
         transaction: t,
@@ -124,13 +193,13 @@ export async function createHoliday({ name, date, holidayType, notes, applicabil
       action: 'CREATED',
       performedBy: createdBy,
       oldValue: null,
-      newValue: { name, date, holiday_type: holiday.holiday_type, applicability, reversedFor },
+      newValue: { name, date, holiday_type: holiday.holiday_type, applicability: scopes, reversedFor, absentConvertedFor, skippedManualOverride },
       reason: notes || null,
       transaction: t,
     });
 
     await t.commit();
-    return { holiday, applicability: applicabilityRows, reversedFor };
+    return { holiday, applicability: applicabilityRows, reversedFor, absentConvertedFor, skippedManualOverride };
   } catch (err) {
     await t.rollback();
 
@@ -140,10 +209,11 @@ export async function createHoliday({ name, date, holidayType, notes, applicabil
         { statusCode: 409 }
       );
     }
-    
+
     throw err;
   }
 }
+
 
 export async function listHolidays({ activeOnly = true, year = null } = {}) {
   const where = {};
@@ -154,9 +224,9 @@ export async function listHolidays({ activeOnly = true, year = null } = {}) {
   }
   return Holiday.findAll({
     where,
-    include: [{ 
+    include: [{
       model: HolidayApplicability,
-      as: 'applicability' 
+      as: 'applicability'
     }],
     order: [['date', 'ASC']],
   });
