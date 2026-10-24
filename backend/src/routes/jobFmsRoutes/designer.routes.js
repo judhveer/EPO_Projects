@@ -6,7 +6,8 @@ import {
   setEstimatedTime,
   getAllJobsForDesginer,
   designerPauseTask,
-  designerResumeTask
+  designerResumeTask,
+  getMyOpenJobs
 } from "../../controllers/jobFmsController/designer.controller.js";
 
 import {
@@ -28,6 +29,8 @@ const router = express.Router();
 
 // ── Job data ──────────────────────────────────────────────────────────
 router.get("/jobs", getAllJobsForDesginer);
+
+router.get("/my-open-jobs", getMyOpenJobs);
 
 // ── Transfer request reads ─────────────────────────────────────────────
 // Declared before /:job_no routes as a convention — no actual collision
