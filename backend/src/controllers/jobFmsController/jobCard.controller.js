@@ -13,67 +13,23 @@ import path, { resolve } from "path";
 // ✅ Fix 2 — import Sequelize directly (most reliable)
 import { Transaction } from "sequelize";
 import { buildProductionEmail } from "../../utils/jobFms/productionEmailBuilder.js";
+import {
+  autoAssignJob,
+  sendAssignmentNotifications,
+  notifyAutoAssignSkipped,
+  notifyCoordinatorsAutoAssigned,
+  lockActiveAssignment,
+  recalculateEstimateOnDeliveryChange,
+  notifyEstimateChanged,
+} from "../../services/jobFms/designerAssignment.service.js";
 
 import { sendPushToUser, sendPushToDepartment } from "../../utils/pushNotification.js";
 
 const {
-  JobCard,
-  JobItem,
-  ClientApproval,
-  JobAssignment,
-  ActivityLog,
-  ClientDetails,
-  User,
-  ItemMaster,
-  PaperMaster,
-  WideFormatMaterial,
-  JobItemCosting,
-  Quotation,
+  JobCard, JobItem, ClientApproval, JobAssignment, ActivityLog, ClientDetails,
+  User, ItemMaster, PaperMaster, WideFormatMaterial, JobItemCosting, Quotation,
+  DesignerTransferRequest,
 } = db;
-
-const calculateJobCompletionDeadline = (deliveryDateInput) => {
-  // ⬅️ deliveryDateInput is already IST
-  const deliveryIST = DateTime.fromISO(deliveryDateInput, {
-    zone: "Asia/Kolkata",
-  });
-
-  if (!deliveryIST.isValid) {
-    throw new Error("Invalid delivery date input");
-  }
-
-  const nowIST = DateTime.now().setZone("Asia/Kolkata");
-
-  const todayIST = nowIST.startOf("day");
-  const tomorrowIST = todayIST.plus({ days: 1 });
-
-  const deliveryDayIST = deliveryIST.startOf("day");
-
-  // ⏱ SAME DAY delivery → 2 hours before delivery
-  if (deliveryDayIST.equals(todayIST)) {
-    return deliveryIST.minus({ hours: 2 }).toJSDate();
-  }
-
-  // ⏭ NEXT DAY delivery
-  if (deliveryDayIST.equals(tomorrowIST)) {
-    const deliveryHour = deliveryIST.hour;
-
-    // Before 1 PM IST
-    if (deliveryHour < 13) {
-      return todayIST
-        .set({ hour: 19, minute: 0, second: 0, millisecond: 0 })
-        .toJSDate();
-    }
-
-    // After 1 PM → 2 hours before delivery
-    return deliveryIST.minus({ hours: 2 }).toJSDate();
-  }
-
-  // 📆 Day after tomorrow or later
-  return deliveryDayIST
-    .minus({ days: 1 })
-    .set({ hour: 18, minute: 0, second: 0, millisecond: 0 })
-    .toJSDate();
-};
 
 function computeGST(totalAmount, discount, gstPct) {
   const subtotal = parseFloat(Number(totalAmount || 0).toFixed(2));
@@ -102,6 +58,17 @@ function sanitizeBindingTargets(item) {
   };
 }
 
+// Parses what the job form sends ("YYYY-MM-DDTHH:mm" = IST wall time, no offset),
+// plus ISO strings with an offset/Z, epoch ms and Date objects. Returns a Date or null.
+const parseDeliveryInput = (value) => {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  let dt;
+  if (typeof value === "number") dt = DateTime.fromMillis(value);
+  else if (typeof value === "string")
+    dt = DateTime.fromISO(value.trim(), { zone: "Asia/Kolkata" });
+  else return null;
+  return dt.isValid ? dt.toJSDate() : null;
+};
 
 
 /**
@@ -109,7 +76,7 @@ function sanitizeBindingTargets(item) {
  */
 export const createJobCard = async (req, res) => {
   console.log("createJobCard called...");
-  const t = await db.sequelize.transaction();
+    let t = null; // opened only after validation passes, so early 400s never hold a DB connection
   try {
     const {
       client_type,
@@ -185,6 +152,14 @@ export const createJobCard = async (req, res) => {
       });
     }
 
+    const parsedDelivery = parseDeliveryInput(delivery_date);
+    if (!parsedDelivery) {
+      return res.status(400).json({ message: "Invalid delivery date." });
+    }
+    if (parsedDelivery.getTime() <= Date.now()) {
+      return res.status(400).json({ message: "Delivery date cannot be in the past." });
+    }
+
     // After the existing required-fields validation block:
     if (
       gst_percentage !== null &&
@@ -203,13 +178,12 @@ export const createJobCard = async (req, res) => {
       gst_percentage,
     );
 
-    // calculate job completion deadline
-    const job_completion_deadline =
-      calculateJobCompletionDeadline(delivery_date);
-
     const initialStage = is_direct_to_production
       ? "ready_for_production"
       : "coordinator_review";
+
+    
+    t = await db.sequelize.transaction();
 
     // ✅ 1. Create JobCard (auto-generates job_no via hook)
     const jobCard = await JobCard.create(
@@ -243,7 +217,6 @@ export const createJobCard = async (req, res) => {
         no_of_files: Number(no_of_files),
         status: initialStage,
         current_stage: initialStage,
-        job_completion_deadline,
         discount: Number(discount) || 0,
         gst_percentage: gst_percentage ? Number(gst_percentage) : null,
         gst_amount,
@@ -571,10 +544,52 @@ export const createJobCard = async (req, res) => {
       });
     }
 
+    let autoAssign = { assigned: false, reason: "direct_to_production" };
+    if (!is_direct_to_production) {
+      autoAssign = await autoAssignJob({
+        jobNo: job_no,
+        fallbackAssignedById: req.user?.id || null,
+      });
+      if (autoAssign.assigned) {
+        try {
+          await jobCard.reload();
+        } catch (e) {
+          console.warn(`Could not reload job ${job_no} after auto-assign:`, e.message);
+        }
+      }
+    }
+
     res.status(201).json({
       message: "JobCard created successfully",
       jobCard,
+      auto_assignment: {
+        assigned: autoAssign.assigned,
+        designer: autoAssign.assigned ? autoAssign.designer.username : null,
+        reason: autoAssign.assigned ? null : autoAssign.reason,
+      },
     });
+
+    if (autoAssign.assigned) {
+      await sendAssignmentNotifications({
+        job: jobCard,
+        designer: autoAssign.designer,
+        mode: "auto",
+        estimatedCompletionTime: autoAssign.estimated_completion_time,
+      });
+
+      await notifyCoordinatorsAutoAssigned({
+        job: jobCard,
+        designer: autoAssign.designer,
+        estimatedCompletionTime: autoAssign.estimated_completion_time,
+        trigger: "creation",
+      });
+    } else if (!is_direct_to_production && autoAssign.reason !== "job_not_eligible") {
+      await notifyAutoAssignSkipped({
+        job: jobCard,
+        reason: autoAssign.reason,
+        excluded: autoAssign.excluded,
+      });
+    }
 
     const attachments = [
       {
@@ -628,7 +643,7 @@ export const createJobCard = async (req, res) => {
     }
 
     // Push notification to Process Coordinators
-    if(coordinators.length > 0){
+    if(is_direct_to_production && coordinators.length > 0){
       console.log("sending push notification to coordinators");
       coordinators.forEach( (coordinator) => {
         sendPushToUser(coordinator.id, {
@@ -692,7 +707,8 @@ export const createJobCard = async (req, res) => {
     }
 
     // Email Notification to Process coordinators
-    const coordinatorEmails = coordinators.map((u) => u.email).filter(Boolean);
+    const coordinatorEmails = autoAssign.assigned ? [] : coordinators.map((u) => u.email).filter(Boolean);
+
     if (coordinatorEmails.length > 0) {
       const coordinatorEmailHTML = coordinatorJobReviewTemplate({
         jobNo: job_no,
@@ -753,11 +769,14 @@ export const createJobCard = async (req, res) => {
 
   } catch (error) {
     console.error("❌ Error creating JobCard:", error);
-    await t.rollback();
-    res.status(500).json({
-      message: "Internal server error",
-      error: error.message,
-    });
+    if (t && !t.finished) await t.rollback();
+
+    if (!res.headersSent) {
+      return res.status(500).json({
+        message: "Internal server error",
+        error: error.message,
+      });
+    }
   }
 };
 
@@ -1151,6 +1170,11 @@ export const updateJobCard = async (req, res) => {
     "production_stage",
     "production_stage_started_at",
     "delivery_persons_name",
+    // workflow state: changed only by assignment / stage flows, never by editing the form
+    "status",
+    "current_stage",
+    "assigned_designer",
+    "job_completion_deadline",
   ];
   SERVER_OWNED_FIELDS.forEach((f) => delete updates[f]);
 
@@ -1196,6 +1220,22 @@ export const updateJobCard = async (req, res) => {
   if (!jobCard) {
     return res.status(404).json({
       message: "JobCard not found",
+    });
+  }
+
+  // ── Items rule (same as createJobCard) ────────────────────────────────────
+  // Without this, an edit could save a job with no items (or silently delete all
+  // of them when job_items is missing from the request).
+  if (!Array.isArray(job_items) || job_items.length === 0) {
+    return res.status(400).json({
+      message: "You have to enter at least one job item.",
+    });
+  }
+  const effectiveNoOfFiles =
+    "no_of_files" in updates ? updates.no_of_files : jobCard.no_of_files;
+  if (Number(effectiveNoOfFiles) !== job_items.length) {
+    return res.status(400).json({
+      message: "No of files should be same as job items.",
     });
   }
 
@@ -1358,6 +1398,18 @@ export const updateJobCard = async (req, res) => {
     }
   });
 
+  // ── Delivery date: only checked when it REALLY changed ─────────────────────
+  // (an already-overdue job must still be editable for other fields)
+  if (jobCardChanges.delivery_date) {
+    const newDelivery = parseDeliveryInput(updates.delivery_date);
+    if (!newDelivery) {
+      return res.status(400).json({ message: "Invalid delivery date." });
+    }
+    if (newDelivery.getTime() <= Date.now()) {
+      return res.status(400).json({ message: "Delivery date cannot be in the past." });
+    }
+  }
+
   // Build item diff maps for email
   // Flatten association-derived fields into the item snapshot so diff works correctly.
   // paper_type / paper_gsm / wide_material_name are NOT DB columns — they live in
@@ -1479,14 +1531,14 @@ export const updateJobCard = async (req, res) => {
   // Rule 1: Direct-to-production can only be SET when the job is waiting for coordinator review. Once a designer has been assigned or the job has moved further through the pipeline, the artwork is no longer "pre-review" — the coordinator/designer must finish their stage.
   // Rule 2: Unchecking direct-to-production is only meaningful while the job is still in the "production" stage that was set by this flag. If the job reached production via the normal workflow it was never flagged as direct-to-production, so this path cannot be reached.
   if (nowMovingToProduction) {
-    if (jobCard.status !== "coordinator_review") {
-      // Job has already moved past the coordinator review stage.
-      // Direct-to-production is no longer a valid action.
+    // Allowed in coordinator_review, or in assigned_to_designer (re-checked under
+    // a row lock inside the transaction: the designer must NOT have started).
+    if (!["coordinator_review", "assigned_to_designer"].includes(jobCard.status)) {
       const stageLabel = (jobCard.status || "unknown").replace(/_/g, " ");
       return res.status(400).json({
         message:
           `Cannot mark as Direct to Production: job is currently in "${stageLabel}" stage. ` +
-          `Direct to Production can only be set while the job is in Coordinator Review.`,
+          `Direct to Production can only be set in Coordinator Review, or after a designer is assigned but before the designer starts.`,
       });
     }
   }
@@ -1526,16 +1578,89 @@ export const updateJobCard = async (req, res) => {
   });
 
   try {
-    // ── Stage transitions ──────────────────────────────────────────────────
+    // Filled only when a not-yet-started designer assignment is removed.
+    let removedAssignment = null;
+
     if (nowMovingToProduction) {
-      // Validated above: job.status === "coordinator_review"
+      const wasAssigned = jobCard.status === "assigned_to_designer";
+
+      if (wasAssigned) {
+        // Same lock order as designerStartTask: assignments first, then job.
+        const assignments = await JobAssignment.findAll({
+          where: { job_no },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+        const lockedJob = await JobCard.findByPk(job_no, {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+        const designerStarted = assignments.some((a) =>
+          ["in_progress", "completed"].includes(a.status),
+        );
+
+        if (!lockedJob || lockedJob.status !== "assigned_to_designer" || designerStarted) {
+          await t.rollback();
+          return res.status(400).json({
+            message:
+              "Cannot mark as Direct to Production: the designer has already started working on this job.",
+          });
+        }
+
+        const waiting = assignments.filter((a) => a.status === "assigned");
+        for (const a of waiting) {
+          a.status = "cancelled";
+          a.remarks = [a.remarks, "Cancelled: job marked Direct to Production before the designer started"]
+            .filter(Boolean)
+            .join(" | ");
+          await a.save({ transaction: t });
+        }
+
+        // Pending transfer requests on those assignments are void now.
+        let pendingTransfers = [];
+        if (waiting.length > 0) {
+          pendingTransfers = await DesignerTransferRequest.findAll({
+            where: {
+              assignment_id: { [Op.in]: waiting.map((a) => a.id) },
+              status: "pending",
+            },
+            include: [{ model: User, as: "toDesigner", attributes: ["id", "username"] }],
+            transaction: t,
+          });
+          if (pendingTransfers.length > 0) {
+            await DesignerTransferRequest.update(
+              { status: "cancelled", dismissed_by_requester_at: new Date() },
+              {
+                where: { id: { [Op.in]: pendingTransfers.map((r) => r.id) } },
+                transaction: t,
+              },
+            );
+          }
+        }
+
+        updates.assigned_designer = null;
+        removedAssignment = {
+          designerIds: [...new Set(waiting.map((a) => a.designer_id))],
+          transferRecipientIds: [
+            ...new Set(pendingTransfers.map((r) => r.toDesigner?.id).filter(Boolean)),
+          ],
+          summary: {
+            assignment_ids: waiting.map((a) => a.id),
+            designer_ids: [...new Set(waiting.map((a) => a.designer_id))],
+            cancelled_transfer_request_ids: pendingTransfers.map((r) => r.id),
+          },
+        };
+      }
+
       updates.status = "ready_for_production";
       updates.current_stage = "ready_for_production";
       await advanceStage({
         job_no,
         new_stage: "ready_for_production",
         performed_by_id: req.user?.id || null,
-        remarks: "(Job updated → Direct to Production, ready for production)",
+        remarks: wasAssigned
+          ? "(Job updated → Direct to Production, designer assignment cancelled, ready for production)"
+          : "(Job updated → Direct to Production, ready for production)",
         transaction: t,
       });
     }
@@ -1553,16 +1678,6 @@ export const updateJobCard = async (req, res) => {
           "(Job updated → Direct to Production unchecked, reverted to Coordinator Review)",
         transaction: t,
       });
-    }
-
-    // ── Delivery date change → recalculate deadline ───────────────────────
-    if (
-      updates.delivery_date &&
-      updates.delivery_date !== oldJobCardData.delivery_date
-    ) {
-      updates.job_completion_deadline = calculateJobCompletionDeadline(
-        updates.delivery_date,
-      );
     }
 
     // ── GST recompute ─────────────────────────────────────────────────────
@@ -1604,8 +1719,33 @@ export const updateJobCard = async (req, res) => {
       updates.gst_amount = gst_amount;
       updates.final_amount = final_amount;
     }
-    // ── JobCard update — single write, lock acquired here ─────────────────
+
+    // ── Delivery date really changed → recalc the estimate of the job's active assignment.
+    // Lock the assignment BEFORE the job row (same order as designerStartTask → no deadlock).
+    const deliveryDateChanged = Boolean(jobCardChanges.delivery_date);
+    const assignmentToRecalc = deliveryDateChanged
+      ? await lockActiveAssignment(job_no, t)
+      : null;
+
     await jobCard.update(updates, { transaction: t });
+
+    if (assignmentToRecalc) {
+      const recalc = await recalculateEstimateOnDeliveryChange({
+        jobNo: job_no,
+        assignment: assignmentToRecalc,
+        performedById: req.user?.id || null,
+        transaction: t,
+      });
+      if (recalc.changed) {
+        // Fires only if the whole update commits; a rollback sends nothing.
+        t.afterCommit(() => {
+          notifyEstimateChanged({
+            assignmentId: recalc.assignmentId,
+            jobNo: job_no,
+          }).catch(() => {});
+        });
+      }
+    }
 
     // ── Helpers (defined inside try so they share transaction `t`) ─────────
     async function resolvePaperIds(item) {
@@ -1888,10 +2028,11 @@ export const updateJobCard = async (req, res) => {
           jobCardChanges,
           jobItemChanges,
           stage_transition: nowMovingToProduction
-            ? "coordinator_review → ready_for_production"
+            ? `${oldJobCardData.status} → ready_for_production`
             : nowRevertedFromProd
               ? "ready_for_production → coordinator_review"
               : null,
+          ...(removedAssignment && { designer_assignment_cancelled: removedAssignment.summary }),
         },
       },
       { transaction: t },
@@ -1899,7 +2040,47 @@ export const updateJobCard = async (req, res) => {
 
     await t.commit();
 
+    // ── Designer(s) whose not-yet-started assignment was removed: push only ──
+    if (removedAssignment) {
+      const by = req.user?.username || "Job Writer";
+      removedAssignment.designerIds.forEach((id) => {
+        sendPushToUser(id, {
+          title: "Job Removed From Your List",
+          body: `Job #${job_no} was marked Direct to Production by ${by}. No design work needed.`,
+          icon: "/favicon.png",
+          vibrate: [1000, 200, 1000, 200, 1000],
+          requireInteraction: true,
+          data: { url: "/job-fms/designer", tag: `job-${job_no}` },
+        }).catch((err) =>
+          console.warn(`Push failed for designer ${id} on job ${job_no}:`, err.message),
+        );
+      });
+      removedAssignment.transferRecipientIds.forEach((id) => {
+        sendPushToUser(id, {
+          title: "Transfer Request Withdrawn",
+          body: `Job #${job_no} moved to Direct to Production, transfer request is no longer needed.`,
+          icon: "/favicon.png",
+          vibrate: [500, 100, 500],
+          data: { url: "/job-fms/designer", tag: `job-${job_no}` },
+        }).catch((err) =>
+          console.warn(`Push failed for transfer recipient ${id} on job ${job_no}:`, err.message),
+        );
+      });
+    }
+    
+    // ── Direct to Production unticked → auto-assign a designer ────────────
+    // autoAssignJob never throws. If nobody is eligible the job stays in
+    // coordinator_review and the Process Coordinators get a push to assign manually.
+    let autoAssign = null;
+    if (nowRevertedFromProd) {
+      autoAssign = await autoAssignJob({
+        jobNo: job_no,
+        fallbackAssignedById: req.user?.id || null,
+      });
+    }
+
     // ── Fetch final state for response + email (outside transaction) ──────
+    // (fetched AFTER auto-assign so status/assignments are up to date)
     const updatedJobCard = await JobCard.findByPk(job_no, {
       include: [
         { model: JobItem, as: "items" },
@@ -1907,10 +2088,39 @@ export const updateJobCard = async (req, res) => {
       ],
     });
 
+
     res.json({
       message: "JobCard and items updated successfully",
       updatedJobCard,
+      ...(autoAssign && {
+        auto_assignment: {
+          assigned: autoAssign.assigned,
+          designer: autoAssign.assigned ? autoAssign.designer.username : null,
+          reason: autoAssign.assigned ? null : autoAssign.reason,
+        },
+      }),
     });
+
+    if (autoAssign?.assigned) {
+      await sendAssignmentNotifications({
+        job: updatedJobCard,
+        designer: autoAssign.designer,
+        mode: "auto",
+        estimatedCompletionTime: autoAssign.estimated_completion_time,
+      });
+      await notifyCoordinatorsAutoAssigned({
+        job: updatedJobCard,
+        designer: autoAssign.designer,
+        estimatedCompletionTime: autoAssign.estimated_completion_time,
+        trigger: "untick",
+      });
+    } else if (autoAssign && autoAssign.reason !== "job_not_eligible") {
+      await notifyAutoAssignSkipped({
+        job: updatedJobCard,
+        reason: autoAssign.reason,
+        excluded: autoAssign.excluded,
+      });
+    }
 
     // ── Email notification (fire-and-forget — never blocks response) ──────
     const hasAnyChange =
@@ -1947,7 +2157,9 @@ export const updateJobCard = async (req, res) => {
         stageTransition: nowMovingToProduction
           ? "ready_for_production"
           : nowRevertedFromProd
-            ? "coordinator_review"
+            ? autoAssign?.assigned
+              ? "reverted_auto_assigned"
+              : "coordinator_review"
             : null,
         performedBy: req.user?.username || "Job Writer",
       }).catch((emailErr) => {
@@ -1959,6 +2171,7 @@ export const updateJobCard = async (req, res) => {
     // t.rollback() is safe to call even if already committed — Sequelize no-ops it
     await t.rollback().catch(() => {});
     console.error("Error updating JobCard:", error);
+    if (res.headersSent) return;
     return res.status(500).json({
       message:
         error.message?.includes("missing") || error.message?.includes("empty")
@@ -1973,40 +2186,145 @@ export const updateJobCard = async (req, res) => {
  * CANCEL JOB
  */
 export const cancelJobCard = async (req, res) => {
-  const t = await db.sequelize.transaction();
-  try {
-    const { job_no } = req.params;
-    if (!job_no) {
-      return res.status(400).json({
-        message: "Job number required",
-      });
-    }
+  const { job_no } = req.params;
+  if (!job_no) {
+    return res.status(400).json({
+      message: "Job number required",
+    });
+  }
 
+  // Jobs that are finished (or already cancelled) must never be cancelled.
+  const NOT_CANCELLABLE = {
+    delivered: "Cannot cancel this job: it is already delivered.",
+    completed: "Cannot cancel this job: it is already completed.",
+    cancelled: "This job is already cancelled.",
+  };
+
+  // Transaction opens only after the cheap validation, so an early 400 never holds a DB connection.
+  const t = await db.sequelize.transaction();
+
+  try {
     const job = await JobCard.findByPk(job_no, {
       include: [{ model: JobAssignment, as: "assignments" }],
       transaction: t,
     });
 
     if (!job) {
+      await t.rollback();
       return res.status(400).json({
         message: "Job not found",
       });
     }
 
-    const prevStatus = job.status; // needed to know if production already had this job
+    if (NOT_CANCELLABLE[job.status]) {
+      await t.rollback();
+      return res.status(409).json({ message: NOT_CANCELLABLE[job.status] });
+    }
+
+    const now = new Date();
+
+    // ── Lock order (same as designerStartTask): assignments → production → job ──
+
+    // 0. Pending transfer requests, locked FIRST (acceptTransferRequest locks request → assignment → job)
+    const pendingTransfers = await db.DesignerTransferRequest.findAll({
+      where: { job_no, status: "pending" },
+      attributes: ["id", "to_designer_id"],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    // 1. Designer assignments that are still active
+    const activeAssignments = await JobAssignment.findAll({
+      where: { job_no, status: { [Op.in]: ["assigned", "in_progress"] } },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    // 2. Production-stage workers still holding this job
+    const activeWorkers = await db.JobProductionStageWorker.findAll({
+      where: { job_no, status: { [Op.in]: ["assigned", "in_progress", "paused"] } },
+      attributes: ["id", "worker_id"],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    // 3. Delivery links not used yet
+    const pendingDeliveries = await db.DeliveryAssignment.findAll({
+      where: { job_no, status: "pending" },
+      attributes: ["id", "worker_id"],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    // 4. The job row, locked. Re-check the status: it may have changed since the first read.
+    const lockedJob = await JobCard.findByPk(job_no, {
+      attributes: ["job_no", "status"],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!lockedJob || NOT_CANCELLABLE[lockedJob.status]) {
+      await t.rollback();
+      return res.status(409).json({
+        message:
+          NOT_CANCELLABLE[lockedJob?.status] ?? "Job is no longer cancellable.",
+      });
+    }
+    const prevStatus = lockedJob.status; // needed to know if production already had this job
+
+    // ── Designer assignments → cancelled ──────────────────────────────────
+    if (activeAssignments.length > 0) {
+      await JobAssignment.update(
+        { status: "cancelled" },
+        {
+          where: { id: { [Op.in]: activeAssignments.map((a) => a.id) } },
+          transaction: t,
+        },
+      );
+    }
+
+    if (pendingTransfers.length > 0) {
+      await db.DesignerTransferRequest.update(
+        { status: "cancelled", dismissed_by_requester_at: now },
+        {
+          where: { id: { [Op.in]: pendingTransfers.map((r) => r.id) } },
+          transaction: t,
+        },
+      );
+    }
+
+    // ── Production workers → cancelled (so the job vanishes from their list) ──
+    if (activeWorkers.length > 0) {
+      await db.JobProductionStageWorker.update(
+        {
+          status: "cancelled",
+          cancelled_at: now,
+          cancelled_reason: "Job cancelled by Job Writer.",
+        },
+        {
+          where: { id: { [Op.in]: activeWorkers.map((w) => w.id) } },
+          transaction: t,
+        },
+      );
+    }
+
+    // ── Unused delivery links → overridden (same as a stage revert) ───────
+    if (pendingDeliveries.length > 0) {
+      await db.DeliveryAssignment.update(
+        {
+          status: "overridden",
+          overridden_by_id: req.user?.id || null,
+          overridden_at: now,
+          override_reason: "Job cancelled.",
+        },
+        {
+          where: { id: { [Op.in]: pendingDeliveries.map((d) => d.id) } },
+          transaction: t,
+        },
+      );
+    }
+
     job.current_stage = "cancelled";
     job.status = "cancelled";
-
-    await JobAssignment.update(
-      { status: "cancelled" },
-      {
-        where: {
-          job_no: job_no,
-          status: ["assigned", "in_progress"],
-        },
-        transaction: t,
-      },
-    );
 
     await job.save({ transaction: t });
 
@@ -2018,26 +2336,88 @@ export const cancelJobCard = async (req, res) => {
       transaction: t,
     });
 
+    await ActivityLog.create(
+      {
+        job_no,
+        action: "Job Cancelled",
+        performed_by_id: req.user?.id || null,
+        meta: {
+          previous_status: prevStatus,
+          cancelled_designer_assignment_ids: activeAssignments.map((a) => a.id),
+          cancelled_transfer_request_ids: pendingTransfers.map((r) => r.id),
+          cancelled_production_assignment_ids: activeWorkers.map((w) => w.id),
+          overridden_delivery_assignment_ids: pendingDeliveries.map((d) => d.id),
+        },
+      },
+      { transaction: t },
+    );
+
     await t.commit();
 
     res.status(200).json({
       message: "Successfully cancelled the job",
     });
 
+    // 🔔 Push to everyone who was holding the job (fire-and-forget, never affects the response)
+    const pushCancelled = (userId, url, body) =>
+      sendPushToUser(userId, {
+        title: "Job Cancelled",
+        body,
+        icon: "/favicon.png",
+        vibrate: [1000, 200, 1000, 200, 1000],
+        requireInteraction: true,
+        data: { url, tag: `job-${job_no}` },
+      }).catch((err) =>
+        console.warn(`Cancel push failed for user ${userId} on job ${job_no}:`, err.message),
+      );
+
+    const cancelBody = `Job #${job_no} · ${job.client_name} has been cancelled. Please stop all work on it.`;
+
+    const designerIds = new Set(activeAssignments.map((a) => a.designer_id));
+    designerIds.forEach((id) => pushCancelled(id, "/job-fms/designer", cancelBody));
+
+    const transferRecipientIds = new Set(
+      pendingTransfers.map((r) => r.to_designer_id).filter((id) => id && !designerIds.has(id)),
+    );
+    transferRecipientIds.forEach((id) =>
+      pushCancelled(
+        id,
+        "/job-fms/designer",
+        `Job #${job_no} was cancelled, so the transfer request sent to you is void.`,
+      ),
+    );
+
+    const productionWorkerIds = new Set(
+      activeWorkers.map((w) => w.worker_id).filter(Boolean),
+    );
+    productionWorkerIds.forEach((id) => pushCancelled(id, "/worker", cancelBody));
+
+    const deliveryWorkerIds = new Set(
+      pendingDeliveries
+        .map((d) => d.worker_id)
+        .filter((id) => id && !productionWorkerIds.has(id)),
+    );
+    deliveryWorkerIds.forEach((id) =>
+      pushCancelled(id, "/delivery-dashboard", cancelBody),
+    );
+
     // 🔔 Push to Production — only if the job had already reached production
     notifyProductionJobCancelled({ job_no, prevStatus });
 
     // 🔔 Notify CRM + Coordinators + Designer
-    await sendJobNotificationEmail({
+    sendJobNotificationEmail({
       job,
       subject: `🚫 JobCard Cancelled | Job No: ${job_no}`,
       actionType: "cancelled",
+    }).catch((emailErr) => {
+      console.error("Cancel email failed (non-fatal):", emailErr.message);
     });
   } catch (error) {
     if (!t.finished) {
-      await t.rollback();
+      await t.rollback().catch(() => {});
     }
     console.error("Error cancelling job: ", error);
+    if (res.headersSent) return;
     return res.status(500).json({
       message: "Internal server error",
       error: error.message,
@@ -2093,7 +2473,7 @@ function renderUpdatedChanges(
   const sections = [];
 
   // ── Stage transition banner ───────────────────────────────────────────
-  if (stageTransition === "production") {
+  if (stageTransition === "production" || stageTransition === "ready_for_production") {
     sections.push(`
       <div style="background:#fef9c3;border:1px solid #eab308;border-radius:6px;padding:12px;margin-bottom:16px">
         <p style="margin:0;font-weight:bold;color:#713f12">
@@ -2108,6 +2488,16 @@ function renderUpdatedChanges(
         <p style="margin:0;font-weight:bold;color:#713f12">
           🔄 "Direct to Production" was <span style="color:#dc2626">unchecked</span>.
           This job has been <strong>reverted to Coordinator Review</strong>.
+        </p>
+      </div>
+    `);
+  } else if (stageTransition === "reverted_auto_assigned") {
+    sections.push(`
+      <div style="background:#fef9c3;border:1px solid #eab308;border-radius:6px;padding:12px;margin-bottom:16px">
+        <p style="margin:0;font-weight:bold;color:#713f12">
+          🔄 "Direct to Production" was <span style="color:#dc2626">unchecked</span>.
+          The job was sent back from production and has been
+          <strong>automatically assigned to designer ${job.assigned_designer || "—"}</strong>.
         </p>
       </div>
     `);
@@ -2409,6 +2799,9 @@ function renderUpdatedChanges(
 const STAGE_ROLE_MAP = {
   ready_for_production: ["Production", "Process Coordinator", "CRM"],
   coordinator_review: ["Process Coordinator", "CRM"],
+  // Direct-to-production unticked AND a designer was auto-assigned:
+  // nothing left for the Process Coordinator to do, only the CRM is informed.
+  reverted_auto_assigned: ["CRM"],
 };
 
 
@@ -2460,18 +2853,20 @@ async function sendJobNotificationEmail({
       ? await User.findAll({ where: { department: "Production Coordinator", isActive: true } })
       : [];
 
-    // ── Fetch Designer (only if assigned and stage warrants it) ───────────
+    // ── Fetch Designer (only the CURRENT holder of the job) ───────────────
+    // job.assignments has no guaranteed order and can include cancelled/old rows,
+    // so pick the newest assignment that is still active.
     let designerUser = null;
-    if (
-      includeDesigner &&
-      Array.isArray(job.assignments) &&
-      job.assignments.length > 0
-    ) {
-      const designerAssignment = job.assignments[0];
-      designerUser = designerAssignment?.designer_id
-        ? await User.findOne({ where: { id: designerAssignment.designer_id } })
+    if (includeDesigner && Array.isArray(job.assignments) && job.assignments.length > 0) {
+      const currentAssignment = job.assignments
+        .filter((a) => ["assigned", "in_progress"].includes(a.status))
+        .sort((a, b) => (b.instance || 0) - (a.instance || 0) || (b.id || 0) - (a.id || 0))[0];
+
+      designerUser = currentAssignment?.designer_id
+        ? await User.findOne({ where: { id: currentAssignment.designer_id } })
         : null;
     }
+
 
     // ── Deduplicate recipients ─────────────────────────────────────────────
     const seen = new Set();

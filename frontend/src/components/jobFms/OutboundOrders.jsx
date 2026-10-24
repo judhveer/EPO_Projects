@@ -100,7 +100,6 @@ export default function OutboundOrders({ refresh }) {
               <th className="border p-1 sm:p-2 min-w-[80px] text-center">Priority</th>
               <th className="border p-1 sm:p-2 min-w-[180px]">Instructions</th>
               <th className="border p-1 sm:p-2 min-w-[40px]">Files</th>
-              <th className="border p-1 sm:p-2 min-w-[160px]">Completion Deadline</th>
               <th className="border p-1 sm:p-2 min-w-[150px]">Status</th>
               {/* Outbound-specific — sticky right group */}
               <th className="border p-1 sm:p-2 bg-blue-800 sticky right-[320px] min-w-[140px] z-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
@@ -187,14 +186,6 @@ export default function OutboundOrders({ refresh }) {
                   <td className="border p-1 sm:p-2">{job.instructions || "—"}</td>
                   <td className="border p-1 sm:p-2 text-center">{job.no_of_files ?? "—"}</td>
 
-                  <td className="border p-1 sm:p-2">
-                    {job.job_completion_deadline
-                      ? DateTime.fromJSDate(new Date(job.job_completion_deadline))
-                          .setZone("Asia/Kolkata")
-                          .toFormat("dd LLL yyyy, hh:mm a")
-                      : "Not Set"}
-                  </td>
-
                   <td className="border p-1 sm:p-2 text-center">{job.status ?? "—"}</td>
 
                   {/* Outbound-specific sticky right cells */}
@@ -221,7 +212,7 @@ export default function OutboundOrders({ refresh }) {
               ))
             ) : (
               <tr>
-                <td colSpan="16" className="text-center py-8 text-gray-500">
+                <td colSpan="14" className="text-center py-8 text-gray-500">
                   No outbound jobs found.
                 </td>
               </tr>

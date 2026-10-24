@@ -61,6 +61,7 @@ export default function MyAttendance({ compact = false }) {
   const [message, setMessage] = useState('');
   const [summary, setSummary] = useState(null);
   const [confirming, setConfirming] = useState(null); // 'checkin' | 'checkout' | null
+  const [openJobs, setOpenJobs] = useState(null); // designer's open jobs, shown as a warning before check-out
 
   const fetchToday = useCallback(async () => {
     setLoading(true);
@@ -122,7 +123,23 @@ export default function MyAttendance({ compact = false }) {
   // const handleCheckOut = () => submitWithLocation('/api/attendance/check-out', 'Failed to check out.');
 
   const handleCheckIn = () => setConfirming('checkin');
-  const handleCheckOut = () => setConfirming('checkout');
+  const handleCheckOut = async () => {
+    setOpenJobs(null);
+    // Designers get a heads-up about jobs they still hold. Best-effort only:
+    // if this call fails, check-out continues normally.
+    if (user?.department === 'Designer') {
+      setActionLoading(true);
+      try {
+        const { data } = await api.get('/api/fms/designers/my-open-jobs');
+        if (data?.total > 0) setOpenJobs(data);
+      } catch {
+        // ignore — the warning is informational
+      } finally {
+        setActionLoading(false);
+      }
+    }
+    setConfirming('checkout');
+  };
 
   const confirmAction = () => {
     const action = confirming;
@@ -326,6 +343,27 @@ export default function MyAttendance({ compact = false }) {
                 <p className="mt-1 text-sm text-gray-600">
                   You've been checked in for <span className="font-semibold">{elapsedSinceCheckIn(record.check_in_time)}</span>.
                 </p>
+
+                {openJobs?.total > 0 && (
+                  <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-left text-sm text-amber-800">
+                    <p className="font-semibold">
+                      ⚠ You still have {openJobs.total} open job{openJobs.total !== 1 ? 's' : ''}:
+                    </p>
+                    <ul className="mt-1 list-disc pl-5 text-xs">
+                      {openJobs.assigned > 0 && <li>{openJobs.assigned} not started yet</li>}
+                      {openJobs.running > 0 && <li>{openJobs.running} in progress</li>}
+                      {openJobs.paused > 0 && <li>{openJobs.paused} paused</li>}
+                    </ul>
+                    <p className="mt-2 text-xs">
+                      Jobs: {openJobs.jobs.map((j) => `#${j.job_no}`).join(', ')}
+                      {openJobs.total > openJobs.jobs.length ? ' …' : ''}
+                    </p>
+                    <p className="mt-2 text-xs">
+                      These jobs stay with you, and no new jobs will be assigned to you after you check out.
+                      Do you still want to check out?
+                    </p>
+                  </div>
+                )}
               </>
             )}
 
@@ -342,7 +380,7 @@ export default function MyAttendance({ compact = false }) {
                   confirming === 'checkin' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
                 }`}
               >
-                {confirming === 'checkin' ? '✅ Yes, Check In' : '🚪 Yes, Check Out'}
+                {confirming === 'checkin' ? '✅ Yes, Check In' : openJobs?.total > 0 ? '🚪 Check Out anyway' : '🚪 Yes, Check Out'}
               </button>
             </div>
           </div>

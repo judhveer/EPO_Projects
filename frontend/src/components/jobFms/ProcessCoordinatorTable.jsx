@@ -164,6 +164,29 @@ function JobRow({ job, label, onSetEstTime }) {
 }
 
 
+// ── Auto-assign availability (from the server: attendance + leave check) ─────
+function AvailabilityBadge({ availability }) {
+  if (!availability || availability.available === null || availability.available === undefined) {
+    return null;
+  }
+  return availability.available ? (
+    <span
+      className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium"
+      title="Eligible for auto-assign"
+    >
+      ✅ Available
+    </span>
+  ) : (
+    <span
+      className="text-[11px] px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 font-medium capitalize"
+      title="Skipped by auto-assign"
+    >
+      ⛔ {availability.reason || "Not available"}
+    </span>
+  );
+}
+
+
 // ── Designer card in the status modal ────────────────────────────────────────
 function DesignerCard({ designer, onSetEstTime }) {
   const [expanded, setExpanded] = useState(false);
@@ -202,6 +225,7 @@ function DesignerCard({ designer, onSetEstTime }) {
           {designer.urgent_flag && (
             <span className="text-xs text-red-600 font-semibold">⚠ Has urgent</span>
           )}
+          <AvailabilityBadge availability={designer.availability} />
         </div>
 
         <div className="flex items-center gap-4 text-xs text-slate-500 shrink-0">
@@ -242,7 +266,7 @@ function DesignerCard({ designer, onSetEstTime }) {
           />
         </div>
         <p className="text-[10px] text-slate-400 mt-0.5">
-          Workload: {designer.workload_score}%
+          Workload: {designer.workload_score}% · Auto-assign score: {designer.assign_score ?? "—"}
         </p>
       </div>
 
@@ -301,7 +325,7 @@ function DesignerStatusModal({ designers, onClose, onSetEstTime }) {
               👥 Designer Status Overview
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Expand a designer to see their jobs and delivery deadlines.
+              Expand a designer to see their jobs and delivery deadlines. "Available" means checked in and not on leave — the same check auto-assign uses.
             </p>
           </div>
           <button
@@ -650,8 +674,11 @@ export default function ProcessCoordinatorTable() {
                     onClick={() => assignDesigner(selectedJobForAssign.job_no, designer.designer_id)}
                     className="w-full text-left p-4 border rounded-lg hover:bg-blue-50 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-gray-800">{designer.name}</span>
+                    <div className="flex justify-between items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-gray-800">{designer.name}</span>
+                        <AvailabilityBadge availability={designer.availability} />
+                      </div>
                       {designer.status === "idle"
                         ? <span className="text-green-600 text-sm">🟢 Idle</span>
                         : <span className="text-yellow-600 text-sm">🟡 Active</span>

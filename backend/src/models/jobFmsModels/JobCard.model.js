@@ -160,9 +160,6 @@ export default (sequelize) => {
         allowNull: false,
         defaultValue: false,
       },
-      job_completion_deadline: {
-        type: DataTypes.DATE,
-      },
       no_of_files: {
         type: DataTypes.INTEGER,
       },

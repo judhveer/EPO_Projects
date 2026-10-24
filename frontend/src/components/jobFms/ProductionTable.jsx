@@ -266,11 +266,6 @@ const JobRow = memo(function JobRow({
         <td className="border p-2">{job.order_handled_by}</td>
         <td className="border p-2">{job.execution_location}</td>
         <td className="border p-2 text-center">{job.no_of_files}</td>
-        <td className="border p-2">
-          {job.job_completion_deadline
-            ? fmtIST(job.job_completion_deadline)
-            : "—"}
-        </td>
         <td className="border p-2 sticky right-0 bg-inherit group-hover:bg-blue-50 z-10 text-center">
           <button onClick={() => onOpen(job)}
             className="px-3 py-1.5 rounded-md text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-sm">
@@ -410,7 +405,7 @@ export default function ProductionTable() {
     return () => window.removeEventListener("keydown", onEsc);
   }, [activeJob, itemSidebarJobNo]);
 
-  const columnCount = 15;
+  const columnCount = 14;
 
   if (error) {
     return (
@@ -522,7 +517,6 @@ export default function ProductionTable() {
               <th className="border p-2 w-[150px]">Order Handled By</th>
               <th className="border p-2 w-[110px]">Execution</th>
               <th className="border p-2 w-[80px]">Files</th>
-              <th className="border p-2 w-[170px]">Deadline</th>
               <th className="border p-2 sticky right-0 bg-blue-800 z-40 w-[140px]">Action</th>
             </tr>
           </thead>

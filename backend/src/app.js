@@ -50,6 +50,7 @@ import { startLeaveAllocationJob } from './jobs/attendance/scheduleLeaveAllocati
 import { startAttendanceResolutionJob } from './jobs/attendance/scheduleAttendanceResolutionJob.js';
 import { startAttendanceReminderJob } from "./jobs/attendance/scheduleAttendanceReminderJob.js"
 import { startCheckoutReminderJob } from './jobs/attendance/scheduleCheckoutReminderJob.js';
+import { startDesignerSweepJob } from "./jobs/jobFMS/scheduleDesignerSweepJob.js";
 
 
 
@@ -320,6 +321,7 @@ export async function init() {
     startAttendanceResolutionJob(); 
     startAttendanceReminderJob();
     startCheckoutReminderJob();
+    startDesignerSweepJob();
   }
   catch (err) {
     console.error("Failed to initialize application:", err);

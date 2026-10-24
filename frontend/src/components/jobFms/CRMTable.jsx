@@ -205,6 +205,9 @@ export default function CRMTable({ refresh }) {
               </th>
               <th className="border p-1 sm:p-2"> Job Created On</th>
               <th className="border p-2">Client Name</th>
+              <th className="border p-2">Items</th>
+              <th className="border p-2">Delivery Date</th>
+              <th className="border p-2">Current Stage</th>
               <th className="border p-2">Client Type</th>
               <th className="border p-2">Order Type</th>
               <th className="border p-2">Order Source</th>
@@ -212,7 +215,6 @@ export default function CRMTable({ refresh }) {
               <th className="border p-2">Contact</th>
               <th className="border p-2">Email</th>
               <th className="border p-1 sm:p-2">Execution Location</th>
-              <th className="border p-2">Delivery Date</th>
               <th className="border p-1 sm:p-2 max-w-[500px] ">
                 Delivery Location
               </th>
@@ -226,9 +228,6 @@ export default function CRMTable({ refresh }) {
               <th className="border p-2">Advance</th>
               <th className="border p-2">Mode of Payment</th>
               <th className="border p-2">Payment Status</th>
-              <th className="border p-1 sm:p-2">Job Completion Deadline</th>
-              <th className="border p-2">Items</th>
-              <th className="border p-2">Current Stage</th>
               <th className="border p-2 sticky right-0 bg-blue-800 z-40">
                 Action
               </th>
@@ -258,6 +257,29 @@ export default function CRMTable({ refresh }) {
                       .toFormat("dd LLL yyyy, hh:mm a")}
                   </td>
                   <td className="border p-2">{job.client_name}</td>
+
+                  <td className="border p-1 sm:p-2 text-center text-gray-500 text-xs italic hover:text-white cursor-default">
+                    {job.item_count || 0} items{" "}
+                    {job.item_count > 0 && (
+                      <button
+                        onClick={() => setSelectedJobNo(job.job_no)}
+                        className="ml-2 text-blue-600 hover:text-blue-800 underline text-xs cursor-pointer"
+                      >
+                        View
+                      </button>
+                    )}
+                  </td>
+
+                  <td className="border p-1 sm:p-2 font-semibold text-blue-600 hover:text-white">
+                    <span className="bg-yellow-300 text-blue-900 rounded-md font-bold p-1">
+                      {DateTime.fromJSDate(new Date(job.delivery_date))
+                        .setZone("Asia/Kolkata")
+                        .toFormat("dd LLL yyyy, hh:mm a")}
+                    </span>
+                  </td>
+
+                  <td className="border p-2 font-semibold">{job.status}</td>
+
                   <td className="border p-2">{job.client_type}</td>
                   <td className="border p-2">{job.order_type}</td>
                   <td className="border p-2 ">{job.order_source}</td>
@@ -266,13 +288,6 @@ export default function CRMTable({ refresh }) {
                   <td className="border p-2">{job.email_id}</td>
                   <td className="border p-1 sm:p-2">
                     {job.execution_location}
-                  </td>
-                  <td className="border p-1 sm:p-2 font-semibold text-blue-600 hover:text-white">
-                    <span className="bg-yellow-300 text-blue-900 rounded-md font-bold p-1">
-                      {DateTime.fromJSDate(new Date(job.delivery_date))
-                        .setZone("Asia/Kolkata")
-                        .toFormat("dd LLL yyyy, hh:mm a")}
-                    </span>
                   </td>
                   <td className="border-r border-gray-200 px-2  max-w-[500px]">
                     {job.delivery_location?.replace(/_/g, " ")}
@@ -320,29 +335,6 @@ export default function CRMTable({ refresh }) {
                       {job.payment_status}
                     </span>
                   </td>
-                  <td className="border p-1 sm:p-2">
-                    {job.job_completion_deadline
-                      ? DateTime.fromJSDate(
-                          new Date(job.job_completion_deadline),
-                        )
-                          .setZone("Asia/Kolkata")
-                          .toFormat("dd LLL yyyy, hh:mm a")
-                      : "Not Set"}
-                  </td>
-
-                  <td className="border p-1 sm:p-2 text-center text-gray-500 text-xs italic hover:text-white cursor-default">
-                    {job.item_count || 0} items{" "}
-                    {job.item_count > 0 && (
-                      <button
-                        onClick={() => setSelectedJobNo(job.job_no)}
-                        className="ml-2 text-blue-600 hover:text-blue-800 underline text-xs cursor-pointer"
-                      >
-                        View
-                      </button>
-                    )}
-                  </td>
-
-                  <td className="border p-2 font-semibold">{job.status}</td>
 
                   {/* ACTION COLUMN */}
                   <td className="border p-2 sticky right-0 bg-white">
@@ -407,7 +399,7 @@ export default function CRMTable({ refresh }) {
               ))
             ) : (
               <tr>
-                <td colSpan="15" className="text-center py-4 text-gray-500">
+                <td colSpan="23" className="text-center py-4 text-gray-500">
                   No jobs found
                 </td>
               </tr>

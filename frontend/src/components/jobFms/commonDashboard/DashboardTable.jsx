@@ -71,7 +71,6 @@ export default function DashboardTable({
               <th className="border p-2 sticky right-0 bg-blue-800 z-30 text-center font-semibold">
                 Status
               </th>
-              <th className="border p-2">Job Completion Deadline</th>
               <th className="border p-2">Designer State</th>
               <th className="border p-2">Approval State</th>
             </tr>
@@ -157,11 +156,11 @@ export default function DashboardTable({
                     )}
                   </td>
                   <td className="border p-2 ">
-                    {/* {new Date(job.proof_date).toLocaleDateString()} */}
-                    {DateTime
-                      .fromJSDate(new Date(job.proof_date))
-                      .setZone("Asia/Kolkata")
-                      .toFormat("dd LLL yyyy")}
+                    {job.proof_date
+                      ? DateTime.fromJSDate(new Date(job.proof_date))
+                          .setZone("Asia/Kolkata")
+                          .toFormat("dd LLL yyyy")
+                      : "Not Set"}
                   </td>
                   <td className="border p-2">
                     <span
@@ -203,13 +202,6 @@ export default function DashboardTable({
                       {getStatusLabel(job)}
                     </span>
                   </td>
-
-                  <td className="border p-2">
-                    {DateTime
-                      .fromJSDate(new Date(job.job_completion_deadline))
-                      .setZone("Asia/Kolkata")
-                      .toFormat("dd LLL yyyy, hh:mm a")}
-                  </td>
                   
                   <td className="border p-2">
                     {job.assignments?.[0]
@@ -237,7 +229,7 @@ export default function DashboardTable({
               ))
             ) : (
               <tr>
-                <td colSpan="20" className="text-center py-4 text-gray-500">
+                <td colSpan="19" className="text-center py-4 text-gray-500">
                   No jobs found
                 </td>
               </tr>
