@@ -18,7 +18,7 @@ import { Op } from "sequelize";
 import db from "../../models/index.js";
 import { advanceStage } from "../../utils/jobFms/stageTracking.js";
 import { sendPushToDepartment, sendPushToUser } from "../../utils/pushNotification.js";
-import { autoPauseActiveJob } from "./designer.controller.js";
+import { autoPauseActiveJob, calculateMaxDesignDeadlineWithRule } from "./designer.controller.js";
 
 const { 
     DesignerTransferRequest, 
@@ -34,6 +34,46 @@ function respondToError(res, error, fallbackMsg) {
   if (status >= 500) console.error(fallbackMsg, error);
   return res.status(status).json({ message: error.message || fallbackMsg });
 }
+
+
+// Estimate for the designer who takes over a transferred job.
+//  • original has an estimate  → carry it over; if less than 2h remain (or it already passed) → now + 2h
+//  • original has none (legacy) → compute like a fresh assignment (same rule as auto-assign), min 2h
+// Always capped at the delivery date. Delivery already passed → the delivery date itself.
+const MIN_ESTIMATE_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+function resolveTransferEstimate({ originalAssignment, job, now }) {
+  const deliveryAt = job.delivery_date ? new Date(job.delivery_date) : null;
+  const hasDelivery = !!deliveryAt && !Number.isNaN(deliveryAt.getTime());
+  const capAtDelivery = (d) => (hasDelivery && d.getTime() > deliveryAt.getTime() ? deliveryAt : d);
+  const lowerBound = new Date(now.getTime() + MIN_ESTIMATE_WINDOW_MS);
+
+  const original = originalAssignment.estimated_completion_time
+    ? new Date(originalAssignment.estimated_completion_time)
+    : null;
+
+  if (original && !Number.isNaN(original.getTime())) {
+    return original.getTime() >= lowerBound.getTime()
+      ? { estimate: capAtDelivery(original), rule: "carried_over" }
+      : { estimate: capAtDelivery(lowerBound), rule: "carried_over_min_2h" };
+  }
+
+  if (hasDelivery) {
+    const r = calculateMaxDesignDeadlineWithRule(
+      job.delivery_date, job.createdAt, job.task_priority, originalAssignment.instance || 1, now,
+    );
+    if (r?.deadline instanceof Date && !Number.isNaN(r.deadline.getTime())) {
+      const raw = r.deadline.getTime() >= lowerBound.getTime() ? r.deadline : lowerBound;
+      return { estimate: capAtDelivery(raw), rule: `fresh_${r.rule}` };
+    }
+    return { estimate: capAtDelivery(lowerBound), rule: "fallback_min_2h" };
+  }
+
+  return { estimate: null, rule: "no_delivery_date" };
+}
+
+
+
 
 // ─────────────────────────────────────────────────────────────────────
 //  GET /api/fms/designers/available-designers
@@ -464,21 +504,18 @@ export const cancelRequestsAndStart = async (req, res) => {
     const t = await db.sequelize.transaction();
     try{
         const { job_no } = req.params;
-        // ── Fetch all pending requests to cancel ──────────────────────────
-        // Fetch before the bulk update so we have the recipient IDs for
-        // post-commit push notifications.
+
+        // Locked FIRST: acceptTransferRequest locks request → assignment → job,
+        // so we take the locks in the same order to avoid a deadlock.
+        // (No include here: with a join, FOR UPDATE would also lock the users rows.)
         const pendingRequests = await DesignerTransferRequest.findAll({
             where: {
                 job_no,
                 from_designer_id: req.user.id,
                 status: "pending",
             },
-            include: [{
-                model: User,
-                as: "toDesigner",
-                attributes: ["id", "username"],
-            }],
             transaction: t,
+            lock: t.LOCK.UPDATE,
         });
 
         if(pendingRequests.length === 0){
@@ -487,6 +524,16 @@ export const cancelRequestsAndStart = async (req, res) => {
                 { statusCode: 400 }
             );
         }
+
+        const recipients = await User.findAll({
+            where: { 
+                id: { [Op.in]: pendingRequests.map((r) => r.to_designer_id) } 
+            },
+            attributes: ["id", "username"],
+            transaction: t,
+        });
+        const recipientById = new Map(recipients.map((u) => [u.id, u]));
+
 
         // ── Find the assignment to start ──────────────────────────────────
         const assignment = await JobAssignment.findOne({
@@ -517,11 +564,7 @@ export const cancelRequestsAndStart = async (req, res) => {
             status: "cancelled",
             dismissed_by_requester_at: new Date(),
         }, {
-            where: {
-                job_no,
-                from_designer_id: req.user.id,
-                status: "pending",
-            },
+            where: { id: { [Op.in]: pendingRequests.map((r) => r.id) } },
             transaction: t,
         });
 
@@ -546,7 +589,7 @@ export const cancelRequestsAndStart = async (req, res) => {
         });
 
         if(!job){
-            throw new Error("Job not found.");
+            throw Object.assign(new Error("Job not found."), { statusCode: 404 });
         }
 
         job.status = "design_in_progress";
@@ -573,62 +616,70 @@ export const cancelRequestsAndStart = async (req, res) => {
 
         await t.commit();
 
-        // ── Post-commit: push to each cancelled request recipient ──────────
-        pendingRequests.forEach((transfer) => {
-            if (!transfer.toDesigner?.id) return;
-            sendPushToUser(transfer.toDesigner.id, {
-                title: "Transfer Request Withdrawn",
-                body: `${req.user.username} has started Job #${job_no} and cancelled their transfer request.`,
-                icon: "/favicon.png",
-                vibrate: [500, 100, 500],
-                data: {
-                    url: "/job-fms/designer",
-                    tag: `transfer-cancel-${transfer.id}`,
-                },
-            }).catch((err) => console.warn(`Push failed for cancelled request to ${transfer.toDesigner.username}:`, err.message));
-        });
-
-        // ── Post-commit: same "started" push as designerStartTask ─────────
-        const [crmUser, coordinators] = await Promise.all([
-            User.findOne({ where: { username: job.order_handled_by } }),
-            User.findAll({ where: { department: "Process Coordinator", isActive: true } }),
-        ]);
-
-        coordinators.forEach((c) => {
-            sendPushToUser(c.id, {
-                title: "Designer Started Work",
-                body: `Designer has started working on Job #${job_no}.`,
-                icon: "/favicon.png",
-                vibrate: [1000, 200, 1000, 200, 1000],
-                requireInteraction: true,
-                data: { url: "/job-fms/coordinator", tag: `job-${job_no}` },
-            }).catch((err) =>
-                console.warn(`Push failed for coordinator on job ${job_no}:`, err.message)
-            );
-        });
-
-        if (crmUser?.id) {
-            sendPushToUser(crmUser.id, {
-                title: "Designer Started Work",
-                body: `Designer has started working on Job #${job_no}.`,
-                icon: "/favicon.png",
-                vibrate: [1000, 200, 1000, 200, 1000],
-                requireInteraction: true,
-                data: { url: "/job-fms/common", tag: `job-${job_no}` },
-            }).catch((err) =>
-                console.warn(`Push failed for CRM on job ${job_no}:`, err.message)
-            );
-        }
-
-        return res.json({
+        // From here on the job IS started. Respond first; nothing below may turn a successful start into a 500.
+        res.json({
             message: "Transfer requests cancelled and task started.",
             auto_paused_job_no: autoPausedJobNo,
             cancelled_count: pendingRequests.length,
         });
 
+        // ── Post-commit: push to each cancelled request recipient ──────────
+        try{
+            pendingRequests.forEach((transfer) => {
+                const recipient = recipientById.get(transfer.to_designer_id);
+                if (!recipient) return;
+                sendPushToUser(recipient.id, {
+                    title: "Transfer Request Withdrawn",
+                    body: `${req.user.username} has started Job #${job_no} and cancelled their transfer request.`,
+                    icon: "/favicon.png",
+                    vibrate: [500, 100, 500],
+                    data: {
+                        url: "/job-fms/designer",
+                        tag: `transfer-cancel-${transfer.id}`,
+                    },
+                }).catch((err) => console.warn(`Push failed for cancelled request to ${recipient.username}:`, err.message));
+            });
+
+            // ── Post-commit: same "started" push as designerStartTask ─────────
+            const [crmUser, coordinators] = await Promise.all([
+                job.order_handled_by ? User.findOne({ where: { username: job.order_handled_by } }) : null,
+                User.findAll({ where: { department: "Process Coordinator", isActive: true } }),
+            ]); 
+
+            coordinators.forEach((c) => {
+                sendPushToUser(c.id, {
+                    title: "Designer Started Work",
+                    body: `Designer has started working on Job #${job_no}.`,
+                    icon: "/favicon.png",
+                    vibrate: [1000, 200, 1000, 200, 1000],
+                    requireInteraction: true,
+                    data: { url: "/job-fms/coordinator", tag: `job-${job_no}` },
+                }).catch((err) =>
+                    console.warn(`Push failed for coordinator on job ${job_no}:`, err.message)
+                );
+            });
+
+            if (crmUser?.id) {
+                sendPushToUser(crmUser.id, {
+                    title: "Designer Started Work",
+                    body: `Designer has started working on Job #${job_no}.`,
+                    icon: "/favicon.png",
+                    vibrate: [1000, 200, 1000, 200, 1000],
+                    requireInteraction: true,
+                    data: { url: "/job-fms/common", tag: `job-${job_no}` },
+                }).catch((err) =>
+                    console.warn(`Push failed for CRM on job ${job_no}:`, err.message)
+                );
+            }
+        } catch(notifyError){
+            console.error(`Post-start notifications failed for job ${job_no}:`, notifyError.message);
+        }
+
+
     }
     catch(error){
-        t.rollback().catch(() => {});
+        if (!t.finished) await t.rollback().catch(() => {});
+        if (res.headersSent) return;
         return respondToError(res, error, "Failed to cancel requests and start.");
     }
 }
@@ -749,17 +800,24 @@ export const acceptTransferRequest = async (req, res) => {
         // ── Create new assignment for the accepting designer ───────────────
         // instance stays the same — this is a handover, not a redesign round.
         // assigned_by_id = from_designer_id to track who transferred the job.
-        // estimated_completion_time = null — accepting designer sets their own.
+        // estimated_completion_time is set by the system (carried over from the
+        // original assignment, never left for the new designer to fill).
+        const now = new Date();
+        const { estimate, rule: estimateRule } = resolveTransferEstimate({ originalAssignment, job, now });
+
         const newAssignment = await JobAssignment.create({
             job_no: transferRequest.job_no,
             designer_id: req.user.id,
             assigned_by_id: transferRequest.from_designer_id,
+            assigned_at: now,
             instance: originalAssignment.instance,
             status: "assigned",
             is_paused: false,
             designer_duration_seconds: 0,
+            estimated_completion_time: estimate,
             remarks: `Transferred from ${transferRequest.fromDesigner?.username || "previous designer"}`,
         }, { transaction: t } );
+
 
         // ── Update JobCard.assigned_designer ──────────────────────────────
         await job.update({
@@ -776,6 +834,9 @@ export const acceptTransferRequest = async (req, res) => {
                 from_designer_name: transferRequest.fromDesigner?.username,
                 new_assignment_id: newAssignment.id,
                 cancelled_other_requests: otherPendingRequests.length,
+                original_estimate: originalAssignment.estimated_completion_time,
+                estimated_completion_time: estimate,
+                estimate_rule: estimateRule,
             },
         },{ transaction: t } );
 
@@ -969,3 +1030,4 @@ export const dismissTransferNotification = async (req, res) => {
     }
 
 }
+
