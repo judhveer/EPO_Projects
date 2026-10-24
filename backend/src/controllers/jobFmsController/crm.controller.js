@@ -13,6 +13,9 @@ import {
 } from "../../email/templates/emailTemplates.js";
 import { sendProductionJobEmail } from "./jobCard.controller.js";
 
+import { calculateMaxDesignDeadlineWithRule } from "./designer.controller.js";
+import { rankDesignersForAssignment } from "../../services/jobFms/designerAllocation.service.js";
+
 import { sendPushToUser, sendPushToDepartment } from "../../utils/pushNotification.js";
 
 export const getAllJobsForCRM = async (req, res) => {
@@ -76,19 +79,27 @@ export const getAllJobsForCRM = async (req, res) => {
  * 📤 PATCH - Sent to Client
  */
 export const sendToClient = async (req, res) => {
-  const t = await db.sequelize.transaction();
   const { job_no } = req.params;
 
   if (!job_no) {
-    return res.status(400).json({
-      message: "Job number is required",
-    });
+    return res.status(400).json({ message: "Job number is required" });
   }
 
+  const t = await db.sequelize.transaction();
   try {
-    const job = await JobCard.findOne({ where: { job_no } });
+    const job = await JobCard.findOne({ where: { job_no }, transaction: t, lock: t.LOCK.UPDATE });
     if (!job) {
+      await t.rollback();
       return res.status(404).json({ message: "Job not found" });
+    }
+
+    // Only a job the coordinator has already sent for approval can go to the client.
+    // (Blocks double-click, cancelled / in-production / delivered jobs.)
+    if (job.status !== "sent_for_approval") {
+      await t.rollback();
+      return res.status(409).json({
+        message: `A job can be sent to the client only from "sent for approval" (current status: ${job.status}).`,
+      });
     }
 
     job.status = "awaiting_client_response";
@@ -105,36 +116,21 @@ export const sendToClient = async (req, res) => {
     });
 
     const existingApproval = await ClientApproval.findOne({
-      where: {
-        job_no: job.job_no,
-        status: "changes_requested",
-      },
+      where: { job_no: job.job_no, status: "changes_requested" },
       order: [["instance", "DESC"]],
       transaction: t,
     });
 
-    if (existingApproval) {
-      await ClientApproval.create(
-        {
-          job_no: job.job_no,
-          handled_by_id: req.user?.id || null,
-          status: "pending",
-          sent_at: new Date(),
-          instance: existingApproval.instance + 1,
-        },
-        { transaction: t },
-      );
-    } else {
-      await ClientApproval.create(
-        {
-          job_no: job.job_no,
-          handled_by_id: req.user?.id || null,
-          status: "pending",
-          sent_at: new Date(),
-        },
-        { transaction: t },
-      );
-    }
+    await ClientApproval.create(
+      {
+        job_no: job.job_no,
+        handled_by_id: req.user?.id || null,
+        status: "pending",
+        sent_at: new Date(),
+        ...(existingApproval ? { instance: existingApproval.instance + 1 } : {}),
+      },
+      { transaction: t },
+    );
 
     await ActivityLog.create(
       {
@@ -150,16 +146,12 @@ export const sendToClient = async (req, res) => {
 
     res.json({ message: "Job sent to client successfully" });
 
-    // Fetch Process Coordinators
-    const coordinators = await User.findAll({
-      where: { 
-        department: "Process Coordinator",
-        isActive: true
-      },
-    });
+    // 🔔 Notifications (after the response; a failure here never affects the result)
+    try {
+      const coordinators = await User.findAll({
+        where: { department: "Process Coordinator", isActive: true },
+      });
 
-    // Push notification to Process Coordinators.
-    if(coordinators.length > 0){
       coordinators.forEach((coordinator) => {
         sendPushToUser(coordinator.id, {
           title: "Job Sent To Client",
@@ -168,23 +160,15 @@ export const sendToClient = async (req, res) => {
           vibrate: [1000, 200, 1000, 200, 1000],
           requireInteraction: true,
           data: { url: "/job-fms/common", tag: `job-${job_no}` },
-        }).catch((err) => { 
-          // fire-and-forget, never block the response
+        }).catch(() => {
           console.warn(`Failed to send push notification to (${coordinator?.username}) for job ${job_no}.`);
         });
       });
-    }
 
-    const attachments = [
-      {
-        filename: "epo-logo.jpg",
-        path: path.resolve("assets/epo-logo.jpg"),
-        cid: "epo-logo",
-      },
-    ];
+      const attachments = [{ filename: "epo-logo.jpg", path: path.resolve("assets/epo-logo.jpg"), cid: "epo-logo" }];
 
-    if (coordinators.length > 0) {
       for (const coordinator of coordinators) {
+        if (!coordinator.email) continue;
         await sendMailForFMS({
           to: coordinator.email,
           subject: `Client Approval Sent - Job No ${job.job_no}`,
@@ -197,12 +181,15 @@ export const sendToClient = async (req, res) => {
             dashboardUrl: `${process.env.LEADS_URL}/jobs/${job.job_no}`,
           }),
           attachments,
-        }).catch(err => console.error("Coordinator sentToClient email failed:", err));;
+        }).catch((err) => console.error("Coordinator sentToClient email failed:", err.message));
       }
+    } catch (notifyError) {
+      console.error("Error sending sent-to-client notifications:", notifyError);
     }
   } catch (error) {
+    if (!t.finished) await t.rollback().catch(() => {});
     console.error("Error sending job to client:", error);
-    await t.rollback();
+    if (res.headersSent) return;
     res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -211,7 +198,6 @@ export const sendToClient = async (req, res) => {
  * ✅ PATCH - Client Approved
  */
 export const approveJobByClient = async (req, res) => {
-  const t = await db.sequelize.transaction();
   const { job_no } = req.params;
 
   if (!job_no) {
@@ -219,41 +205,50 @@ export const approveJobByClient = async (req, res) => {
       message: "Job number is required",
     });
   }
-
+  const t = await db.sequelize.transaction();
   try {
-    const job = await JobCard.findOne({ where: { job_no } });
+    const job = await JobCard.findOne({ 
+      where: { job_no }, 
+      transaction: t, 
+      lock: t.LOCK.UPDATE 
+    });
+
     if (!job) {
+      await t.rollback();
       return res.status(404).json({ message: "Job not found" });
     }
 
-    // job.status = "approved";
-    // job.current_stage = "approved";
+    // Only a job that was sent to the client can be approved by the client.
+    // (Blocks double-click, cancelled / in-production / delivered jobs.)
+    if (job.status !== "awaiting_client_response") {
+      await t.rollback();
+      return res.status(409).json({
+        message: `Client approval can be recorded only while the job is awaiting client response (current status: ${job.status}).`,
+      });
+    }
 
     job.status = "ready_for_production";
     job.current_stage = "ready_for_production";
     await job.save({ transaction: t });
 
-    const [updatedCount] = await ClientApproval.update(
-      {
-        status: "approved",
-        approved_at: new Date(),
+    // Only the latest pending approval — older rounds (changes_requested) stay as history.
+    const approval = await ClientApproval.findOne({
+      where: { 
+        job_no: job.job_no, 
+        status: "pending" 
       },
-      {
-        where: {
-          job_no: job.job_no,
-          // status: "pending",
-        },
-        transaction: t,
-      },
-    );
+      order: [["instance", "DESC"]],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
 
-    if (updatedCount === 0) {
-      console.log(
-        "No pending Client Approval found for this job_no: ",
-        job.job_no,
-      );
+    if (approval) {
+      await approval.update({ 
+        status: "approved", 
+        approved_at: new Date() 
+      }, { transaction: t });
     } else {
-      console.log("ClientApproval updated successfully");
+      console.warn(`No pending ClientApproval found for job ${job.job_no}`);
     }
 
     await advanceStage({
@@ -269,7 +264,7 @@ export const approveJobByClient = async (req, res) => {
         job_no: job.job_no,
         action: "Client approved the job",
         performed_by_id: req.user?.id || null,
-        meta: { action: "client_approved" },
+        meta: { action: "client_approved", client_approval_id: approval?.id ?? null },
       },
       { transaction: t },
     );
@@ -278,7 +273,7 @@ export const approveJobByClient = async (req, res) => {
 
     res.json({ message: "Job approved successfully" });
 
-    // 🔔 EMAIL NOTIFICATIONS
+    // 🔔 NOTIFICATIONS (after the response; a failure here never affects the approval)
     try {
       // Fetch Process Coordinators
       const coordinators = await User.findAll({
@@ -287,198 +282,268 @@ export const approveJobByClient = async (req, res) => {
           isActive: true
         },
       });
+      // Active designer only — an inactive / missing designer must not break the rest.
+      const designer = job.assigned_designer
+        ? await User.findOne({ 
+          where: { 
+            username: job.assigned_designer, 
+            isActive: true 
+          } }) : null;
 
-      const designer = await User.findOne({
-        where: {
-          username: job.assigned_designer,
-        },
-      });
-
-      // Push notification to Process Coordinators.
-      if(coordinators.length > 0){
-        coordinators.forEach((coordinator) => {
-          sendPushToUser(coordinator.id, {
-            title: "Job Approved By Client",
-            body: `Job #${job_no} · ${job.client_name} has been approved by the client and is now ready for production.`,
-            icon: "/favicon.png",
-            vibrate: [1000, 200, 1000, 200, 1000],
-            requireInteraction: true,
-            data: { url: "/job-fms/common", tag: `job-${job_no}` },
-          }).catch((err) => { 
-            // fire-and-forget, never block the response
-            console.warn(`Failed to send push notification to (${coordinator?.username}) for job ${job_no}.`);
-          });
-        });
-      }
-      // Push notification to Designer.
-      sendPushToUser(designer.id, {
+      const body = `Job #${job_no} · ${job.client_name} has been approved by the client and is now ready for production.`;
+      const pushOpts = (url) => ({
         title: "Job Approved By Client",
-        body: `Job #${job_no} · ${job.client_name} has been approved by the client and is now ready for production.`,
+        body,
         icon: "/favicon.png",
         vibrate: [1000, 200, 1000, 200, 1000],
         requireInteraction: true,
-        data: { url: "/job-fms/common", tag: `job-${job_no}` },
-      }).catch((err) => { 
-        // fire-and-forget, never block the response
-        console.warn(`Failed to send push notification to (${designer?.username}) for job ${job_no}.`);
+        data: { url, tag: `job-${job_no}` },
       });
+
+
+      // Push notification to Process Coordinators.
+      coordinators.forEach((coordinator) => {
+        sendPushToUser(coordinator.id, pushOpts("/job-fms/common")).catch(() => {
+          console.warn(`Failed to send push notification to (${coordinator?.username}) for job ${job_no}.`);
+        });
+      });
+      // Push notification to Designer.
+      if (designer) {
+        sendPushToUser(designer.id, pushOpts("/job-fms/common")).catch(() => {
+          console.warn(`Failed to send push notification to (${designer.username}) for job ${job_no}.`);
+        });
+      }
 
       // Push notification to Production Coordinators.
       sendPushToDepartment("Production Coordinator", {
+        ...pushOpts("/job-fms/production"),
         title: "Job Ready For Production",
-        body: `Job #${job_no} · ${job.client_name} has been approved by the client and is now ready for production.`,
-        icon: "/favicon.png",
-        vibrate: [1000, 200, 1000, 200, 1000],
-        requireInteraction: true,
-        data: { url: "/job-fms/production", tag: `job-${job_no}` },
-      }).catch((err) => { 
-        // fire-and-forget, never block the response
+      }).catch(() => {
         console.warn(`Failed to send push notification to Production Coordinator for job ${job_no}.`);
       });
 
-      const attachments = [
-        {
-          filename: "epo-logo.jpg",
-          path: path.resolve("assets/epo-logo.jpg"),
-          cid: "epo-logo",
-        },
-      ];
-
+      const attachments = [{ 
+        filename: "epo-logo.jpg", 
+        path: path.resolve("assets/epo-logo.jpg"), 
+        cid: "epo-logo" 
+      }];
       const approvedAt = new Date().toLocaleString();
       const dashboardUrl = `${process.env.LEADS_URL}/jobs/${job.job_no}`;
 
       // Send to Process Coordinators
       for (const coordinator of coordinators) {
+        if (!coordinator.email) continue;
         await sendMailForFMS({
           to: coordinator.email,
           subject: `Client Approved - Job No ${job.job_no}`,
           html: clientApprovedTemplate({
-            recipientName: coordinator.username,
-            jobNo: job.job_no,
-            clientName: job.client_name,
-            crmName: job.order_handled_by,
-            designerName: designer?.username,
-            approvedAt,
-            dashboardUrl,
+            recipientName: coordinator.username, jobNo: job.job_no, clientName: job.client_name,
+            crmName: job.order_handled_by, designerName: designer?.username, approvedAt, dashboardUrl,
           }),
           attachments,
-        });
+        }).catch((e) => console.error(`Client-approved mail failed for ${coordinator.username}:`, e.message));
       }
 
       // Send to Assigned Designer
-      if (designer) {
+      if (designer?.email) {
         await sendMailForFMS({
           to: designer.email,
           subject: `Client Approved - Job No ${job.job_no}`,
           html: clientApprovedTemplate({
-            recipientName: designer.username,
-            jobNo: job.job_no,
-            clientName: job.client_name,
-            crmName: job.order_handled_by,
-            designerName: designer.username,
-            approvedAt,
-            dashboardUrl,
+            recipientName: designer.username, jobNo: job.job_no, clientName: job.client_name,
+            crmName: job.order_handled_by, designerName: designer.username, approvedAt, dashboardUrl,
           }),
           attachments,
-        });
+        }).catch((e) => console.error(`Client-approved mail failed for ${designer.username}:`, e.message));
       }
 
-      if(job.execution_location !== "Out-Bound"){
+      if (job.execution_location !== "Out-Bound") {
         await sendProductionJobEmail({ job_no: job.job_no, kind: "new" });
       }
-
       // Send to Production (PENDING)
-    } catch (emailError) {
-      console.error("Error sending email notifications:", emailError);
+    } catch (notifyError) {
+      console.error("Error sending client-approval notifications:", notifyError);
     }
   } catch (error) {
+    if (!t.finished) await t.rollback().catch(() => {});
     console.error("Error approving job:", error);
-    await t.rollback();
+    if (res.headersSent) return;
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
+
+// Picks who gets the redesign when the previous designer's account is inactive.
+async function pickFallbackDesigner(transaction) {
+  // Tier 1: present today (checked in, not on leave) → best-ranked
+  try {
+    const { ranked } = await rankDesignersForAssignment();
+    if (ranked.length > 0) {
+      const user = await User.findByPk(ranked[0].designer_id, {
+        attributes: ["id", "username", "email"], transaction,
+      });
+      if (user) return { user, tier: "ranking" };
+    }
+  } catch (err) {
+    console.warn("Fallback ranking failed, trying next tier:", err.message);
+  }
+
+  // Tier 2: any active designer with the fewest open jobs (even if not checked in)
+  const activeDesigners = await User.findAll({
+    where: { department: "Designer", isActive: true },
+    attributes: ["id", "username", "email"],
+    order: [["username", "ASC"]],
+    transaction,
+  });
+  if (activeDesigners.length === 0) return null;
+
+  const counts = await JobAssignment.findAll({
+    attributes: ["designer_id", [db.sequelize.fn("COUNT", db.sequelize.col("id")), "open_count"]],
+    where: { designer_id: { [Op.in]: activeDesigners.map((d) => d.id) }, status: { [Op.in]: ["assigned", "in_progress"] } },
+    group: ["designer_id"],
+    raw: true,
+    transaction,
+  });
+  const openById = new Map(counts.map((c) => [c.designer_id, Number(c.open_count)]));
+  const best = [...activeDesigners].sort(
+    (a, b) => (openById.get(a.id) ?? 0) - (openById.get(b.id) ?? 0) || a.username.localeCompare(b.username),
+  )[0];
+  return { user: best, tier: "fewest_open_jobs" };
+}
+
+const fmtIST = (d) =>
+  new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: true,
+  }).format(new Date(d));
 
 /**
  * 🔁 PATCH - Client Changes Requested
  */
 export const clientChanges = async (req, res) => {
-  console.log("Client Changes api called");
-  const t = await db.sequelize.transaction();
   const { job_no } = req.params;
-  const { client_feedback } = req.body;
+  const feedback = typeof req.body?.client_feedback === "string" ? req.body.client_feedback.trim() : "";
 
   if (!job_no) {
-    return res.status(400).json({
-      message: "Job number is required",
-    });
+    return res.status(400).json({ message: "Job number is required" });
   }
 
-  if (!client_feedback?.trim()) {
-    return res.status(400).json({
-      message: "Client feedback is required",
-    });
+  if (!feedback) {
+    return res.status(400).json({ message: "Client feedback is required" });
   }
-
+  
+  const t = await db.sequelize.transaction();
   try {
-    const job = await JobCard.findOne({ where: { job_no } });
+    // Lock order: assignments → job (same as designerStartTask / cancelJobCard)
+    const assignments = await JobAssignment.findAll({
+      where: { job_no },
+      order: [["instance", "DESC"], ["id", "DESC"]],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    const job = await JobCard.findOne({ where: { job_no }, transaction: t, lock: t.LOCK.UPDATE });
     if (!job) {
-      return res.status(404).json({
-        message: "Job not found",
+      await t.rollback();
+      return res.status(404).json({ message: "Job not found" });
+    }
+
+    if (job.status !== "awaiting_client_response") {
+      await t.rollback();
+      return res.status(409).json({
+        message: `Client changes can be recorded only while the job is awaiting client response (current status: ${job.status}).`,
       });
     }
 
-    const [updatedCount] = await ClientApproval.update(
+    if (assignments.some((a) => ["assigned", "in_progress"].includes(a.status))) {
+      await t.rollback();
+      return res.status(409).json({ message: "This job still has an active designer assignment." });
+    }
+
+    // Latest NON-cancelled assignment (a transfer leaves a cancelled row with the same instance)
+    const previous = assignments.find((a) => a.status !== "cancelled");
+    if (!previous) {
+      await t.rollback();
+      return res.status(409).json({ message: "No previous designer assignment found for this job." });
+    }
+
+    // Who gets the redesign?
+    let designer = await User.findByPk(previous.designer_id, {
+      attributes: ["id", "username", "email", "isActive"], transaction: t,
+    });
+    const previousDesignerName = designer?.username ?? null;
+    let fallbackTier = null;
+
+    if (!designer || !designer.isActive) {
+      const fallback = await pickFallbackDesigner(t);
+      if (fallback) {
+        designer = fallback.user;
+        fallbackTier = fallback.tier;
+      } else {
+        fallbackTier = "none_available"; // keep previous designer, coordinators are told
+      }
+    }
+
+    // Latest pending client approval → changes_requested
+    const approval = await ClientApproval.findOne({
+      where: { job_no, status: "pending" },
+      order: [["instance", "DESC"]],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (approval) {
+      await approval.update({ status: "changes_requested", client_feedback: feedback }, { transaction: t });
+    } else {
+      console.warn(`No pending ClientApproval for job ${job_no}`);
+    }
+
+    // Redesign estimate: 50% / +4h rule, capped at delivery.
+    // Delivery already passed (or the rule fails) → the estimate is the delivery date itself,
+    // so an estimate is ALWAYS set automatically.
+    const assignedAt = new Date();
+    const instance = (previous.instance || 1) + 1;
+    const deliveryAt = job.delivery_date ? new Date(job.delivery_date) : null;
+    const deliveryValid = !!deliveryAt && !Number.isNaN(deliveryAt.getTime());
+    let estimated = null;
+    let deadlineRule = null;
+    if (deliveryValid) {
+      if (deliveryAt <= assignedAt) {
+        estimated = deliveryAt;
+        deadlineRule = "delivery_already_passed";
+      } else {
+        const r = calculateMaxDesignDeadlineWithRule(job.delivery_date, job.createdAt, job.task_priority, instance, assignedAt);
+        if (r?.deadline instanceof Date && !Number.isNaN(r.deadline.getTime())) {
+          estimated = r.deadline;
+          deadlineRule = r.rule;
+        } else {
+          estimated = deliveryAt;
+          deadlineRule = "fallback_delivery_date";
+        }
+      }
+    }
+
+    const targetDesignerId = designer?.id ?? previous.designer_id;
+    const reassignedToOther = targetDesignerId !== previous.designer_id;
+
+    const newAssignment = await JobAssignment.create(
       {
-        status: "changes_requested",
-        client_feedback: client_feedback,
-      },
-      {
-        where: {
-          job_no: job.job_no,
-          status: "pending",
-        },
-        order: [["instance", "DESC"]],
+        job_no,
+        designer_id: targetDesignerId,
+        assigned_by_id: req.user?.id ?? previous.assigned_by_id,
+        assigned_at: assignedAt,
+        status: "assigned",
+        instance,
+        estimated_completion_time: estimated,
+        remarks: reassignedToOther
+          ? "Re-assigned due to client requested changes (previous designer unavailable)"
+          : "Re-assigned due to client requested changes",
       },
       { transaction: t },
     );
-
-    if (updatedCount === 0) {
-      console.log(
-        "No pending Client Approval found for this job_no: ",
-        job.job_no,
-      );
-    } else {
-      console.log("ClientApproval updated to changes_requested successfully");
-    }
 
     job.status = "client_changes";
     job.current_stage = "client_changes";
+    if (reassignedToOther && designer?.username) job.assigned_designer = designer.username;
     await job.save({ transaction: t });
-
-    const jobAssignmentsLatestEntry = await JobAssignment.findOne({
-      where: {
-        job_no: job.job_no,
-      },
-      order: [["instance", "DESC"]],
-      transaction: t,
-    });
-
-    if (!jobAssignmentsLatestEntry) {
-      throw new Error("Previous Job Assignment not found for the job");
-    }
-
-    await JobAssignment.create(
-      {
-        job_no: job.job_no,
-        designer_id: jobAssignmentsLatestEntry.designer_id,
-        assigned_by_id: jobAssignmentsLatestEntry.assigned_by_id,
-        assigned_at: new Date(),
-        status: "assigned",
-        instance: jobAssignmentsLatestEntry.instance + 1,
-        remarks: "Re-assigned due to client requested changes",
-      },
-      { transaction: t },
-    );
 
     await advanceStage({
       job_no,
@@ -490,112 +555,94 @@ export const clientChanges = async (req, res) => {
 
     await ActivityLog.create(
       {
-        job_no: job.job_no,
+        job_no,
         action: "Client requested changes",
         performed_by_id: req.user?.id || null,
-        meta: { client_feedback },
+        meta: {
+          client_feedback: feedback,
+          new_assignment_id: newAssignment.id,
+          instance,
+          previous_designer_id: previous.designer_id,
+          designer_id: targetDesignerId,
+          fallback: fallbackTier,
+          estimated_completion_time: estimated,
+          deadline_rule: deadlineRule,
+        },
       },
       { transaction: t },
     );
 
     await t.commit();
 
-    res.json({
-      message: "Client changes recorded successfully",
-    });
+    res.json({ message: "Client changes recorded successfully" });
 
-    // 🔔 EMAIL NOTIFICATIONS
+    // ── Notifications (after commit; never affect the response) ───────────
+    const push = (userId, title, body, url) =>
+      sendPushToUser(userId, {
+        title, body, icon: "/favicon.png", vibrate: [1000, 200, 1000, 200, 1000],
+        requireInteraction: true, data: { url, tag: `job-${job_no}` },
+      }).catch((err) => console.warn(`Push failed for user ${userId} on job ${job_no}:`, err.message));
+
     try {
-      // Fetch Process Coordinators
       const coordinators = await User.findAll({
-        where: { department: "Process Coordinator" },
+        where: { department: "Process Coordinator", isActive: true },
+        attributes: ["id", "username", "email"],
       });
 
-      const designer = await User.findOne({
-        where: {
-          username: job.assigned_designer,
-        },
-      });
+      let coordinatorNote = "The job has been reassigned for redesign/correction.";
+      if (fallbackTier === "none_available") {
+        coordinatorNote = `No active designer is available — the job is still with ${previousDesignerName ?? "the previous designer"}. Please reassign it manually.`;
+      } else if (reassignedToOther) {
+        coordinatorNote = `The previous designer${previousDesignerName ? ` (${previousDesignerName})` : ""} is inactive, so the job was reassigned to ${designer.username}.`;
+      }
+      coordinators.forEach((c) =>
+        push(c.id, "Client Changes Requested", `Client has requested changes for Job #${job_no} · ${job.client_name}. ${coordinatorNote}`, "/job-fms/common"),
+      );
 
-      // Push notification to Process Coordinators.
-      if(coordinators.length > 0){
-        coordinators.forEach((coordinator) => {
-          sendPushToUser(coordinator.id, {
-            title: "Client Changes Requested",
-            body: `Client has requested changes for Job #${job_no} · ${job.client_name}. The job has been reassigned for redesign/correction.`,
-            icon: "/favicon.png",
-            vibrate: [1000, 200, 1000, 200, 1000],
-            requireInteraction: true,
-            data: { url: "/job-fms/common", tag: `job-${job_no}` },
-          }).catch((err) => { 
-            // fire-and-forget, never block the response
-            console.warn(`Failed to send push notification to (${coordinator?.username}) for job ${job_no}.`);
-          });
-        });
+      const redesignUser = designer && designer.isActive !== false ? designer : null;
+      if (redesignUser) {
+        push(
+          redesignUser.id,
+          "Job Reassigned for Redesign",
+          `Client has requested changes for Job #${job_no} · ${job.client_name}. Please review the feedback and update the design.` +
+            (estimated ? ` Estimated completion: ${fmtIST(estimated)}.` : ""),
+          "/job-fms/designer",
+        );
       }
 
-      sendPushToUser(designer.id, {
-        title: "Job Reassigned for Redesign",
-        body: `Client has requested changes for Job #${job_no} · ${job.client_name}. Please review the feedback and update the design.`,
-        icon: "/favicon.png",
-        vibrate: [1000, 200, 1000, 200, 1000],
-        requireInteraction: true,
-        data: { url: "/job-fms/designer", tag: `job-${job_no}` },
-      }).catch((err) => { 
-        // fire-and-forget, never block the response
-        console.warn(`Failed to send push notification to (${designer?.username}) for job ${job_no}.`);
-      });
-
-
-      const attachments = [
-        {
-          filename: "epo-logo.jpg",
-          path: path.resolve("assets/epo-logo.jpg"),
-          cid: "epo-logo",
-        },
-      ];
-
+      const attachments = [{ filename: "epo-logo.jpg", path: path.resolve("assets/epo-logo.jpg"), cid: "epo-logo" }];
       const dashboardUrl = `${process.env.LEADS_URL}/jobs/${job.job_no}`;
-      if (coordinators.length > 0) {
-        for (const coordinator of coordinators) {
-          await sendMailForFMS({
-            to: coordinator.email,
-            subject: `Client Changes Requested - Job No ${job.job_no}`,
-            html: clientChangesProcessTemplate({
-              coordinatorName: coordinator.username,
-              jobNo: job.job_no,
-              clientName: job.client_name,
-              crmName: job.order_handled_by,
-              feedback: client_feedback,
-              designerName: designer?.username,
-              dashboardUrl,
-            }),
-            attachments,
-          });
-        }
-      }
 
-      // Assigned Designer (Redesign)
-      if (designer) {
+      for (const coordinator of coordinators) {
+        if (!coordinator.email) continue;
         await sendMailForFMS({
-          to: designer.email,
-          subject: `Redesign Required - Job No ${job.job_no}`,
-          html: designerRedesignTemplate({
-            designerName: designer.username,
-            jobNo: job.job_no,
-            clientName: job.client_name,
-            feedback: client_feedback,
-            dashboardUrl,
+          to: coordinator.email,
+          subject: `Client Changes Requested - Job No ${job.job_no}`,
+          html: clientChangesProcessTemplate({
+            coordinatorName: coordinator.username, jobNo: job.job_no, clientName: job.client_name,
+            crmName: job.order_handled_by, feedback, designerName: redesignUser?.username ?? previousDesignerName, dashboardUrl,
           }),
           attachments,
-        });
+        }).catch((e) => console.error(`Client-changes mail failed for ${coordinator.username}:`, e.message));
       }
-    } catch (emailError) {
-      console.error("Error sending email notifications:", emailError);
+
+      if (redesignUser?.email) {
+        await sendMailForFMS({
+          to: redesignUser.email,
+          subject: `Redesign Required - Job No ${job.job_no}`,
+          html: designerRedesignTemplate({
+            designerName: redesignUser.username, jobNo: job.job_no, clientName: job.client_name, feedback, dashboardUrl,
+          }),
+          attachments,
+        }).catch((e) => console.error(`Redesign mail failed for ${redesignUser.username}:`, e.message));
+      }
+    } catch (notifyError) {
+      console.error("Error sending client-changes notifications:", notifyError);
     }
   } catch (error) {
+    if (!t.finished) await t.rollback().catch(() => {});
     console.error("Error handling client changes:", error);
-    await t.rollback();
+    if (res.headersSent) return;
     res.status(500).json({ message: "Internal server error" });
   }
 };
