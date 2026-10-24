@@ -204,13 +204,6 @@ const JobRow = memo(function JobRow({
       <td className="border p-1 sm:p-2">{job.instructions}</td>
       <td className="border p-1 sm:p-2">{job.no_of_files}</td>
 
-      {/* Job Completion Deadline */}
-      <td className="border p-1 sm:p-2">
-        {job.job_completion_deadline
-          ? DateTime.fromJSDate(new Date(job.job_completion_deadline)).setZone("Asia/Kolkata").toFormat("dd LLL yyyy, hh:mm a")
-          : "Not Set"}
-      </td>
-
       {/* ── Estimated Completion Time ─────────────────────────────────────── */}
       <td className="border p-1 sm:p-2 text-center sticky right-[260px] bg-white z-40 min-w-[250px] group-hover:bg-blue-500 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
         {isLocked ? (
@@ -821,7 +814,6 @@ export default function DesignerTable({ refresh }) {
               </th>
               <th className="border p-1 sm:p-2">Client Instructions</th>
               <th className="border p-1 sm:p-2">No of Files</th>
-              <th className="border p-1 sm:p-2">Job Completion Deadline</th>
               <th className="border p-1 sm:p-2 bg-blue-800 sticky right-[220px] sm:right-[260px] min-w-[200px] sm:min-w-[250px] z-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.15)]">
                 {" "}
                 Estimated Completion Time
@@ -856,7 +848,7 @@ export default function DesignerTable({ refresh }) {
               ))
             ) : (
               <tr>
-                <td colSpan="17" className="text-center py-4 text-gray-500">
+                <td colSpan="16" className="text-center py-4 text-gray-500">
                   No jobs found
                 </td>
               </tr>
