@@ -2,6 +2,12 @@ import db from "../../models/index.js";
 import { Op } from "sequelize";
 import jwt from "jsonwebtoken";
 import { sendPushToDepartment } from  "../../utils/pushNotification.js";
+import {
+  openWorkerLog,
+  closeOpenWorkerLogs,
+} from "../../services/jobFms/productionWorkerTimeLog.service.js";
+
+import { assertUserCheckedInToWork } from "../../utils/jobFms/workerAttendance.js";
 
 const WORKER_DEPT = "Production Worker";
 
@@ -40,6 +46,12 @@ async function autoPauseOtherAssignments(workerId, excludeId, t) {
       { transaction: t }
     );
   }
+
+  // Close the running time-log of each auto-paused assignment at the same moment.
+  await closeOpenWorkerLogs(
+    others.map((a) => a.id),
+    { endAt: now, reason: "auto_paused_other", transaction: t }
+  );
 
   return others.length;
 }
@@ -106,6 +118,8 @@ export const startAssignment = async (req, res) => {
   try {
     ensureWorkerRole(req);
 
+    await assertUserCheckedInToWork(req.user?.id);
+
     const assignment = await db.JobProductionStageWorker.findOne({
       where: { 
         id: req.params.id, 
@@ -136,13 +150,17 @@ export const startAssignment = async (req, res) => {
       t
     );
 
+    const startedAt = new Date();
     await assignment.update(
       {
         status: "in_progress",
-        started_at: new Date(),
+        started_at: startedAt,
       },
       { transaction: t }
     );
+
+    // First run of this assignment
+    await openWorkerLog(assignment, startedAt, t);
 
     await t.commit();
     return res.json({
@@ -154,7 +172,10 @@ export const startAssignment = async (req, res) => {
     await t.rollback().catch(() => {});
     return res
       .status(err.statusCode || 500)
-      .json({ message: err.message || "Failed to start assignment." });
+      .json({
+        message: err.message || "Failed to start assignment.",
+        ...(err.statusCode && err.code && { code: err.code }),
+      });
   }
 };
 
@@ -194,13 +215,21 @@ export const pauseAssignment = async (req, res) => {
       );
     }
 
+    const pausedAt = new Date();
     await assignment.update(
       {
         status: "paused",
-        paused_at: new Date(),
+        paused_at: pausedAt,
       },
       { transaction: t }
     );
+
+    // Close the running time-log at the same moment as paused_at
+    await closeOpenWorkerLogs([assignment.id], {
+      endAt: pausedAt,
+      reason: "paused",
+      transaction: t,
+    });
 
     await t.commit();
     return res.json({
@@ -228,6 +257,7 @@ export const resumeAssignment = async (req, res) => {
   const t = await db.sequelize.transaction();
   try {
     ensureWorkerRole(req);
+    await assertUserCheckedInToWork(req.user?.id);
 
     const assignment = await db.JobProductionStageWorker.findOne({
       where: { 
@@ -279,6 +309,9 @@ export const resumeAssignment = async (req, res) => {
       { transaction: t }
     );
 
+    // New run starts now
+    await openWorkerLog(assignment, now, t);
+
     await t.commit();
     return res.json({
       message: "Assignment resumed.",
@@ -289,7 +322,10 @@ export const resumeAssignment = async (req, res) => {
     await t.rollback().catch(() => {});
     return res
       .status(err.statusCode || 500)
-      .json({ message: err.message || "Failed to resume assignment." });
+      .json({
+        message: err.message || "Failed to resume assignment.",
+        ...(err.statusCode && err.code && { code: err.code }),
+      });
   }
 };
 
@@ -345,6 +381,14 @@ export const completeAssignment = async (req, res) => {
       },
       { transaction: t }
     );
+
+    // From in_progress the run is still open -> close it at completed_at.
+    // From paused there is no open run, so this does nothing.
+    await closeOpenWorkerLogs([assignment.id], {
+      endAt: completedAt,
+      reason: "completed",
+      transaction: t,
+    });
 
     await t.commit();
 
@@ -434,25 +478,37 @@ export const pauseWorkerOnLogout = async (req, res) => {
       return res.status(200).json({ message: "Invalid token payload." });
     }
 
-    const now = new Date();
-
-    // Find all actively running assignments for this worker
-    const activeAssignments = await db.JobProductionStageWorker.findAll({
+    // Cheap pre-check outside a transaction: most logouts have nothing running.
+    const runningCount = await db.JobProductionStageWorker.count({
       where: {
         worker_id: userId,
         status: "in_progress",
       },
     });
 
-    if (activeAssignments.length === 0) {
+    if (runningCount === 0) {
       return res.status(200).json({ message: "No active assignments to pause.", paused: 0 });
     }
 
     // Pause each one — same logic as pauseAssignment:
     // set status → paused, record paused_at so resume can calculate
     // the pause duration correctly when the worker comes back.
+    // The rows are re-read INSIDE the transaction with a lock, so a pause/done that
+    // happened a moment ago is never overwritten with stale data.
     const t = await db.sequelize.transaction();
+    let pausedCount = 0;
     try{
+      const now = new Date();
+
+      const activeAssignments = await db.JobProductionStageWorker.findAll({
+        where: {
+          worker_id: userId,
+          status: "in_progress",
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
       for (const assignment of activeAssignments) {
         await assignment.update(
           {
@@ -463,7 +519,13 @@ export const pauseWorkerOnLogout = async (req, res) => {
         );
       }
 
+      await closeOpenWorkerLogs(
+        activeAssignments.map((a) => a.id),
+        { endAt: now, reason: "auto_paused_logout", transaction: t }
+      );
+
       await t.commit();
+      pausedCount = activeAssignments.length;
     }
     catch (dbErr) {
       await t.rollback().catch(() => {});
@@ -472,12 +534,12 @@ export const pauseWorkerOnLogout = async (req, res) => {
     }
 
     console.log(
-      `[pause-worker-on-logout] Paused ${activeAssignments.length} assignment(s) for worker ${userId}`
+      `[pause-worker-on-logout] Paused ${pausedCount} assignment(s) for worker ${userId}`
     );
 
     return res.status(200).json({
-      message: `${activeAssignments.length} assignment(s) paused on logout.`,
-      paused: activeAssignments.length,
+      message: `${pausedCount} assignment(s) paused on logout.`,
+      paused: pausedCount,
     });
 
   }
