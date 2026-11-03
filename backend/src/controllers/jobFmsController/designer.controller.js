@@ -22,6 +22,7 @@ import {
 } from "../../email/templates/emailTemplates.js";
 
 import { sendPushToUser } from "../../utils/pushNotification.js";
+import { assertUserCheckedInToWork } from "../../utils/jobFms/workerAttendance.js";
 
 // Get all jobs for Designers
 export const getAllJobsForDesginer = async (req, res) => {
@@ -371,8 +372,31 @@ export const autoPauseActiveJob = async (designerUsername, currentJobNo, t) => {
   return pausedJobNo;
 };
 
+
+// Check-in guard for Start / Resume. Runs BEFORE any transaction is opened, so a rejected
+// request never holds a DB connection. Returns true when it has already sent the response.
+async function rejectIfNotCheckedIn(req, res) {
+  try {
+    await assertUserCheckedInToWork(req.user?.id);
+    return false;
+  } catch (err) {
+    if (err.code === "NOT_CHECKED_IN") {
+      res.status(403).json({ error: err.message, code: err.code });
+    } else {
+      console.error("[checkInGuard] could not verify check-in:", err);
+      res.status(500).json({
+        error: "Could not verify your check-in. Please try again.",
+      });
+    }
+    return true;
+  }
+}
+
 // Designer's API to START TASK
 export const designerStartTask = async (req, res) => {
+
+  if (await rejectIfNotCheckedIn(req, res)) return;
+
   const t = await db.sequelize.transaction();
 
   try {
@@ -640,6 +664,9 @@ export const designerPauseTask = async (req, res) => {
 };
 
 export const designerResumeTask = async (req, res) => {
+
+  if (await rejectIfNotCheckedIn(req, res)) return;
+
   const t = await db.sequelize.transaction();
   try {
     const { job_no } = req.params;

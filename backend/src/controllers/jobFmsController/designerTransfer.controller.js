@@ -19,6 +19,7 @@ import db from "../../models/index.js";
 import { advanceStage } from "../../utils/jobFms/stageTracking.js";
 import { sendPushToDepartment, sendPushToUser } from "../../utils/pushNotification.js";
 import { autoPauseActiveJob, calculateMaxDesignDeadlineWithRule } from "./designer.controller.js";
+import { assertUserCheckedInToWork } from "../../utils/jobFms/workerAttendance.js";
 
 const { 
     DesignerTransferRequest, 
@@ -501,6 +502,23 @@ export const cancelTransferRequest = async (req, res) => {
 //    - Coordinators + CRM: "designer started" (same as normal start)
 //  Note: emails are deliberately not sent here (push is the primary real-time channel). The normal /start path handles emails for the standard flow.
 export const cancelRequestsAndStart = async (req, res) => {
+    // Check-in guard. Runs BEFORE the transaction so a rejected request holds no DB
+    // connection and, importantly, cancels NO transfer requests (the cancel is part of
+    // the same atomic operation below and must not happen if the start is refused).
+    try {
+        await assertUserCheckedInToWork(req.user?.id);
+    } catch (guardError) {
+        if (guardError.code === "NOT_CHECKED_IN") {
+            return res.status(403).json({
+                message: guardError.message,
+                code: guardError.code,
+            });
+        }
+        console.error("[checkInGuard] could not verify check-in:", guardError);
+        return res.status(500).json({
+            message: "Could not verify your check-in. Please try again.",
+        });
+    }
     const t = await db.sequelize.transaction();
     try{
         const { job_no } = req.params;
