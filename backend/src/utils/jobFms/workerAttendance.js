@@ -82,3 +82,25 @@ export async function assertWorkersCheckedIn(workers, transaction) {
     );
   }
 }
+
+
+
+export const NOT_CHECKED_IN_MESSAGE =
+  "Please check in first. You cannot start or resume a job without checking in.";
+
+/**
+ * Guard for Start / Resume of a design or production timer.
+ * Throws 403 { code: "NOT_CHECKED_IN" } unless the user is checked in right now
+ * (same definition as getCheckedInIds / assertWorkersCheckedIn).
+ */
+export async function assertUserCheckedInToWork(userId, transaction) {
+  const checkedIn = userId
+    ? await getCheckedInIds([userId], transaction)
+    : new Set();
+  if (!checkedIn.has(userId)) {
+    throw Object.assign(new Error(NOT_CHECKED_IN_MESSAGE), {
+      statusCode: 403,
+      code: "NOT_CHECKED_IN",
+    });
+  }
+}
