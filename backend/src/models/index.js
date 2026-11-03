@@ -44,6 +44,7 @@ import JobProductionStageWorkerModel from "./jobFmsModels/JobProductionStageWork
 import DeliveryAssignmentModel from "./jobFmsModels/DeliveryAssignment.model.js";
 import PushSubscriptionModel from "./jobFmsModels/PushSubscription.model.js";
 import DesignerTransferRequestModel from "./jobFmsModels/DesignerTransferRequest.model.js";
+import JobProductionWorkerTimeLogModel from "./jobFmsModels/JobProductionWorkerTimeLog.model.js";
 
 // jobFMS job card accounts models:
 import ItemMasterModel from "./jobFmsModels/AccountsJobItems/ItemMaster.model.js";
@@ -99,6 +100,7 @@ const JobProductionStageWorker = JobProductionStageWorkerModel(sequelize);
 const DeliveryAssignment = DeliveryAssignmentModel(sequelize);
 const PushSubscription = PushSubscriptionModel(sequelize);
 const DesignerTransferRequest = DesignerTransferRequestModel(sequelize);
+const JobProductionWorkerTimeLog = JobProductionWorkerTimeLogModel(sequelize);
 
 // Job FMS job card accounts Models:
 const ItemMaster = ItemMasterModel(sequelize);
@@ -277,6 +279,7 @@ export default {
   DeliveryAssignment,
   PushSubscription,
   DesignerTransferRequest,
+  JobProductionWorkerTimeLog,
 
   // Job FMS job card accounts Models:
   ItemMaster,
