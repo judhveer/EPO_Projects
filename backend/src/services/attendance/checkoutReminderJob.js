@@ -8,7 +8,7 @@ import { writeAuditLog } from './auditLogService.js';
 import { OVERNIGHT_CUTOFF_HOUR, latestExpiredShiftDate } from './currentShiftService.js';
 import { sendPushToUser } from '../../utils/pushNotification.js';
 import { sendMailForFMS } from '../../email/sendMail.js';
-
+import { pauseRunningTimersForUser } from '../jobFms/timerPause.service.js';
 
 const { User, Attendance, CheckoutReminderLog } = models;
 
@@ -174,6 +174,23 @@ export async function runAutoCheckoutJob(latestExpiredDate) {
 
     try {
       await record.update({ check_out_time: derivedCheckout, overtime_minutes: overtimeMinutes });
+
+      // Stop running design / production timers at the derived check-out time (not "now").
+      // Skipped when the employee still has ANOTHER open shift, since then they are working
+      // right now and their live timer must not be touched. Never blocks the auto-close.
+      try {
+        const otherOpenShifts = await Attendance.count({
+          where: { employee_id: employee.id, ...OPEN_SHIFT },
+        });
+        if (otherOpenShifts === 0) {
+          await pauseRunningTimersForUser(employee.id, {
+            pauseAt: derivedCheckout,
+            trigger: 'auto_checkout',
+          });
+        }
+      } catch (pauseErr) {
+        console.error(`[autoCheckoutJob] Timer pause failed for employee ${employee.id}:`, pauseErr.message);
+      }
 
       await writeAuditLog({
         entityType: 'ATTENDANCE',
