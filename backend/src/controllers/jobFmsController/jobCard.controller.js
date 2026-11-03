@@ -24,6 +24,7 @@ import {
 } from "../../services/jobFms/designerAssignment.service.js";
 
 import { sendPushToUser, sendPushToDepartment } from "../../utils/pushNotification.js";
+import { closeOpenWorkerLogs } from "../../services/jobFms/productionWorkerTimeLog.service.js";
 
 const {
   JobCard, JobItem, ClientApproval, JobAssignment, ActivityLog, ClientDetails,
@@ -1174,7 +1175,6 @@ export const updateJobCard = async (req, res) => {
     "status",
     "current_stage",
     "assigned_designer",
-    "job_completion_deadline",
   ];
   SERVER_OWNED_FIELDS.forEach((f) => delete updates[f]);
 
@@ -2273,6 +2273,42 @@ export const cancelJobCard = async (req, res) => {
 
     // ── Designer assignments → cancelled ──────────────────────────────────
     if (activeAssignments.length > 0) {
+      // A designer who was mid-run has an open JobDesignTime log. Close it at cancel time and
+      // bank its seconds into designer_duration_seconds (same bookkeeping as designerPauseTask),
+      // otherwise that last run would never be counted. Locks: assignments (held above) -> logs.
+      const openDesignLogs = await db.JobDesignTime.findAll({
+        where: {
+          assignment_id: { [Op.in]: activeAssignments.map((a) => a.id) },
+          end_time: null,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      const secondsByAssignment = new Map();
+      for (const log of openDesignLogs) {
+        const start = new Date(log.start_time);
+        const end = now < start ? start : now;
+        const secs = Math.max(0, Math.round((end - start) / 1000));
+        log.end_time = end;
+        log.duration_seconds = secs;
+        await log.save({ transaction: t });
+        secondsByAssignment.set(
+          log.assignment_id,
+          (secondsByAssignment.get(log.assignment_id) || 0) + secs,
+        );
+      }
+
+      for (const a of activeAssignments) {
+        const added = secondsByAssignment.get(a.id) || 0;
+        if (added > 0) {
+          await a.update(
+            { designer_duration_seconds: (a.designer_duration_seconds || 0) + added },
+            { transaction: t },
+          );
+        }
+      }
+
       await JobAssignment.update(
         { status: "cancelled" },
         {
@@ -2304,6 +2340,13 @@ export const cancelJobCard = async (req, res) => {
           where: { id: { [Op.in]: activeWorkers.map((w) => w.id) } },
           transaction: t,
         },
+      );
+
+      // Close the running time-log of any worker who was mid-run when the job was cancelled.
+      // (The worker rows are already locked above, so the lock order stays rows -> logs.)
+      await closeOpenWorkerLogs(
+        activeWorkers.map((w) => w.id),
+        { endAt: now, reason: "cancelled", transaction: t },
       );
     }
 
