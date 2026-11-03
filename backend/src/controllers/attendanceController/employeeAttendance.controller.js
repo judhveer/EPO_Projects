@@ -5,6 +5,7 @@ import { computeLateness, computeOvertime } from "../../services/attendance/atte
 import { nowIST, todayISTDateOnly } from "../../utils/attendance/istTime.js";
 import { parseLocationInput, buildLocationFields } from '../../services/attendance/attendanceLocationService.js';
 import { findCurrentShift } from '../../services/attendance/currentShiftService.js';
+import { pauseRunningTimersForUser } from '../../services/jobFms/timerPause.service.js';
 
 const { Attendance } = models;
 
@@ -184,12 +185,25 @@ export async function checkOut(req, res) {
             ...locationFields,
         });
 
+
+        // Stop any running design / production timer. Runs AFTER the check-out is saved and
+        // never throws, so a failure here can never block the check-out.
+        const timersPaused = await pauseRunningTimersForUser(employeeId, {
+            pauseAt: now.toJSDate(),
+            trigger: 'check_out',
+        });
+
         return res.json({
             message: overtimeMinutes > 0
                 ? `Checked out — ${overtimeMinutes} minute(s) overtime recorded.`
                 : 'Checked out successfully.',
             attendance: existing,
+            timers_paused: { 
+                designer: timersPaused.designer, 
+                worker: timersPaused.worker 
+            },
         });
+
     }
     catch (err) {
         console.error('[checkOut]', err);
