@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from "uuid";
 import { uploadChallanToDrive, uploadMaterialPhotoToDrive } from "../../utils/jobFms/googleDriveUpload.js"
 import { sendPushToUser, sendPushToDepartment } from "../../utils/pushNotification.js";
 import { assertWorkersCheckedIn } from "../../utils/jobFms/workerAttendance.js";
+import { closeOpenWorkerLogs } from "../../services/jobFms/productionWorkerTimeLog.service.js";
 
 
 
@@ -425,7 +426,9 @@ export const advanceProductionStage = async (req, res) => {
       if (incompleteAssignments.length > 0) {
 
         for(const a of incompleteAssignments){
-          if(a.status === "assigned"){
+          // Capture BEFORE a.update(): update() overwrites a.status on the instance.
+          const prevStatus = a.status;
+          if(prevStatus === "assigned"){
             // Worker was assigned but never pressed START.
             // No work was done — cancel cleanly.
             // force_completed should only apply to workers who actually started.
@@ -465,6 +468,16 @@ export const advanceProductionStage = async (req, res) => {
               { transaction: t }
             );
 
+            // Close the running time-log (in_progress only; a paused row has no open run)
+            await closeOpenWorkerLogs([a.id], {
+              endAt: completedAt,
+              reason: "force_completed",
+              transaction: t,
+            });
+
+            // Count only workers who actually started (assigned ones were simply cancelled)
+            autoForcedCount += 1;
+
             // ── ADDED: record reason in ActivityLog so scoring has context ──
             await db.ActivityLog.create(
               {
@@ -474,7 +487,7 @@ export const advanceProductionStage = async (req, res) => {
                 meta: {
                   assignment_id: a.id,
                   worker_name: a.worker_name,
-                  previous_status: a.status,
+                  previous_status: prevStatus,
                   completed_at: completedAt,
                   reason: `Auto force-completed: coordinator advanced stage from ${STAGE_LABELS[fromStage] || fromStage} to ${STAGE_LABELS[to_stage] || to_stage}.`,
                 },
@@ -484,11 +497,6 @@ export const advanceProductionStage = async (req, res) => {
           }
         }
       }
-      // Count only workers who actually started — assigned workers were simply cancelled
-      autoForcedCount = incompleteAssignments.filter(
-        (a) => ["in_progress", "paused"].includes(a.status)
-      ).length;
-
     }
 
     await job.update(
@@ -824,6 +832,14 @@ export const revertProductionStage = async (req, res) => {
             },
             { transaction: t }
           );
+
+          // Close the running time-log at the same moment
+          await closeOpenWorkerLogs([a.id], {
+            endAt: completedAt,
+            reason: "defect_reported",
+            transaction: t,
+          });
+
         }
         else{
           // Worker was assigned but never started — genuinely no work done.
@@ -857,6 +873,21 @@ export const revertProductionStage = async (req, res) => {
 
     }
     else {
+
+      // ── Standard revert: cancel all active assignments for the FROM stage ────
+      // Lock the rows first so we know exactly which ones are cancelled,
+      // then close the open time-log runs of those rows.
+      const stageAssignments = await db.JobProductionStageWorker.findAll({
+        where: {
+          job_no,
+          stage_name: fromStage,
+          status: { [Op.in]: ["assigned", "in_progress", "paused"] },
+        },
+        attributes: ["id"],
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
       // ── Standard revert: cancel all active assignments for the FROM stage ────
       await db.JobProductionStageWorker.update(
         {
@@ -873,6 +904,12 @@ export const revertProductionStage = async (req, res) => {
           transaction: t,
         }
       );
+
+      await closeOpenWorkerLogs(
+        stageAssignments.map((a) => a.id),
+        { endAt: now, reason: "cancelled", transaction: t }
+      );
+  
     }
 
 
@@ -1290,6 +1327,12 @@ export const forceCompleteWorkerAssignment = async (req, res) => {
       },
       { transaction: t }
     );
+
+    await closeOpenWorkerLogs([assignment.id], {
+      endAt: completedAt,
+      reason: "force_completed",
+      transaction: t,
+    });
 
     await db.ActivityLog.create(
       {
