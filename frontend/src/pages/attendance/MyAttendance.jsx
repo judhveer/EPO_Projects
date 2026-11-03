@@ -104,7 +104,12 @@ export default function MyAttendance({ compact = false }) {
 
       setActionStage('saving');
       const { data } = await api.post(endpoint, location);
-      setMessage(data.message);
+      const pausedCount = (data.timers_paused?.designer || 0) + (data.timers_paused?.worker || 0);
+      setMessage(
+        pausedCount > 0
+          ? `${data.message} ${pausedCount} running job${pausedCount !== 1 ? 's were' : ' was'} paused.`
+          : data.message,
+      );
       await fetchToday();
     } catch (err) {
       const apiMessage = err.response?.data?.error || failMessage;
@@ -127,17 +132,33 @@ export default function MyAttendance({ compact = false }) {
     setOpenJobs(null);
     // Designers get a heads-up about jobs they still hold. Best-effort only:
     // if this call fails, check-out continues normally.
-    if (user?.department === 'Designer') {
+    if (user?.department === 'Designer' || user?.department === 'Production Worker') {
       setActionLoading(true);
       try {
-        const { data } = await api.get('/api/fms/designers/my-open-jobs');
-        if (data?.total > 0) setOpenJobs(data);
+        if (user.department === 'Designer') {
+          const { data } = await api.get('/api/fms/designers/my-open-jobs');
+          if (data?.total > 0) setOpenJobs(data);
+        } else {
+          // Production Worker: same shape as the designer response, built from their active assignments
+          const { data } = await api.get('/api/fms/worker/assignments');
+          const list = Array.isArray(data) ? data : [];
+          if (list.length > 0) {
+            setOpenJobs({
+              total: list.length,
+              assigned: list.filter((a) => a.status === 'assigned').length,
+              running: list.filter((a) => a.status === 'in_progress').length,
+              paused: list.filter((a) => a.status === 'paused').length,
+              jobs: list.slice(0, 10).map((a) => ({ job_no: a.jobCard?.job_no ?? a.job_no })),
+            });
+          }
+        }
       } catch {
         // ignore — the warning is informational
       } finally {
         setActionLoading(false);
       }
     }
+    
     setConfirming('checkout');
   };
 
@@ -358,10 +379,17 @@ export default function MyAttendance({ compact = false }) {
                       Jobs: {openJobs.jobs.map((j) => `#${j.job_no}`).join(', ')}
                       {openJobs.total > openJobs.jobs.length ? ' …' : ''}
                     </p>
+                    {openJobs.running > 0 && (
+                      <p className="mt-2 text-xs font-semibold">
+                        ⏸ {openJobs.running} running job{openJobs.running !== 1 ? 's' : ''} will be paused
+                        automatically when you check out. You can resume after you check in again.
+                      </p>
+                    )}
                     <p className="mt-2 text-xs">
                       These jobs stay with you, and no new jobs will be assigned to you after you check out.
                       Do you still want to check out?
                     </p>
+
                   </div>
                 )}
               </>

@@ -56,31 +56,29 @@ const clearTimerFromLS = (jobNo) => {
   localStorage.removeItem(getTimerKey(jobNo));
 };
 
+// Seconds to show for a job. When the job is not running the SERVER value is the truth
+// (a pause done by check-out / logout / sweep never touches localStorage).
+// localStorage is only used to keep a RUNNING timer smooth across re-mounts.
+const computeSeconds = (jobNo, backendSeconds, isInProgress, isPaused) => {
+  if (!isInProgress || isPaused) return backendSeconds;
+  const stored = getTimerFromLS(jobNo);
+  if (stored?.isRunning) {
+    return stored.baseSeconds + Math.floor((Date.now() - stored.lastTick) / 1000);
+  }
+  return stored?.baseSeconds ?? backendSeconds;
+};
 
 // JobTimer — self-contained, ONLY this component re-renders every second.
 // The parent table never ticks.
 const JobTimer = memo(function JobTimer({ jobNo, backendSeconds, isInProgress, isPaused }) {
-  // Initialise from localStorage so elapsed time survives a re-mount
-  const [seconds, setSeconds] = useState(() => {
-    const stored = getTimerFromLS(jobNo);
-    if (stored && stored.isRunning && isInProgress && !isPaused) {
-      return stored.baseSeconds + Math.floor((Date.now() - stored.lastTick) / 1000);
-    }
-    return stored?.baseSeconds ?? backendSeconds;
-  });
+
+  const [seconds, setSeconds] = useState(() =>
+    computeSeconds(jobNo, backendSeconds, isInProgress, isPaused),
+  );
 
   // Re-sync whenever backend data refreshes (after start / pause / resume)
   useEffect(() => {
-    const stored = getTimerFromLS(jobNo);
-    if (stored) {
-      const computed =
-        stored.isRunning && isInProgress && !isPaused
-          ? stored.baseSeconds + Math.floor((Date.now() - stored.lastTick) / 1000)
-          : stored.baseSeconds;
-      setSeconds(computed);
-    } else {
-      setSeconds(backendSeconds);
-    }
+    setSeconds(computeSeconds(jobNo, backendSeconds, isInProgress, isPaused));
   }, [jobNo, backendSeconds, isInProgress, isPaused]);
 
   // Tick — only when actually running
@@ -510,6 +508,7 @@ export default function DesignerTable({ refresh }) {
 
     // No pending requests — start normally
     try {
+      setErr("");
       const res = await api.patch(`/api/fms/designers/${jobNo}/start`);
       const { auto_paused_job_no } = res.data;
       saveTimerToLS(jobNo, {
@@ -532,8 +531,13 @@ export default function DesignerTable({ refresh }) {
       }
       fetchJobs();
       fetchBadgeCount();
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error(error);
+      setErr(
+        error.response?.data?.error ||
+          error.response?.data?.message ||
+          "Failed to start task.",
+      );
     }
   }, [fetchJobs, showAutoPauseToast, fetchBadgeCount]);
 
@@ -574,7 +578,7 @@ export default function DesignerTable({ refresh }) {
       fetchBadgeCount();
     } catch (err) {
       console.error("Cancel-and-start failed:", err);
-      alert(err.response?.data?.message || "Failed to start task.");
+      alert( err.response?.data?.message || err.response?.data?.error || "Failed to start task.",);
     } finally {
       setCancelStartLoading(false);
     }
@@ -610,11 +614,12 @@ export default function DesignerTable({ refresh }) {
   const handleResume = useCallback(async (jobNo) => {
     const job = jobsRef.current.find((j) => j.job_no === jobNo);
     try {
+      setErr("");
       const res = await api.patch(`/api/fms/designers/${jobNo}/resume`);
       const { auto_paused_job_no } = res.data;
-      const stored = getTimerFromLS(jobNo);
-      const baseSeconds =
-        stored?.baseSeconds ?? job.assignment.designer_duration_seconds ?? 0;
+      
+      // The job was paused, so the server value already holds every counted second
+      const baseSeconds = job?.assignment?.designer_duration_seconds ?? 0;
 
       saveTimerToLS(jobNo, {
         baseSeconds,
@@ -637,8 +642,9 @@ export default function DesignerTable({ refresh }) {
       }
 
       fetchJobs(); // ensure sync
-    } catch (err) {
-      console.error("Resume failed", err);
+    } catch (error) {
+      console.error("Resume failed", error);
+      setErr( error.response?.data?.error || error.response?.data?.message || "Failed to resume task.",);
     }
   }, [fetchJobs, showAutoPauseToast]);
 
